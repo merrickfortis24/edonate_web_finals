@@ -488,9 +488,9 @@
 						>
 						<label class="form-check-label" for="terms">
 							I agree to the
-							<a href="{{ route('terms') }}" target="_blank" rel="noopener noreferrer" class="link-danger">Terms of Service</a>
+							<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#termsModal">Terms of Service</a>
 							and
-							<a href="{{ route('privacy') }}" target="_blank" rel="noopener noreferrer" class="link-danger">Privacy Policy</a>.
+							<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#privacyModal">Privacy Policy</a>.
 						</label>
 						@error('terms')
 						<div class="invalid-feedback d-block" id="terms_error">{{ $message }}</div>
@@ -612,5 +612,40 @@
 		togglePasswordVisibility('togglePasswordConfirm', 'password_confirmation');
 	})();
 </script>
+<!-- Terms Modal -->
+<div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg modal-dialog-centered">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title text-danger" id="termsModalLabel">Terms of Service</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<p class="text-secondary">Please replace this placeholder with your official Terms of Service.</p>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Privacy Modal -->
+<div class="modal fade" id="privacyModal" tabindex="-1" aria-labelledby="privacyModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-lg modal-dialog-centered">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title text-danger" id="privacyModalLabel">Privacy Policy</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<p class="text-secondary">Please replace this placeholder with your official Privacy Policy.</p>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+			</div>
+		</div>
+	</div>
+</div>
 </body>
 </html>
