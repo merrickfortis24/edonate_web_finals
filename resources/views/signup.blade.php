@@ -121,6 +121,13 @@
 			font-size: 0.85rem;
 		}
 
+		.otp-code-input {
+			letter-spacing: 0.45rem;
+			font-size: 1.25rem;
+			text-align: center;
+			font-weight: 700;
+		}
+
 		.btn-register {
 			background: var(--health-red);
 			border: none;
@@ -501,8 +508,10 @@
 				</div>
 
 				<div class="d-grid mb-3">
-					<button type="submit" class="btn btn-danger btn-register">Register</button>
+					<button type="submit" class="btn btn-danger btn-register" id="registerButton">Register</button>
 				</div>
+
+				<div id="otpFlowFeedback" class="alert d-none" role="alert" aria-live="assertive"></div>
 
 				<p class="mb-0 text-center text-secondary">
 					Already have an account?
@@ -515,13 +524,70 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 <script>
-	(function () {
+	document.addEventListener('DOMContentLoaded', function () {
 		'use strict';
 
 		var form = document.getElementById('donorSignupForm');
+		var csrfToken = form.querySelector('input[name="_token"]').value;
+		var registerButton = document.getElementById('registerButton');
+		var feedbackBox = document.getElementById('otpFlowFeedback');
+		var otpModalElement = document.getElementById('otpModal');
+		var otpModal = new bootstrap.Modal(otpModalElement);
+		var otpInput = document.getElementById('otp_code');
+		var confirmOtpButton = document.getElementById('confirmOtpButton');
+		var otpError = document.getElementById('otp_error');
+		var otpSubmitFeedback = document.getElementById('otp_submit_feedback');
+		var sendOtpUrl = "{{ route('donor.signup.send-otp') }}";
+		var confirmOtpUrl = "{{ route('donor.signup.confirm-otp') }}";
 		var passwordInput = document.getElementById('password');
 		var confirmPasswordInput = document.getElementById('password_confirmation');
 		var phoneInput = document.getElementById('phone');
+
+		function showFeedback(type, message) {
+			feedbackBox.className = 'alert alert-' + type;
+			feedbackBox.textContent = message;
+			feedbackBox.classList.remove('d-none');
+		}
+
+		function clearFeedback() {
+			feedbackBox.className = 'alert d-none';
+			feedbackBox.textContent = '';
+		}
+
+		function setRegisterButtonLoading(isLoading) {
+			registerButton.disabled = isLoading;
+			registerButton.textContent = isLoading ? 'Sending OTP...' : 'Register';
+		}
+
+		function clearServerFieldErrors() {
+			Array.prototype.slice.call(form.querySelectorAll('.is-invalid')).forEach(function (field) {
+				field.classList.remove('is-invalid');
+			});
+		}
+
+		function applyServerFieldErrors(errors) {
+			Object.keys(errors).forEach(function (name) {
+				var field = form.querySelector('[name="' + name + '"]');
+
+				if (!field) {
+					return;
+				}
+
+				field.classList.add('is-invalid');
+				field.classList.add('was-validated');
+
+				var messageElement = document.getElementById(field.id + '_error');
+				if (messageElement && Array.isArray(errors[name]) && errors[name].length > 0) {
+					messageElement.textContent = errors[name][0];
+				}
+			});
+		}
+
+		function parseJsonSafely(response) {
+			return response.json().catch(function () {
+				return {};
+			});
+		}
 
 		function validatePasswordRules() {
 			var value = passwordInput.value;
@@ -596,22 +662,152 @@
 		});
 
 		form.addEventListener('submit', function (event) {
+			event.preventDefault();
+			event.stopPropagation();
+
 			validatePasswordRules();
 			validateConfirmPassword();
 			validatePhone();
+			clearFeedback();
+			clearServerFieldErrors();
 
 			if (!form.checkValidity()) {
-				event.preventDefault();
-				event.stopPropagation();
+				form.classList.add('was-validated');
+				return;
 			}
 
 			form.classList.add('was-validated');
+			setRegisterButtonLoading(true);
+
+			fetch(sendOtpUrl, {
+				method: 'POST',
+				headers: {
+					'X-CSRF-TOKEN': csrfToken,
+					'Accept': 'application/json'
+				},
+				body: new FormData(form)
+			})
+				.then(function (response) {
+					return parseJsonSafely(response).then(function (data) {
+						return {
+							ok: response.ok,
+							status: response.status,
+							data: data
+						};
+					});
+				})
+				.then(function (result) {
+					if (!result.ok) {
+						if (result.data.errors) {
+							applyServerFieldErrors(result.data.errors);
+						}
+
+						showFeedback('danger', result.data.message || 'Unable to send OTP. Please review the form and try again.');
+						return;
+					}
+
+					showFeedback('success', result.data.message || 'OTP sent. Please check your email.');
+					otpInput.value = '';
+					otpInput.classList.remove('is-invalid');
+					otpError.textContent = 'Please enter the 6-digit code.';
+					otpSubmitFeedback.classList.add('d-none');
+					otpSubmitFeedback.textContent = '';
+					otpModal.show();
+				})
+				.catch(function () {
+					showFeedback('danger', 'Unable to send OTP right now. Please try again.');
+				})
+				.finally(function () {
+					setRegisterButtonLoading(false);
+				});
 		}, false);
+
+		confirmOtpButton.addEventListener('click', function () {
+			var otpValue = otpInput.value.trim();
+
+			otpInput.classList.remove('is-invalid');
+			otpSubmitFeedback.classList.add('d-none');
+			otpSubmitFeedback.textContent = '';
+
+			if (!/^\d{6}$/.test(otpValue)) {
+				otpInput.classList.add('is-invalid');
+				otpError.textContent = 'OTP must be exactly 6 digits.';
+				return;
+			}
+
+			confirmOtpButton.disabled = true;
+			confirmOtpButton.textContent = 'Verifying...';
+
+			fetch(confirmOtpUrl, {
+				method: 'POST',
+				headers: {
+					'X-CSRF-TOKEN': csrfToken,
+					'Accept': 'application/json',
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({ otp: otpValue })
+			})
+				.then(function (response) {
+					return parseJsonSafely(response).then(function (data) {
+						return {
+							ok: response.ok,
+							status: response.status,
+							data: data
+						};
+					});
+				})
+				.then(function (result) {
+					if (!result.ok) {
+						otpInput.classList.add('is-invalid');
+						otpError.textContent = result.data.message || 'OTP verification failed.';
+						return;
+					}
+
+					otpModal.hide();
+					showFeedback('success', result.data.message || 'Registration completed successfully. Redirecting...');
+
+					setTimeout(function () {
+						window.location.href = result.data.redirect_url || "{{ url('/login') }}";
+					}, 700);
+				})
+				.catch(function () {
+					otpInput.classList.add('is-invalid');
+					otpError.textContent = 'Unable to verify OTP right now. Please try again.';
+				})
+				.finally(function () {
+					confirmOtpButton.disabled = false;
+					confirmOtpButton.textContent = 'Confirm OTP';
+				});
+		});
 
 		togglePasswordVisibility('togglePassword', 'password');
 		togglePasswordVisibility('togglePasswordConfirm', 'password_confirmation');
-	})();
+	});
 </script>
+
+<!-- OTP Modal -->
+<div class="modal fade" id="otpModal" tabindex="-1" aria-labelledby="otpModalLabel" aria-hidden="true">
+	<div class="modal-dialog modal-dialog-centered">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title text-danger" id="otpModalLabel">Email Verification</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<p class="text-secondary mb-3">Enter the 6-digit OTP sent to your email address to complete registration.</p>
+				<label for="otp_code" class="form-label">One-Time Password</label>
+				<input type="text" class="form-control otp-code-input" id="otp_code" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" aria-describedby="otp_error otp_submit_feedback">
+				<div class="invalid-feedback" id="otp_error">Please enter the 6-digit code.</div>
+				<div class="alert alert-danger mt-3 d-none" id="otp_submit_feedback" role="alert"></div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+				<button type="button" class="btn btn-danger" id="confirmOtpButton">Confirm OTP</button>
+			</div>
+		</div>
+	</div>
+</div>
+
 <!-- Terms Modal -->
 <div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
 	<div class="modal-dialog modal-lg modal-dialog-centered">
