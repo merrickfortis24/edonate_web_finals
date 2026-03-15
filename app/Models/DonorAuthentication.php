@@ -20,6 +20,9 @@ class DonorAuthentication extends Model
         'email',
         'password',
         'is_verified',
+        'verification_token',
+        'verification_sent_at',
+        'verified_at',
         'created_at',
     ];
 }

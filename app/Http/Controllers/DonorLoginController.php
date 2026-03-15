@@ -16,7 +16,7 @@ class DonorLoginController extends Controller
     public function create()
     {
         if (session()->has('donor_auth_id')) {
-            return redirect('/signup');
+            return redirect('/dashboard');
         }
 
         return view('login');
@@ -60,9 +60,11 @@ class DonorLoginController extends Controller
             'donor_id' => $auth->donor_id,
             'donor_email' => $auth->email,
             'donor_name' => $donor ? trim($donor->first_name . ' ' . $donor->last_name) : null,
+            'auth_provider' => 'password',
+            'terms_accepted' => true,
         ]);
 
-        return redirect('/signup')->with('success', 'Logged in successfully.');
+        return redirect('/dashboard')->with('success', 'Logged in successfully.');
     }
 
     /**
@@ -70,7 +72,7 @@ class DonorLoginController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
-        $request->session()->forget(['donor_auth_id', 'donor_id', 'donor_email', 'donor_name']);
+        $request->session()->forget(['donor_auth_id', 'donor_id', 'donor_email', 'donor_name', 'auth_provider', 'terms_accepted', 'pending_access_otp']);
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
