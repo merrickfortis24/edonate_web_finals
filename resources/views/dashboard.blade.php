@@ -3,292 +3,207 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Donor Dashboard | Blood Donation Management System</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <style>
-        :root {
-            --health-red: #c62f3c;
-            --ink-900: #1f2937;
-            --ink-500: #6b7280;
-            --line-soft: #e5e7eb;
-            --surface: #ffffff;
-            --shadow-soft: 0 16px 40px rgba(17, 24, 39, 0.08);
-        }
-
-        body {
-            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-            background:
-                radial-gradient(circle at 10% -10%, #ffe6e9 0, #ffe6e9 18%, transparent 40%),
-                radial-gradient(circle at 90% -20%, #fff5f5 0, #fff5f5 15%, transparent 35%),
-                #f8fafc;
-            color: var(--ink-900);
-            min-height: 100vh;
-        }
-
-        .dashboard-shell {
-            max-width: 70rem;
-            margin: 1.25rem auto;
-            padding: 0 0.75rem;
-        }
-
-        .panel {
-            background: var(--surface);
-            border: 1px solid rgba(198, 47, 60, 0.12);
-            border-radius: 1rem;
-            box-shadow: var(--shadow-soft);
-            overflow: hidden;
-        }
-
-        .panel-head {
-            background: linear-gradient(135deg, #fff 0%, #fff7f8 100%);
-            border-bottom: 1px solid var(--line-soft);
-            padding: 1.2rem 1rem;
-        }
-
-        .panel-body {
-            padding: 1rem;
-        }
-
-        .profile-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 0.75rem;
-        }
-
-        @media (min-width: 768px) {
-            .dashboard-shell {
-                margin: 2rem auto;
-                padding: 0 1rem;
-            }
-
-            .panel-head {
-                padding: 1.5rem 1.5rem;
-            }
-
-            .panel-body {
-                padding: 1.5rem;
-            }
-
-            .profile-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-    </style>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Donor Dashboard | eDonate</title>
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body>
-<div class="dashboard-shell">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <div>
-            <h1 class="h3 mb-1">Welcome, {{ $donor->first_name }}</h1>
-            <p class="text-secondary mb-0">Manage your donor profile and appointments.</p>
-        </div>
-        <form method="POST" action="{{ route('donor.logout') }}">
-            @csrf
-            <button type="submit" class="btn btn-outline-secondary">Logout</button>
-        </form>
-    </div>
+<body class="min-h-screen bg-slate-100 text-slate-800 antialiased">
+<div class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.18),_transparent_42%),radial-gradient(circle_at_top_right,_rgba(248,113,113,0.12),_transparent_36%)]">
+    <x-dashboard.nav :links="$navLinks" :current="$activeNav" :userName="$user->first_name" />
 
-    @if (session('success'))
-        <div class="alert alert-success" role="status">{{ session('success') }}</div>
-    @endif
-
-    @if (session('error'))
-        <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
-    @endif
-
-    @if (!$accessUnlocked)
-        <div class="alert alert-warning d-flex justify-content-between align-items-center" role="alert">
-            <div>
-                <strong>Access requirements not complete</strong><br>
-                Complete profile, accept Terms, and verify OTP to unlock donor features and appointment booking.
-            </div>
-            <a href="#access-gate" class="btn btn-danger">Review requirements</a>
-        </div>
-    @endif
-
-    <section class="panel mb-3" id="access-gate" aria-labelledby="access-gate-title">
-        <header class="panel-head">
-            <h2 id="access-gate-title" class="h5 mb-1">Account Access Gate</h2>
-            <p class="text-secondary mb-0">Google sign-in is immediate, but sensitive features stay locked until all checks pass.</p>
-        </header>
-        <div class="panel-body">
-            <div class="profile-grid mb-3">
+    <main class="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:pl-72 lg:pr-6 lg:py-8">
+        <section class="rounded-2xl bg-gradient-to-r from-red-950 via-red-800 to-red-600 p-6 text-white shadow-md">
+            <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                    <strong>1. Profile Completion:</strong>
-                    <span class="{{ $profileComplete ? 'text-success' : 'text-danger' }}">{{ $profileComplete ? 'Completed' : 'Pending' }}</span>
+                    <p class="text-sm font-medium text-red-100">Welcome Back,</p>
+                    <h1 class="mt-1 text-3xl font-extrabold leading-tight">{{ trim($user->first_name . ' ' . $user->last_name) }}</h1>
+                    <p class="mt-2 text-sm text-red-100">Track appointments, eligibility, and your life-saving impact from one place.</p>
                 </div>
-                <div>
-                    <strong>2. Terms Acceptance:</strong>
-                    <span class="{{ $termsAccepted ? 'text-success' : 'text-danger' }}">{{ $termsAccepted ? 'Accepted' : 'Pending' }}</span>
-                </div>
-                <div>
-                    <strong>3. OTP Verification:</strong>
-                    <span class="{{ $otpVerified ? 'text-success' : 'text-danger' }}">{{ $otpVerified ? 'Verified' : 'Pending' }}</span>
-                </div>
-                <div>
-                    <strong>Feature Access:</strong>
-                    <span class="{{ $accessUnlocked ? 'text-success' : 'text-danger' }}">{{ $accessUnlocked ? 'Unlocked' : 'Locked' }}</span>
-                </div>
+                <a href="{{ route('donor.alerts') }}" class="rounded-xl bg-white/15 px-4 py-3 text-sm backdrop-blur transition hover:bg-white/20">
+                    <p class="font-semibold">Alerts</p>
+                    <p class="mt-1 text-red-100">{{ $alertsCount }} unread notifications</p>
+                </a>
             </div>
 
-            <div class="d-flex flex-wrap gap-2 mb-3">
-                <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#completeProfileModal" {{ $profileComplete ? 'disabled' : '' }}>
-                    {{ $profileComplete ? 'Profile Completed' : 'Complete Profile' }}
-                </button>
-
-                <form method="POST" action="{{ route('donor.dashboard.accept-terms') }}" class="d-inline">
-                    @csrf
-                    <button type="submit" class="btn btn-outline-danger" {{ $termsAccepted ? 'disabled' : '' }}>
-                        {{ $termsAccepted ? 'Terms Accepted' : 'Accept Terms & Privacy' }}
-                    </button>
-                </form>
-
-                <form method="POST" action="{{ route('donor.dashboard.send-otp') }}" class="d-inline">
-                    @csrf
-                    <button type="submit" class="btn btn-outline-secondary" {{ $otpVerified ? 'disabled' : '' }}>
-                        {{ $otpVerified ? 'OTP Verified' : 'Send OTP' }}
-                    </button>
-                </form>
+            <div class="mt-6 grid gap-3 sm:grid-cols-2">
+                <x-dashboard.stat-card label="Your Blood Type" :value="$user->blood_type" />
+                <x-dashboard.stat-card label="Total Donations" :value="$user->total_donations" />
             </div>
+        </section>
 
-            @if (!$otpVerified)
-                <form method="POST" action="{{ route('donor.dashboard.verify-otp') }}" class="row g-2 align-items-end">
-                    @csrf
-                    <div class="col-12 col-md-4">
-                        <label for="access_otp" class="form-label mb-1">Enter OTP</label>
-                        <input type="text" id="access_otp" name="otp" class="form-control" maxlength="6" inputmode="numeric" pattern="\d{6}" required>
+        @if (session('success'))
+            <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                {{ session('success') }}
+            </div>
+        @endif
+
+        @if (session('error'))
+            <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                {{ session('error') }}
+            </div>
+        @endif
+
+        <section class="mt-6 grid gap-6 lg:grid-cols-3">
+            <div class="space-y-6 lg:col-span-2">
+                <x-dashboard.card title="Quick Actions" subtitle="Launch key donor actions quickly.">
+                    <div class="grid gap-4 sm:grid-cols-2" id="book-appointment">
+                        <a href="{{ route('donor.book-appointment') }}" class="group rounded-xl border border-slate-200 p-4 transition hover:border-red-300 hover:bg-red-50">
+                            <p class="text-sm font-semibold text-slate-900">Book Appointment</p>
+                            <p class="mt-1 text-sm text-slate-500">Schedule your next donation slot.</p>
+                            <span class="mt-3 inline-block text-sm font-semibold text-red-700">Open booking</span>
+                        </a>
+                        <a href="{{ route('donor.history') }}" class="group rounded-xl border border-slate-200 p-4 transition hover:border-red-300 hover:bg-red-50">
+                            <p class="text-sm font-semibold text-slate-900">History</p>
+                            <p class="mt-1 text-sm text-slate-500">View your previous donation records.</p>
+                            <span class="mt-3 inline-block text-sm font-semibold text-red-700">View history</span>
+                        </a>
                     </div>
-                    <div class="col-12 col-md-auto">
-                        <button type="submit" class="btn btn-danger">Verify OTP</button>
-                    </div>
-                    <div class="col-12">
-                        <small class="text-secondary">Code expires in 10 minutes. Max 5 invalid attempts.</small>
-                    </div>
-                </form>
-            @endif
-        </div>
-    </section>
+                </x-dashboard.card>
 
-    <section class="panel" aria-labelledby="profile-title">
-        <header class="panel-head">
-            <h2 id="profile-title" class="h5 mb-1">Profile Summary</h2>
-            <p class="text-secondary mb-0">Your current account details from MySQL records.</p>
-        </header>
-        <div class="panel-body">
-            <div class="profile-grid">
-                <div><strong>Name:</strong> {{ trim($donor->first_name . ' ' . $donor->last_name) }}</div>
-                <div><strong>Email:</strong> {{ session('donor_email') }}</div>
-                <div><strong>Phone:</strong> {{ $donor->contact_number ?: '-' }}</div>
-                <div><strong>Birthdate:</strong> {{ $donor->birthdate ?: '-' }}</div>
-                <div><strong>Gender:</strong> {{ $donor->gender ?: '-' }}</div>
-                <div><strong>Blood Type ID:</strong> {{ $donor->blood_type_id ?: '-' }}</div>
-                <div><strong>Street:</strong> {{ $location?->street_address ?: '-' }}</div>
-                <div><strong>Barangay:</strong> {{ $location?->barangay_name ?: '-' }}</div>
-                <div><strong>City:</strong> {{ $location?->city ?: '-' }}</div>
-                <div><strong>Province:</strong> {{ $location?->province ?: '-' }}</div>
-            </div>
-        </div>
-    </section>
-
-    <section class="panel mt-3" aria-labelledby="features-title">
-        <header class="panel-head">
-            <h2 id="features-title" class="h5 mb-1">Donor Features</h2>
-            <p class="text-secondary mb-0">Profile completion unlocks operational features.</p>
-        </header>
-        <div class="panel-body d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <div>
-                <strong>Appointment Booking</strong>
-                <div class="text-secondary small">
-                    @if ($accessUnlocked)
-                        All requirements are complete. You can proceed with booking.
+                <x-dashboard.card title="Upcoming Appointments" subtitle="Your scheduled donation appointments.">
+                    @if ($upcomingAppointments->isEmpty())
+                        <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                            <p class="text-base font-semibold text-slate-800">No upcoming appointments yet.</p>
+                            <p class="mt-1 text-sm text-slate-500">Book a schedule to keep your donation streak active.</p>
+                        </div>
                     @else
-                        Complete profile, accept Terms, and verify OTP to book and manage appointments.
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-left text-sm">
+                                <thead>
+                                <tr class="border-b border-slate-200 text-slate-500">
+                                    <th class="px-3 py-2 font-semibold">Date</th>
+                                    <th class="px-3 py-2 font-semibold">Time</th>
+                                    <th class="px-3 py-2 font-semibold">Status</th>
+                                    <th class="px-3 py-2 font-semibold">Location</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach ($upcomingAppointments as $appointment)
+                                    <tr class="border-b border-slate-100 last:border-none">
+                                        <td class="px-3 py-3 font-semibold text-slate-900">
+                                            {{ $appointment->appointment_date ? \Carbon\Carbon::parse($appointment->appointment_date)->format('F j, Y') : '-' }}
+                                        </td>
+                                        <td class="px-3 py-3 text-slate-700">
+                                            {{ $appointment->appointment_time ? \Carbon\Carbon::parse($appointment->appointment_time)->format('g:i A') : '-' }}
+                                        </td>
+                                        <td class="px-3 py-3">
+                                            <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                                                {{ ucfirst($appointment->status ?? 'pending') }}
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-3 text-slate-700">
+                                            {{ $location?->city ? $location->city . ' Blood Bank' : 'City Blood Bank' }}
+                                        </td>
+                                    </tr>
+                                @endforeach
+                                </tbody>
+                            </table>
+                        </div>
                     @endif
-                </div>
-            </div>
-            <button type="button" class="btn btn-danger" {{ $accessUnlocked ? '' : 'disabled' }}>
-                Book Appointment
-            </button>
-        </div>
-    </section>
-</div>
+                </x-dashboard.card>
 
-<div class="modal fade" id="completeProfileModal" tabindex="-1" aria-labelledby="completeProfileModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
-        <div class="modal-content">
-            <form method="POST" action="{{ route('donor.profile.complete') }}">
-                @csrf
-                <div class="modal-header">
-                    <h5 class="modal-title text-danger" id="completeProfileModalLabel">Complete Your Donor Profile</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-12 col-md-6">
-                            <label for="phone" class="form-label">Phone Number</label>
-                            <input type="tel" id="phone" name="phone" class="form-control" value="{{ old('phone', $donor->contact_number) }}" required>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label for="birthdate" class="form-label">Birthdate</label>
-                            <input type="date" id="birthdate" name="birthdate" class="form-control" value="{{ old('birthdate', $donor->birthdate) }}" required>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label for="gender" class="form-label">Gender</label>
-                            <select id="gender" name="gender" class="form-select" required>
-                                <option value="" disabled {{ old('gender', $donor->gender) ? '' : 'selected' }}>Select gender</option>
-                                @foreach (['Male', 'Female', 'Other', 'Prefer not to say'] as $gender)
-                                    <option value="{{ $gender }}" {{ old('gender', $donor->gender) === $gender ? 'selected' : '' }}>{{ $gender }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label for="blood_type" class="form-label">Blood Type</label>
-                            <select id="blood_type" name="blood_type" class="form-select" required>
-                                <option value="" disabled {{ old('blood_type') ? '' : 'selected' }}>Select blood type</option>
-                                @foreach ($bloodTypes as $type)
-                                    <option value="{{ $type }}" {{ old('blood_type') === $type ? 'selected' : '' }}>{{ $type }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-12">
-                            <label for="street_address" class="form-label">Street Address</label>
-                            <input type="text" id="street_address" name="street_address" class="form-control" value="{{ old('street_address', $location?->street_address) }}" required>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label for="barangay" class="form-label">Barangay</label>
-                            <input type="text" id="barangay" name="barangay" class="form-control" value="{{ old('barangay', $location?->barangay_name) }}" required>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label for="city" class="form-label">Municipality/City</label>
-                            <input type="text" id="city" name="city" class="form-control" value="{{ old('city', $location?->city) }}" required>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label for="province" class="form-label">Province</label>
-                            <input type="text" id="province" name="province" class="form-control" value="{{ old('province', $location?->province) }}" required>
-                        </div>
+                <x-dashboard.card id="donation-history" title="Profile Summary" subtitle="Account and contact details on file.">
+                    <div class="grid gap-3 text-sm sm:grid-cols-2">
+                        <div><span class="font-semibold text-slate-900">Email:</span> {{ session('donor_email') }}</div>
+                        <div><span class="font-semibold text-slate-900">Phone:</span> {{ $donor->contact_number ?: '-' }}</div>
+                        <div><span class="font-semibold text-slate-900">Birthdate:</span> {{ $donor->birthdate ?: '-' }}</div>
+                        <div><span class="font-semibold text-slate-900">Gender:</span> {{ $donor->gender ?: '-' }}</div>
+                        <div><span class="font-semibold text-slate-900">Street:</span> {{ $location?->street_address ?: '-' }}</div>
+                        <div><span class="font-semibold text-slate-900">Barangay:</span> {{ $location?->barangay_name ?: '-' }}</div>
+                        <div><span class="font-semibold text-slate-900">City:</span> {{ $location?->city ?: '-' }}</div>
+                        <div><span class="font-semibold text-slate-900">Province:</span> {{ $location?->province ?: '-' }}</div>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Save Profile</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
+                </x-dashboard.card>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-@if ((!$profileComplete && !$accessUnlocked) || $errors->any())
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        var modalElement = document.getElementById('completeProfileModal');
-        if (!modalElement) {
-            return;
-        }
-        var modal = new bootstrap.Modal(modalElement);
-        modal.show();
-    });
-</script>
-@endif
+                @if (!$profileComplete || $errors->any())
+                    <x-dashboard.card title="Complete Your Profile" subtitle="Fill in required fields to unlock booking and donor operations.">
+                        @if ($errors->any())
+                            <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                                <p class="font-semibold">Please correct the following:</p>
+                                <ul class="mt-1 list-inside list-disc space-y-1">
+                                    @foreach ($errors->all() as $error)
+                                        <li>{{ $error }}</li>
+                                    @endforeach
+                                </ul>
+                            </div>
+                        @endif
+
+                        <form method="POST" action="{{ route('donor.profile.complete') }}" class="grid gap-4 sm:grid-cols-2">
+                            @csrf
+                            <div>
+                                <label for="phone" class="mb-1 block text-sm font-semibold text-slate-700">Phone Number</label>
+                                <input type="tel" id="phone" name="phone" value="{{ old('phone', $donor->contact_number) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                            </div>
+                            <div>
+                                <label for="birthdate" class="mb-1 block text-sm font-semibold text-slate-700">Birthdate</label>
+                                <input type="date" id="birthdate" name="birthdate" value="{{ old('birthdate', $donor->birthdate) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                            </div>
+                            <div>
+                                <label for="gender" class="mb-1 block text-sm font-semibold text-slate-700">Gender</label>
+                                <select id="gender" name="gender" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                                    <option value="" disabled {{ old('gender', $donor->gender) ? '' : 'selected' }}>Select gender</option>
+                                    @foreach (['Male', 'Female', 'Other', 'Prefer not to say'] as $gender)
+                                        <option value="{{ $gender }}" {{ old('gender', $donor->gender) === $gender ? 'selected' : '' }}>{{ $gender }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div>
+                                <label for="blood_type" class="mb-1 block text-sm font-semibold text-slate-700">Blood Type</label>
+                                <select id="blood_type" name="blood_type" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                                    <option value="" disabled {{ old('blood_type') ? '' : 'selected' }}>Select blood type</option>
+                                    @foreach ($bloodTypes as $type)
+                                        <option value="{{ $type }}" {{ old('blood_type') === $type ? 'selected' : '' }}>{{ $type }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="street_address" class="mb-1 block text-sm font-semibold text-slate-700">Street Address</label>
+                                <input type="text" id="street_address" name="street_address" value="{{ old('street_address', $location?->street_address) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                            </div>
+                            <div>
+                                <label for="barangay" class="mb-1 block text-sm font-semibold text-slate-700">Barangay</label>
+                                <input type="text" id="barangay" name="barangay" value="{{ old('barangay', $location?->barangay_name) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                            </div>
+                            <div>
+                                <label for="city" class="mb-1 block text-sm font-semibold text-slate-700">Municipality/City</label>
+                                <input type="text" id="city" name="city" value="{{ old('city', $location?->city) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label for="province" class="mb-1 block text-sm font-semibold text-slate-700">Province</label>
+                                <input type="text" id="province" name="province" value="{{ old('province', $location?->province) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <button type="submit" class="w-full rounded-xl bg-red-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-800">
+                                    Save Profile
+                                </button>
+                            </div>
+                        </form>
+                    </x-dashboard.card>
+                @endif
+            </div>
+
+            <div class="space-y-6 lg:col-span-1">
+                <x-dashboard.card id="check-eligibility" title="Donation Eligibility" subtitle="Latest donor eligibility estimate.">
+                    <div class="rounded-xl bg-slate-50 p-4">
+                        <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Next Eligible Date</p>
+                        <p class="mt-1 text-lg font-bold text-red-700">{{ $nextEligibleDate }}</p>
+                    </div>
+                    <a href="{{ route('donor.check-eligibility') }}" class="mt-4 block w-full rounded-xl bg-red-700 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-red-800">
+                        Check Eligibility
+                    </a>
+                </x-dashboard.card>
+
+                <x-dashboard.card title="Your Impact" subtitle="Donation outcomes based on your records.">
+                    <div class="rounded-xl bg-gradient-to-r from-red-800 to-red-600 p-5 text-white shadow-md">
+                        <p class="text-sm font-semibold">Your {{ $totalDonations }} donations have potentially saved up to {{ $livesImpacted }} lives.</p>
+                        <p class="mt-3 rounded-lg bg-white/90 px-3 py-2 text-center text-xs font-semibold text-red-700">
+                            Thank you for being a hero in your community.
+                        </p>
+                    </div>
+                </x-dashboard.card>
+            </div>
+        </section>
+    </main>
+</div>
 </body>
 </html>

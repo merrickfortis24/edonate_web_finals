@@ -23,6 +23,7 @@ class SocialAuthController extends Controller
             'uid' => ['required', 'string'],
             'email' => ['required', 'string', 'email', 'max:150'],
             'full_name' => ['nullable', 'string', 'max:200'],
+            'terms_accepted' => ['accepted'],
         ]);
 
         try {
@@ -74,10 +75,10 @@ class SocialAuthController extends Controller
                         'donor_id' => $donor->donor_id,
                         'email' => $tokenEmail,
                         'password' => Hash::make(Str::random(64)),
-                        'is_verified' => false,
+                        'is_verified' => true,
                         'verification_token' => null,
                         'verification_sent_at' => now(),
-                        'verified_at' => null,
+                        'verified_at' => now(),
                         'created_at' => now(),
                     ]);
 
@@ -90,8 +91,8 @@ class SocialAuthController extends Controller
                 DonorAuthentication::query()
                     ->where('auth_id', $auth->auth_id)
                     ->update([
-                        'is_verified' => false,
-                        'verified_at' => null,
+                        'is_verified' => true,
+                        'verified_at' => now(),
                         'verification_token' => null,
                         'verification_sent_at' => now(),
                     ]);
@@ -108,7 +109,7 @@ class SocialAuthController extends Controller
                 'donor_email' => $auth->email,
                 'donor_name' => $donor ? trim($donor->first_name . ' ' . $donor->last_name) : null,
                 'auth_provider' => 'google',
-                'terms_accepted' => false,
+                'terms_accepted' => true,
             ]);
 
             return response()->json([

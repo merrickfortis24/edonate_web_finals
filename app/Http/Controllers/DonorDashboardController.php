@@ -2,15 +2,16 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\OtpMail;
+use App\Models\Appointment;
 use App\Models\BloodType;
+use App\Models\DonationRecord;
 use App\Models\Donor;
-use App\Models\DonorAuthentication;
 use App\Models\Location;
+use App\Models\Notification;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 
 class DonorDashboardController extends Controller
 {
@@ -33,121 +34,64 @@ class DonorDashboardController extends Controller
 
         $location = $donor->location_id ? Location::query()->find($donor->location_id) : null;
         $profileComplete = $this->isProfileComplete($donor, $location);
-        $auth = DonorAuthentication::query()->find((int) $request->session()->get('donor_auth_id'));
-        $otpVerified = (bool) ($auth?->is_verified);
-        $termsAccepted = (bool) $request->session()->get('terms_accepted', false);
-        $accessUnlocked = $profileComplete && $otpVerified && $termsAccepted;
+        $bloodType = $donor->blood_type_id
+            ? BloodType::query()->where('blood_type_id', $donor->blood_type_id)->value('blood_type')
+            : null;
+
+        $totalDonations = DonationRecord::query()
+            ->where('donor_id', $donor->donor_id)
+            ->count();
+
+        $latestDonationDate = DonationRecord::query()
+            ->where('donor_id', $donor->donor_id)
+            ->max('donation_date');
+
+        $nextEligibleDate = $latestDonationDate
+            ? Carbon::parse($latestDonationDate)->addDays(56)->format('F j, Y')
+            : 'Eligible now';
+
+        $upcomingAppointments = Appointment::query()
+            ->where('donor_id', $donor->donor_id)
+            ->whereDate('appointment_date', '>=', Carbon::today())
+            ->orderBy('appointment_date')
+            ->orderBy('appointment_time')
+            ->limit(8)
+            ->get();
+
+        $alertsCount = Notification::query()
+            ->where('donor_id', $donor->donor_id)
+            ->where('is_read', 0)
+            ->count();
+
+        $user = (object) [
+            'first_name' => $donor->first_name,
+            'last_name' => $donor->last_name,
+            'blood_type' => $bloodType ?? '-',
+            'total_donations' => $totalDonations,
+        ];
+
+        $navLinks = [
+            ['key' => 'home', 'label' => 'Home', 'href' => route('donor.dashboard')],
+            ['key' => 'book', 'label' => 'Book Appointment', 'href' => route('donor.book-appointment')],
+            ['key' => 'eligibility', 'label' => 'Check Eligibility', 'href' => route('donor.check-eligibility')],
+            ['key' => 'history', 'label' => 'History', 'href' => route('donor.history')],
+            ['key' => 'alerts', 'label' => 'Alerts', 'href' => route('donor.alerts')],
+        ];
 
         return view('dashboard', [
             'donor' => $donor,
+            'user' => $user,
             'location' => $location,
             'profileComplete' => $profileComplete,
-            'otpVerified' => $otpVerified,
-            'termsAccepted' => $termsAccepted,
-            'accessUnlocked' => $accessUnlocked,
+            'totalDonations' => $totalDonations,
+            'nextEligibleDate' => $nextEligibleDate,
+            'livesImpacted' => $totalDonations * 3,
+            'upcomingAppointments' => $upcomingAppointments,
+            'navLinks' => $navLinks,
+            'activeNav' => 'home',
+            'alertsCount' => $alertsCount,
             'bloodTypes' => BloodType::query()->orderBy('blood_type')->pluck('blood_type'),
         ]);
-    }
-
-    /**
-     * Accept Terms and Privacy for current session.
-     */
-    public function acceptTerms(Request $request): RedirectResponse
-    {
-        if ((int) $request->session()->get('donor_id') <= 0) {
-            return redirect('/login')->with('error', 'Please log in to continue.');
-        }
-
-        $request->session()->put('terms_accepted', true);
-
-        return redirect('/dashboard')->with('success', 'Terms accepted. You can proceed with the remaining requirements.');
-    }
-
-    /**
-     * Send OTP to currently signed-in donor email for access unlock.
-     */
-    public function sendAccessOtp(Request $request): RedirectResponse
-    {
-        $authId = (int) $request->session()->get('donor_auth_id');
-
-        if ($authId <= 0) {
-            return redirect('/login')->with('error', 'Please log in to continue.');
-        }
-
-        $auth = DonorAuthentication::query()->find($authId);
-        if (!$auth) {
-            $request->session()->forget(['donor_auth_id', 'donor_id', 'donor_email', 'donor_name', 'auth_provider', 'terms_accepted']);
-            return redirect('/login')->with('error', 'Your account could not be found. Please log in again.');
-        }
-
-        $otpCode = (string) random_int(100000, 999999);
-        $request->session()->put('pending_access_otp', [
-            'otp_hash' => hash('sha256', $otpCode),
-            'expires_at' => now()->addMinutes(10)->timestamp,
-            'attempts' => 0,
-        ]);
-
-        try {
-            Mail::to($auth->email)->send(new OtpMail($otpCode));
-
-            return redirect('/dashboard')->with('success', 'A verification OTP has been sent to your email.');
-        } catch (\Throwable $exception) {
-            report($exception);
-
-            return redirect('/dashboard')->with('error', 'Unable to send OTP right now. Please try again.');
-        }
-    }
-
-    /**
-     * Verify dashboard OTP and unlock access gate.
-     */
-    public function verifyAccessOtp(Request $request): RedirectResponse
-    {
-        $request->validate([
-            'otp' => ['required', 'digits:6'],
-        ]);
-
-        $authId = (int) $request->session()->get('donor_auth_id');
-        if ($authId <= 0) {
-            return redirect('/login')->with('error', 'Please log in to continue.');
-        }
-
-        $pending = $request->session()->get('pending_access_otp');
-        if (!is_array($pending) || !isset($pending['otp_hash'], $pending['expires_at'])) {
-            return redirect('/dashboard')->with('error', 'No OTP request found. Please send a new OTP first.');
-        }
-
-        if (now()->timestamp > (int) $pending['expires_at']) {
-            $request->session()->forget('pending_access_otp');
-            return redirect('/dashboard')->with('error', 'OTP expired. Please request a new code.');
-        }
-
-        $attempts = (int) ($pending['attempts'] ?? 0);
-        if ($attempts >= 5) {
-            $request->session()->forget('pending_access_otp');
-            return redirect('/dashboard')->with('error', 'Too many invalid attempts. Request a new OTP.');
-        }
-
-        $provided = (string) $request->input('otp');
-        if (!hash_equals((string) $pending['otp_hash'], hash('sha256', $provided))) {
-            $pending['attempts'] = $attempts + 1;
-            $request->session()->put('pending_access_otp', $pending);
-
-            return redirect('/dashboard')->with('error', 'Invalid OTP. Please try again.');
-        }
-
-        DonorAuthentication::query()
-            ->where('auth_id', $authId)
-            ->update([
-                'is_verified' => true,
-                'verified_at' => now(),
-                'verification_token' => null,
-                'verification_sent_at' => now(),
-            ]);
-
-        $request->session()->forget('pending_access_otp');
-
-        return redirect('/dashboard')->with('success', 'OTP verified. Access requirements are updated.');
     }
 
     /**

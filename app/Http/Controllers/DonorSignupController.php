@@ -28,6 +28,33 @@ class DonorSignupController extends Controller
     }
 
     /**
+     * Real-time email availability check for signup form.
+     */
+    public function checkEmail(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => ['required', 'email', 'max:150'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'available' => false,
+                'message' => 'Please enter a valid email address.',
+            ], 422);
+        }
+
+        $email = (string) $validator->validated()['email'];
+        $isTaken = DonorAuthentication::query()->where('email', $email)->exists();
+
+        return response()->json([
+            'available' => !$isTaken,
+            'message' => $isTaken
+                ? 'This email is already registered. Please use another email or log in.'
+                : 'Email is available.',
+        ]);
+    }
+
+    /**
      * Store donor registration.
      */
     public function store(StoreDonorRegistrationRequest $request)

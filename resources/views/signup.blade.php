@@ -121,6 +121,14 @@
 			font-size: 0.85rem;
 		}
 
+		.helper-text.status-success {
+			color: #166534;
+		}
+
+		.helper-text.status-error {
+			color: #b91c1c;
+		}
+
 		.otp-code-input {
 			letter-spacing: 0.45rem;
 			font-size: 1.25rem;
@@ -145,6 +153,66 @@
 			border: 1px solid rgba(198, 47, 60, 0.2);
 			border-radius: 0.7rem;
 			padding: 0.85rem 0.95rem;
+		}
+
+		.stepper {
+			display: grid;
+			grid-template-columns: repeat(3, 1fr);
+			gap: 0.6rem;
+			margin-bottom: 1rem;
+		}
+
+		.step-pill {
+			border: 1px solid #e5e7eb;
+			border-radius: 999px;
+			padding: 0.45rem 0.6rem;
+			font-size: 0.82rem;
+			text-align: center;
+			color: var(--ink-500);
+			background: #fff;
+			font-weight: 600;
+		}
+
+		.step-pill.active {
+			border-color: rgba(198, 47, 60, 0.55);
+			background: #fff5f6;
+			color: var(--health-red);
+		}
+
+		.step-pill.done {
+			border-color: rgba(198, 47, 60, 0.4);
+			color: #8f1f2b;
+		}
+
+		.signup-step {
+			display: none;
+			animation: stepIn 260ms ease;
+		}
+
+		.signup-step.active {
+			display: block;
+		}
+
+		@keyframes stepIn {
+			from {
+				opacity: 0;
+				transform: translateX(8px);
+			}
+			to {
+				opacity: 1;
+				transform: translateX(0);
+			}
+		}
+
+		.step-actions {
+			display: flex;
+			gap: 0.75rem;
+			justify-content: space-between;
+			margin-top: 1rem;
+		}
+
+		.step-actions .btn {
+			min-width: 8.5rem;
 		}
 
 		@media (min-width: 768px) {
@@ -186,329 +254,355 @@
 			<form method="POST" action="{{ route('donor.signup.store') }}" id="donorSignupForm" class="needs-validation" novalidate>
 				@csrf
 
-				<h2 class="section-title">Personal Information</h2>
-				<div class="row g-3 mb-4">
-					<div class="col-12 col-md-6">
-						<label for="first_name" class="form-label">First Name</label>
-						<input
-							type="text"
-							class="form-control @error('first_name') is-invalid @enderror"
-							id="first_name"
-							name="first_name"
-							value="{{ old('first_name') }}"
-							required
-							maxlength="100"
-							autocomplete="given-name"
-							aria-invalid="@error('first_name') true @else false @enderror"
-							aria-describedby="first_name_error"
-						>
-						@error('first_name')
-						<div class="invalid-feedback" id="first_name_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="first_name_error">Please enter your first name.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-6">
-						<label for="last_name" class="form-label">Last Name</label>
-						<input
-							type="text"
-							class="form-control @error('last_name') is-invalid @enderror"
-							id="last_name"
-							name="last_name"
-							value="{{ old('last_name') }}"
-							required
-							maxlength="100"
-							autocomplete="family-name"
-							aria-invalid="@error('last_name') true @else false @enderror"
-							aria-describedby="last_name_error"
-						>
-						@error('last_name')
-						<div class="invalid-feedback" id="last_name_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="last_name_error">Please enter your last name.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-6">
-						<label for="email" class="form-label">Email Address</label>
-						<input
-							type="email"
-							class="form-control @error('email') is-invalid @enderror"
-							id="email"
-							name="email"
-							value="{{ old('email') }}"
-							required
-							maxlength="150"
-							autocomplete="email"
-							aria-invalid="@error('email') true @else false @enderror"
-							aria-describedby="email_error"
-						>
-						@error('email')
-						<div class="invalid-feedback" id="email_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="email_error">Please provide a valid email address.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-6">
-						<label for="phone" class="form-label">Phone Number</label>
-						<input
-							type="tel"
-							class="form-control @error('phone') is-invalid @enderror"
-							id="phone"
-							name="phone"
-							value="{{ old('phone') }}"
-							required
-							pattern="^(\+63|0)\d{10}$"
-							inputmode="numeric"
-							maxlength="13"
-							autocomplete="tel"
-							placeholder="09171234567 or +639171234567"
-							aria-invalid="@error('phone') true @else false @enderror"
-							aria-describedby="phone_help phone_error"
-						>
-						<div class="helper-text mt-1" id="phone_help">Use 11-digit local format (09...) or +63 format.</div>
-						@error('phone')
-						<div class="invalid-feedback" id="phone_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="phone_error">Phone number format is invalid.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-6">
-						<label for="birthdate" class="form-label">Date of Birth</label>
-						<input
-							type="date"
-							class="form-control @error('birthdate') is-invalid @enderror"
-							id="birthdate"
-							name="birthdate"
-							value="{{ old('birthdate') }}"
-							required
-							max="{{ now()->format('Y-m-d') }}"
-							autocomplete="bday"
-							aria-invalid="@error('birthdate') true @else false @enderror"
-							aria-describedby="birthdate_error"
-						>
-						@error('birthdate')
-						<div class="invalid-feedback" id="birthdate_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="birthdate_error">Please provide a valid date of birth.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-6">
-						<label for="gender" class="form-label">Gender</label>
-						<select
-							class="form-select @error('gender') is-invalid @enderror"
-							id="gender"
-							name="gender"
-							required
-							aria-invalid="@error('gender') true @else false @enderror"
-							aria-describedby="gender_error"
-						>
-							<option value="" disabled {{ old('gender') ? '' : 'selected' }}>Select gender</option>
-							<option value="Male" {{ old('gender') === 'Male' ? 'selected' : '' }}>Male</option>
-							<option value="Female" {{ old('gender') === 'Female' ? 'selected' : '' }}>Female</option>
-							<option value="Other" {{ old('gender') === 'Other' ? 'selected' : '' }}>Other</option>
-							<option value="Prefer not to say" {{ old('gender') === 'Prefer not to say' ? 'selected' : '' }}>Prefer not to say</option>
-						</select>
-						@error('gender')
-						<div class="invalid-feedback" id="gender_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="gender_error">Please select a gender.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-6">
-						<label for="blood_type" class="form-label">Blood Type</label>
-						<select
-							class="form-select @error('blood_type') is-invalid @enderror"
-							id="blood_type"
-							name="blood_type"
-							required
-							aria-invalid="@error('blood_type') true @else false @enderror"
-							aria-describedby="blood_type_error"
-						>
-							<option value="" disabled {{ old('blood_type') ? '' : 'selected' }}>Select blood type</option>
-							@foreach (['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as $type)
-								<option value="{{ $type }}" {{ old('blood_type') === $type ? 'selected' : '' }}>{{ $type }}</option>
-							@endforeach
-						</select>
-						@error('blood_type')
-						<div class="invalid-feedback" id="blood_type_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="blood_type_error">Please select your blood type.</div>
-						@enderror
-					</div>
+				<div class="stepper" aria-label="Signup steps">
+					<div class="step-pill active" data-step-pill="1">1. Personal</div>
+					<div class="step-pill" data-step-pill="2">2. Medical & Address</div>
+					<div class="step-pill" data-step-pill="3">3. Security</div>
 				</div>
 
-				<h2 class="section-title">Address Details</h2>
-				<div class="row g-3 mb-4">
-					<div class="col-12">
-						<label for="street_address" class="form-label">Street Address</label>
-						<input
-							type="text"
-							class="form-control @error('street_address') is-invalid @enderror"
-							id="street_address"
-							name="street_address"
-							value="{{ old('street_address') }}"
-							required
-							maxlength="150"
-							autocomplete="street-address"
-							aria-invalid="@error('street_address') true @else false @enderror"
-							aria-describedby="street_address_error"
-						>
-						@error('street_address')
-						<div class="invalid-feedback" id="street_address_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="street_address_error">Please provide your street address.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-4">
-						<label for="barangay" class="form-label">Barangay</label>
-						<input
-							type="text"
-							class="form-control @error('barangay') is-invalid @enderror"
-							id="barangay"
-							name="barangay"
-							value="{{ old('barangay') }}"
-							required
-							maxlength="100"
-							autocomplete="address-level3"
-							aria-invalid="@error('barangay') true @else false @enderror"
-							aria-describedby="barangay_error"
-						>
-						@error('barangay')
-						<div class="invalid-feedback" id="barangay_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="barangay_error">Please enter your barangay.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-4">
-						<label for="city" class="form-label">Municipality/City</label>
-						<input
-							type="text"
-							class="form-control @error('city') is-invalid @enderror"
-							id="city"
-							name="city"
-							value="{{ old('city') }}"
-							required
-							maxlength="100"
-							autocomplete="address-level2"
-							aria-invalid="@error('city') true @else false @enderror"
-							aria-describedby="city_error"
-						>
-						@error('city')
-						<div class="invalid-feedback" id="city_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="city_error">Please enter your municipality or city.</div>
-						@enderror
-					</div>
-
-					<div class="col-12 col-md-4">
-						<label for="province" class="form-label">Province</label>
-						<input
-							type="text"
-							class="form-control @error('province') is-invalid @enderror"
-							id="province"
-							name="province"
-							value="{{ old('province') }}"
-							required
-							maxlength="100"
-							autocomplete="address-level1"
-							aria-invalid="@error('province') true @else false @enderror"
-							aria-describedby="province_error"
-						>
-						@error('province')
-						<div class="invalid-feedback" id="province_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="province_error">Please enter your province.</div>
-						@enderror
-					</div>
-				</div>
-
-				<h2 class="section-title">Security</h2>
-				<div class="row g-3 mb-3">
-					<div class="col-12 col-md-6">
-						<label for="password" class="form-label">Password</label>
-						<div class="input-group">
+				<div class="signup-step active" data-step="1">
+					<h2 class="section-title">Step 1: Personal Information</h2>
+					<div class="row g-3 mb-4">
+						<div class="col-12 col-md-6">
+							<label for="first_name" class="form-label">First Name</label>
 							<input
-								type="password"
-								class="form-control @error('password') is-invalid @enderror"
-								id="password"
-								name="password"
+								type="text"
+								class="form-control @error('first_name') is-invalid @enderror"
+								id="first_name"
+								name="first_name"
+								value="{{ old('first_name') }}"
 								required
-								minlength="8"
-								autocomplete="new-password"
-								aria-invalid="@error('password') true @else false @enderror"
-								aria-describedby="password_help password_error"
+								maxlength="100"
+								autocomplete="given-name"
+								aria-invalid="@error('first_name') true @else false @enderror"
+								aria-describedby="first_name_error"
 							>
-							<button class="btn btn-outline-secondary" type="button" id="togglePassword" aria-label="Show password" aria-controls="password">
-								Show
-							</button>
-							@error('password')
-							<div class="invalid-feedback d-block" id="password_error">{{ $message }}</div>
+							@error('first_name')
+							<div class="invalid-feedback" id="first_name_error">{{ $message }}</div>
 							@else
-							<div class="invalid-feedback" id="password_error">Password must be valid and at least 8 characters.</div>
+							<div class="invalid-feedback" id="first_name_error">Please enter your first name.</div>
 							@enderror
 						</div>
-						<div class="helper-text mt-1" id="password_help">
-							Must be at least 8 characters and include one uppercase letter and one number.
-						</div>
-					</div>
 
-					<div class="col-12 col-md-6">
-						<label for="password_confirmation" class="form-label">Confirm Password</label>
-						<div class="input-group">
+						<div class="col-12 col-md-6">
+							<label for="last_name" class="form-label">Last Name</label>
 							<input
-								type="password"
-								class="form-control"
-								id="password_confirmation"
-								name="password_confirmation"
+								type="text"
+								class="form-control @error('last_name') is-invalid @enderror"
+								id="last_name"
+								name="last_name"
+								value="{{ old('last_name') }}"
 								required
-								autocomplete="new-password"
-								aria-describedby="password_confirmation_error"
+								maxlength="100"
+								autocomplete="family-name"
+								aria-invalid="@error('last_name') true @else false @enderror"
+								aria-describedby="last_name_error"
 							>
-							<button class="btn btn-outline-secondary" type="button" id="togglePasswordConfirm" aria-label="Show confirm password" aria-controls="password_confirmation">
-								Show
-							</button>
-							<div class="invalid-feedback" id="password_confirmation_error">Passwords do not match.</div>
+							@error('last_name')
+							<div class="invalid-feedback" id="last_name_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="last_name_error">Please enter your last name.</div>
+							@enderror
+						</div>
+
+						<div class="col-12 col-md-6">
+							<label for="email" class="form-label">Email Address</label>
+							<input
+								type="email"
+								class="form-control @error('email') is-invalid @enderror"
+								id="email"
+								name="email"
+								value="{{ old('email') }}"
+								required
+								maxlength="150"
+								autocomplete="email"
+								aria-invalid="@error('email') true @else false @enderror"
+								aria-describedby="email_error"
+							>
+							@error('email')
+							<div class="invalid-feedback" id="email_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="email_error">Please provide a valid email address.</div>
+							@enderror
+							<div class="helper-text mt-1 d-none" id="email_availability" aria-live="polite"></div>
+						</div>
+
+						<div class="col-12 col-md-6">
+							<label for="phone" class="form-label">Phone Number</label>
+							<input
+								type="tel"
+								class="form-control @error('phone') is-invalid @enderror"
+								id="phone"
+								name="phone"
+								value="{{ old('phone') }}"
+								required
+								pattern="^(\+63|0)\d{10}$"
+								inputmode="numeric"
+								maxlength="13"
+								autocomplete="tel"
+								placeholder="09171234567 or +639171234567"
+								aria-invalid="@error('phone') true @else false @enderror"
+								aria-describedby="phone_help phone_error"
+							>
+							<div class="helper-text mt-1" id="phone_help">Use 11-digit local format (09...) or +63 format.</div>
+							@error('phone')
+							<div class="invalid-feedback" id="phone_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="phone_error">Phone number format is invalid.</div>
+							@enderror
 						</div>
 					</div>
-				</div>
 
-				<div class="agreement-box mb-4">
-					<div class="form-check">
-						<input
-							class="form-check-input @error('terms') is-invalid @enderror"
-							type="checkbox"
-							value="1"
-							id="terms"
-							name="terms"
-							{{ old('terms') ? 'checked' : '' }}
-							required
-							aria-invalid="@error('terms') true @else false @enderror"
-							aria-describedby="terms_error"
-						>
-						<label class="form-check-label" for="terms">
-							I agree to the
-							<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#termsModal">Terms of Service</a>
-							and
-							<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#privacyModal">Privacy Policy</a>.
-						</label>
-						@error('terms')
-						<div class="invalid-feedback d-block" id="terms_error">{{ $message }}</div>
-						@else
-						<div class="invalid-feedback" id="terms_error">You must agree before continuing.</div>
-						@enderror
+					<div class="step-actions">
+						<span></span>
+						<button type="button" class="btn btn-danger" data-next-step="2">Next Step</button>
 					</div>
 				</div>
 
-				<div class="d-grid mb-3">
-					<button type="submit" class="btn btn-danger btn-register" id="registerButton">Register</button>
+				<div class="signup-step" data-step="2">
+					<h2 class="section-title">Step 2: Medical and Address Details</h2>
+					<div class="row g-3 mb-4">
+						<div class="col-12 col-md-6">
+							<label for="birthdate" class="form-label">Date of Birth</label>
+							<input
+								type="date"
+								class="form-control @error('birthdate') is-invalid @enderror"
+								id="birthdate"
+								name="birthdate"
+								value="{{ old('birthdate') }}"
+								required
+								max="{{ now()->format('Y-m-d') }}"
+								autocomplete="bday"
+								aria-invalid="@error('birthdate') true @else false @enderror"
+								aria-describedby="birthdate_error"
+							>
+							@error('birthdate')
+							<div class="invalid-feedback" id="birthdate_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="birthdate_error">Please provide a valid date of birth.</div>
+							@enderror
+						</div>
+
+						<div class="col-12 col-md-6">
+							<label for="gender" class="form-label">Gender</label>
+							<select
+								class="form-select @error('gender') is-invalid @enderror"
+								id="gender"
+								name="gender"
+								required
+								aria-invalid="@error('gender') true @else false @enderror"
+								aria-describedby="gender_error"
+							>
+								<option value="" disabled {{ old('gender') ? '' : 'selected' }}>Select gender</option>
+								<option value="Male" {{ old('gender') === 'Male' ? 'selected' : '' }}>Male</option>
+								<option value="Female" {{ old('gender') === 'Female' ? 'selected' : '' }}>Female</option>
+								<option value="Other" {{ old('gender') === 'Other' ? 'selected' : '' }}>Other</option>
+								<option value="Prefer not to say" {{ old('gender') === 'Prefer not to say' ? 'selected' : '' }}>Prefer not to say</option>
+							</select>
+							@error('gender')
+							<div class="invalid-feedback" id="gender_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="gender_error">Please select a gender.</div>
+							@enderror
+						</div>
+
+						<div class="col-12 col-md-6">
+							<label for="blood_type" class="form-label">Blood Type</label>
+							<select
+								class="form-select @error('blood_type') is-invalid @enderror"
+								id="blood_type"
+								name="blood_type"
+								required
+								aria-invalid="@error('blood_type') true @else false @enderror"
+								aria-describedby="blood_type_error"
+							>
+								<option value="" disabled {{ old('blood_type') ? '' : 'selected' }}>Select blood type</option>
+								@foreach (['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'] as $type)
+									<option value="{{ $type }}" {{ old('blood_type') === $type ? 'selected' : '' }}>{{ $type }}</option>
+								@endforeach
+							</select>
+							@error('blood_type')
+							<div class="invalid-feedback" id="blood_type_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="blood_type_error">Please select your blood type.</div>
+							@enderror
+						</div>
+					</div>
+
+					<div class="row g-3 mb-4">
+						<div class="col-12">
+							<label for="street_address" class="form-label">Street Address</label>
+							<input
+								type="text"
+								class="form-control @error('street_address') is-invalid @enderror"
+								id="street_address"
+								name="street_address"
+								value="{{ old('street_address') }}"
+								required
+								maxlength="150"
+								autocomplete="street-address"
+								aria-invalid="@error('street_address') true @else false @enderror"
+								aria-describedby="street_address_error"
+							>
+							@error('street_address')
+							<div class="invalid-feedback" id="street_address_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="street_address_error">Please provide your street address.</div>
+							@enderror
+						</div>
+
+						<div class="col-12 col-md-4">
+							<label for="barangay" class="form-label">Barangay</label>
+							<input
+								type="text"
+								class="form-control @error('barangay') is-invalid @enderror"
+								id="barangay"
+								name="barangay"
+								value="{{ old('barangay') }}"
+								required
+								maxlength="100"
+								autocomplete="address-level3"
+								aria-invalid="@error('barangay') true @else false @enderror"
+								aria-describedby="barangay_error"
+							>
+							@error('barangay')
+							<div class="invalid-feedback" id="barangay_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="barangay_error">Please enter your barangay.</div>
+							@enderror
+						</div>
+
+						<div class="col-12 col-md-4">
+							<label for="city" class="form-label">Municipality/City</label>
+							<input
+								type="text"
+								class="form-control @error('city') is-invalid @enderror"
+								id="city"
+								name="city"
+								value="{{ old('city') }}"
+								required
+								maxlength="100"
+								autocomplete="address-level2"
+								aria-invalid="@error('city') true @else false @enderror"
+								aria-describedby="city_error"
+							>
+							@error('city')
+							<div class="invalid-feedback" id="city_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="city_error">Please enter your municipality or city.</div>
+							@enderror
+						</div>
+
+						<div class="col-12 col-md-4">
+							<label for="province" class="form-label">Province</label>
+							<input
+								type="text"
+								class="form-control @error('province') is-invalid @enderror"
+								id="province"
+								name="province"
+								value="{{ old('province') }}"
+								required
+								maxlength="100"
+								autocomplete="address-level1"
+								aria-invalid="@error('province') true @else false @enderror"
+								aria-describedby="province_error"
+							>
+							@error('province')
+							<div class="invalid-feedback" id="province_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="province_error">Please enter your province.</div>
+							@enderror
+						</div>
+					</div>
+
+					<div class="step-actions">
+						<button type="button" class="btn btn-outline-secondary" data-prev-step="1">Back</button>
+						<button type="button" class="btn btn-danger" data-next-step="3">Next Step</button>
+					</div>
+				</div>
+
+				<div class="signup-step" data-step="3">
+					<h2 class="section-title">Step 3: Security and Consent</h2>
+					<div class="row g-3 mb-3">
+						<div class="col-12 col-md-6">
+							<label for="password" class="form-label">Password</label>
+							<div class="input-group">
+								<input
+									type="password"
+									class="form-control @error('password') is-invalid @enderror"
+									id="password"
+									name="password"
+									required
+									minlength="8"
+									autocomplete="new-password"
+									aria-invalid="@error('password') true @else false @enderror"
+									aria-describedby="password_help password_error"
+								>
+								<button class="btn btn-outline-secondary" type="button" id="togglePassword" aria-label="Show password" aria-controls="password">
+									Show
+								</button>
+								@error('password')
+								<div class="invalid-feedback d-block" id="password_error">{{ $message }}</div>
+								@else
+								<div class="invalid-feedback" id="password_error">Password must be valid and at least 8 characters.</div>
+								@enderror
+							</div>
+							<div class="helper-text mt-1" id="password_help">
+								Must be at least 8 characters and include one uppercase letter and one number.
+							</div>
+						</div>
+
+						<div class="col-12 col-md-6">
+							<label for="password_confirmation" class="form-label">Confirm Password</label>
+							<div class="input-group">
+								<input
+									type="password"
+									class="form-control"
+									id="password_confirmation"
+									name="password_confirmation"
+									required
+									autocomplete="new-password"
+									aria-describedby="password_confirmation_error"
+								>
+								<button class="btn btn-outline-secondary" type="button" id="togglePasswordConfirm" aria-label="Show confirm password" aria-controls="password_confirmation">
+									Show
+								</button>
+								<div class="invalid-feedback" id="password_confirmation_error">Passwords do not match.</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="agreement-box mb-4">
+						<div class="form-check">
+							<input
+								class="form-check-input @error('terms') is-invalid @enderror"
+								type="checkbox"
+								value="1"
+								id="terms"
+								name="terms"
+								{{ old('terms') ? 'checked' : '' }}
+								required
+								aria-invalid="@error('terms') true @else false @enderror"
+								aria-describedby="terms_error"
+							>
+							<label class="form-check-label" for="terms">
+								I agree to the
+								<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#termsModal">Terms of Service</a>
+								and
+								<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#privacyModal">Privacy Policy</a>.
+							</label>
+							@error('terms')
+							<div class="invalid-feedback d-block" id="terms_error">{{ $message }}</div>
+							@else
+							<div class="invalid-feedback" id="terms_error">You must agree before continuing.</div>
+							@enderror
+						</div>
+					</div>
+
+					<div class="step-actions">
+						<button type="button" class="btn btn-outline-secondary" data-prev-step="2">Back</button>
+						<button type="submit" class="btn btn-danger btn-register" id="registerButton">Register</button>
+					</div>
 				</div>
 
 				<div id="otpFlowFeedback" class="alert d-none" role="alert" aria-live="assertive"></div>
@@ -539,9 +633,193 @@
 		var otpSubmitFeedback = document.getElementById('otp_submit_feedback');
 		var sendOtpUrl = "{{ route('donor.signup.send-otp') }}";
 		var confirmOtpUrl = "{{ route('donor.signup.confirm-otp') }}";
+		var checkEmailUrl = "{{ route('donor.signup.check-email') }}";
 		var passwordInput = document.getElementById('password');
 		var confirmPasswordInput = document.getElementById('password_confirmation');
 		var phoneInput = document.getElementById('phone');
+		var emailInput = document.getElementById('email');
+		var emailError = document.getElementById('email_error');
+		var emailAvailability = document.getElementById('email_availability');
+		var stepPanels = Array.prototype.slice.call(document.querySelectorAll('.signup-step'));
+		var stepPills = Array.prototype.slice.call(document.querySelectorAll('[data-step-pill]'));
+		var nextStepButtons = Array.prototype.slice.call(document.querySelectorAll('[data-next-step]'));
+		var prevStepButtons = Array.prototype.slice.call(document.querySelectorAll('[data-prev-step]'));
+		var currentStep = 1;
+		var emailCheckTimer = null;
+		var lastCheckedEmail = '';
+		var emailCheckState = 'idle';
+
+		function stepFields(step) {
+			if (step === 1) {
+				return ['first_name', 'last_name', 'email', 'phone'];
+			}
+
+			if (step === 2) {
+				return ['birthdate', 'gender', 'blood_type', 'street_address', 'barangay', 'city', 'province'];
+			}
+
+			return ['password', 'password_confirmation', 'terms'];
+		}
+
+		function getFieldElement(name) {
+			return form.querySelector('[name="' + name + '"]');
+		}
+
+		function setActiveStep(step) {
+			currentStep = step;
+
+			stepPanels.forEach(function (panel) {
+				var isActive = Number(panel.getAttribute('data-step')) === step;
+				panel.classList.toggle('active', isActive);
+			});
+
+			stepPills.forEach(function (pill) {
+				var pillStep = Number(pill.getAttribute('data-step-pill'));
+				pill.classList.toggle('active', pillStep === step);
+				pill.classList.toggle('done', pillStep < step);
+			});
+		}
+
+		function setEmailAvailabilityState(type, message) {
+			emailAvailability.classList.remove('d-none', 'status-success', 'status-error');
+			emailAvailability.textContent = message || '';
+
+			if (type === 'success') {
+				emailAvailability.classList.add('status-success');
+				return;
+			}
+
+			emailAvailability.classList.add('status-error');
+		}
+
+		function clearEmailAvailabilityState() {
+			emailAvailability.classList.add('d-none');
+			emailAvailability.classList.remove('status-success', 'status-error');
+			emailAvailability.textContent = '';
+		}
+
+		function canCheckEmail() {
+			if (!emailInput) {
+				return false;
+			}
+
+			return emailInput.value.trim() !== '' && emailInput.checkValidity();
+		}
+
+		function runEmailAvailabilityCheck(force) {
+			if (!emailInput) {
+				return Promise.resolve(true);
+			}
+
+			var emailValue = emailInput.value.trim();
+
+			if (!canCheckEmail()) {
+				emailCheckState = 'idle';
+				lastCheckedEmail = '';
+				emailInput.setCustomValidity('');
+				clearEmailAvailabilityState();
+				return Promise.resolve(false);
+			}
+
+			if (!force && emailValue === lastCheckedEmail && emailCheckState === 'available') {
+				return Promise.resolve(true);
+			}
+
+			if (!force && emailValue === lastCheckedEmail && emailCheckState === 'taken') {
+				return Promise.resolve(false);
+			}
+
+			emailCheckState = 'checking';
+			setEmailAvailabilityState('error', 'Checking email availability...');
+
+			return fetch(checkEmailUrl + '?email=' + encodeURIComponent(emailValue), {
+				method: 'GET',
+				headers: {
+					'Accept': 'application/json'
+				}
+			})
+				.then(function (response) {
+					return parseJsonSafely(response).then(function (data) {
+						return {
+							ok: response.ok,
+							data: data
+						};
+					});
+				})
+				.then(function (result) {
+					lastCheckedEmail = emailValue;
+
+					if (!result.ok || !result.data.available) {
+						emailCheckState = 'taken';
+						emailInput.setCustomValidity('This email is already registered.');
+						if (emailError) {
+							emailError.textContent = result.data.message || 'This email is already registered.';
+						}
+						setEmailAvailabilityState('error', result.data.message || 'This email is already registered.');
+						return false;
+					}
+
+					emailCheckState = 'available';
+					emailInput.setCustomValidity('');
+					setEmailAvailabilityState('success', result.data.message || 'Email is available.');
+					return true;
+				})
+				.catch(function () {
+					emailCheckState = 'idle';
+					emailInput.setCustomValidity('');
+					setEmailAvailabilityState('error', 'Could not verify email right now. You can still continue.');
+					return true;
+				});
+		}
+
+		function validateStep(step) {
+			var valid = true;
+
+			if (step === 1) {
+				validatePhone();
+			}
+
+			if (step === 3) {
+				validatePasswordRules();
+				validateConfirmPassword();
+			}
+
+			stepFields(step).forEach(function (name) {
+				var field = getFieldElement(name);
+
+				if (!field) {
+					return;
+				}
+
+				field.classList.add('was-validated');
+
+				if (!field.checkValidity()) {
+					valid = false;
+				}
+			});
+
+			return valid;
+		}
+
+		function firstInvalidStep() {
+			for (var step = 1; step <= 3; step += 1) {
+				var hasInvalid = stepFields(step).some(function (name) {
+					var field = getFieldElement(name);
+
+					if (!field) {
+						return false;
+					}
+
+					return !field.checkValidity() || field.classList.contains('is-invalid');
+				});
+
+				if (hasInvalid) {
+					return step;
+				}
+			}
+
+			return 1;
+		}
 
 		function showFeedback(type, message) {
 			feedbackBox.className = 'alert alert-' + type;
@@ -632,6 +910,37 @@
 			});
 		}
 
+		nextStepButtons.forEach(function (button) {
+			button.addEventListener('click', function () {
+				var targetStep = Number(button.getAttribute('data-next-step'));
+
+				if (!validateStep(currentStep)) {
+					return;
+				}
+
+				if (currentStep === 1) {
+					runEmailAvailabilityCheck(true).then(function (available) {
+						if (!available) {
+							emailInput.classList.add('was-validated');
+							return;
+						}
+
+						setActiveStep(targetStep);
+					});
+					return;
+				}
+
+				setActiveStep(targetStep);
+			});
+		});
+
+		prevStepButtons.forEach(function (button) {
+			button.addEventListener('click', function () {
+				var targetStep = Number(button.getAttribute('data-prev-step'));
+				setActiveStep(targetStep);
+			});
+		});
+
 		passwordInput.addEventListener('input', function () {
 			validatePasswordRules();
 			validateConfirmPassword();
@@ -646,6 +955,22 @@
 		phoneInput.addEventListener('input', function () {
 			validatePhone();
 			phoneInput.classList.add('was-validated');
+		});
+
+		emailInput.addEventListener('input', function () {
+			emailInput.setCustomValidity('');
+			emailCheckState = 'idle';
+			lastCheckedEmail = '';
+			clearTimeout(emailCheckTimer);
+			clearEmailAvailabilityState();
+
+			if (!canCheckEmail()) {
+				return;
+			}
+
+			emailCheckTimer = setTimeout(function () {
+				runEmailAvailabilityCheck(false);
+			}, 450);
 		});
 
 		Array.prototype.slice.call(form.elements).forEach(function (field) {
@@ -671,55 +996,65 @@
 			clearFeedback();
 			clearServerFieldErrors();
 
-			if (!form.checkValidity()) {
+			runEmailAvailabilityCheck(true).then(function (emailAvailable) {
+				if (!emailAvailable) {
+					setActiveStep(1);
+					form.classList.add('was-validated');
+					return;
+				}
+
+				if (!form.checkValidity()) {
+					setActiveStep(firstInvalidStep());
+					form.classList.add('was-validated');
+					return;
+				}
+
 				form.classList.add('was-validated');
-				return;
-			}
+				setRegisterButtonLoading(true);
 
-			form.classList.add('was-validated');
-			setRegisterButtonLoading(true);
-
-			fetch(sendOtpUrl, {
-				method: 'POST',
-				headers: {
-					'X-CSRF-TOKEN': csrfToken,
-					'Accept': 'application/json'
-				},
-				body: new FormData(form)
-			})
-				.then(function (response) {
-					return parseJsonSafely(response).then(function (data) {
-						return {
-							ok: response.ok,
-							status: response.status,
-							data: data
-						};
-					});
+				fetch(sendOtpUrl, {
+					method: 'POST',
+					headers: {
+						'X-CSRF-TOKEN': csrfToken,
+						'Accept': 'application/json'
+					},
+					body: new FormData(form)
 				})
-				.then(function (result) {
-					if (!result.ok) {
-						if (result.data.errors) {
-							applyServerFieldErrors(result.data.errors);
+					.then(function (response) {
+						return parseJsonSafely(response).then(function (data) {
+							return {
+								ok: response.ok,
+								status: response.status,
+								data: data
+							};
+						});
+					})
+					.then(function (result) {
+						if (!result.ok) {
+							if (result.data.errors) {
+								applyServerFieldErrors(result.data.errors);
+							}
+
+							showFeedback('danger', result.data.message || 'Unable to send OTP. Please review the form and try again.');
+							setActiveStep(firstInvalidStep());
+							return;
 						}
 
-						showFeedback('danger', result.data.message || 'Unable to send OTP. Please review the form and try again.');
-						return;
-					}
-
-					showFeedback('success', result.data.message || 'OTP sent. Please check your email.');
-					otpInput.value = '';
-					otpInput.classList.remove('is-invalid');
-					otpError.textContent = 'Please enter the 6-digit code.';
-					otpSubmitFeedback.classList.add('d-none');
-					otpSubmitFeedback.textContent = '';
-					otpModal.show();
-				})
-				.catch(function () {
-					showFeedback('danger', 'Unable to send OTP right now. Please try again.');
-				})
-				.finally(function () {
-					setRegisterButtonLoading(false);
-				});
+						showFeedback('success', result.data.message || 'OTP sent. Please check your email.');
+						otpInput.value = '';
+						otpInput.classList.remove('is-invalid');
+						otpError.textContent = 'Please enter the 6-digit code.';
+						otpSubmitFeedback.classList.add('d-none');
+						otpSubmitFeedback.textContent = '';
+						otpModal.show();
+					})
+					.catch(function () {
+						showFeedback('danger', 'Unable to send OTP right now. Please try again.');
+					})
+					.finally(function () {
+						setRegisterButtonLoading(false);
+					});
+			});
 		}, false);
 
 		confirmOtpButton.addEventListener('click', function () {
@@ -782,6 +1117,7 @@
 
 		togglePasswordVisibility('togglePassword', 'password');
 		togglePasswordVisibility('togglePasswordConfirm', 'password_confirmation');
+		setActiveStep(firstInvalidStep());
 	});
 </script>
 

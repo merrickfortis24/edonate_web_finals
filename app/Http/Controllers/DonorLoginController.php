@@ -30,10 +30,12 @@ class DonorLoginController extends Controller
         $validated = $request->validate([
             'email' => ['required', 'string', 'email', 'max:150'],
             'password' => ['required', 'string'],
+            'terms' => ['accepted'],
         ], [
             'email.required' => 'Email is required.',
             'email.email' => 'Please provide a valid email address.',
             'password.required' => 'Password is required.',
+            'terms.accepted' => 'You must agree to the Terms of Service and Privacy Policy before logging in.',
         ]);
 
         $auth = DonorAuthentication::query()
@@ -72,7 +74,7 @@ class DonorLoginController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
-        $request->session()->forget(['donor_auth_id', 'donor_id', 'donor_email', 'donor_name', 'auth_provider', 'terms_accepted', 'pending_access_otp']);
+        $request->session()->forget(['donor_auth_id', 'donor_id', 'donor_email', 'donor_name', 'auth_provider', 'terms_accepted']);
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
