@@ -19,7 +19,7 @@ class DonorLoginController extends Controller
             return redirect('/dashboard');
         }
 
-        return view('login');
+        return view('donor.login');
     }
 
     /**

@@ -78,7 +78,7 @@ class DonorDashboardController extends Controller
             ['key' => 'alerts', 'label' => 'Alerts', 'href' => route('donor.alerts')],
         ];
 
-        return view('dashboard', [
+        return view('donor.dashboard', [
             'donor' => $donor,
             'user' => $user,
             'location' => $location,

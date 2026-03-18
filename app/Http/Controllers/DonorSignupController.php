@@ -24,7 +24,7 @@ class DonorSignupController extends Controller
      */
     public function create()
     {
-        return view('signup');
+        return view('donor.signup');
     }
 
     /**

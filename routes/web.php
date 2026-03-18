@@ -8,7 +8,7 @@ use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('signup');
+    return view('donor.signup');
 });
 
 Route::get('/signup', [DonorSignupController::class, 'create'])->name('donor.signup');
@@ -29,6 +29,6 @@ Route::get('/alerts', [DonorPortalController::class, 'alerts'])->name('donor.ale
 Route::post('/profile/complete', [DonorDashboardController::class, 'completeProfile'])->name('donor.profile.complete');
 Route::post('/logout', [DonorLoginController::class, 'destroy'])->name('donor.logout');
 
-Route::view('/terms-of-service', 'terms')->name('terms');
-Route::view('/privacy-policy', 'privacy')->name('privacy');
+Route::view('/terms-of-service', 'donor.terms')->name('terms');
+Route::view('/privacy-policy', 'donor.privacy')->name('privacy');
 
