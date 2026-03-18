@@ -22,6 +22,7 @@ Route::post('/login', [DonorLoginController::class, 'store'])->name('donor.login
 Route::post('/auth/google', [SocialAuthController::class, 'handleGoogleLogin'])->name('auth.google');
 Route::get('/dashboard', [DonorDashboardController::class, 'index'])->name('donor.dashboard');
 Route::get('/appointments/book', [DonorPortalController::class, 'bookAppointment'])->name('donor.book-appointment');
+Route::post('/appointments/book', [DonorPortalController::class, 'storeAppointment'])->name('donor.book-appointment.store');
 Route::get('/eligibility', [DonorPortalController::class, 'checkEligibility'])->name('donor.check-eligibility');
 Route::get('/history', [DonorPortalController::class, 'history'])->name('donor.history');
 Route::get('/alerts', [DonorPortalController::class, 'alerts'])->name('donor.alerts');

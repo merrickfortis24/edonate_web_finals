@@ -10,6 +10,7 @@ use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Models\Notification;
 use Carbon\Carbon;
+use Carbon\CarbonPeriod;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -22,6 +23,23 @@ class DonorPortalController extends Controller
             return $context;
         }
 
+        $timeSlots = [
+            '08:00',
+            '09:00',
+            '10:00',
+            '11:00',
+            '13:00',
+            '14:00',
+            '15:00',
+        ];
+
+        [$availableDates, $fullyBookedDates] = $this->buildCalendarAvailability(
+            (int) $context['donor']->donor_id,
+            Carbon::today(),
+            60,
+            count($timeSlots)
+        );
+
         $appointments = Appointment::query()
             ->where('donor_id', $context['donor']->donor_id)
             ->whereDate('appointment_date', '>=', Carbon::today())
@@ -32,7 +50,80 @@ class DonorPortalController extends Controller
 
         return view('portal.book-appointment', $context + [
             'appointments' => $appointments,
+            'timeSlots' => $timeSlots,
+            'availableDates' => $availableDates,
+            'fullyBookedDates' => $fullyBookedDates,
         ]);
+    }
+
+    public function storeAppointment(Request $request): RedirectResponse
+    {
+        $context = $this->buildContext($request, 'book');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        $timeSlots = [
+            '08:00',
+            '09:00',
+            '10:00',
+            '11:00',
+            '13:00',
+            '14:00',
+            '15:00',
+        ];
+
+        [$availableDates, $fullyBookedDates] = $this->buildCalendarAvailability(
+            (int) $context['donor']->donor_id,
+            Carbon::today(),
+            60,
+            count($timeSlots)
+        );
+
+        $validated = $request->validate([
+            'donation_date' => ['required', 'date', 'after_or_equal:today'],
+            'time_slot' => ['required', 'date_format:H:i'],
+            'donation_center' => ['nullable', 'string', 'max:150'],
+        ]);
+
+        if (!in_array($validated['donation_date'], $availableDates, true)) {
+            return redirect()
+                ->route('donor.book-appointment')
+                ->withInput()
+                ->with('error', 'The selected date is not available for booking.');
+        }
+
+        if (!in_array($validated['time_slot'], $timeSlots, true)) {
+            return redirect()
+                ->route('donor.book-appointment')
+                ->withInput()
+                ->with('error', 'Please choose a valid time slot.');
+        }
+
+        $slotTaken = Appointment::query()
+            ->where('appointment_date', $validated['donation_date'])
+            ->where('appointment_time', $validated['time_slot'])
+            ->exists();
+
+        if ($slotTaken) {
+            return redirect()
+                ->route('donor.book-appointment')
+                ->withInput()
+                ->with('error', 'That schedule is already taken. Please select another time.');
+        }
+
+        Appointment::query()->create([
+            'donor_id' => $context['donor']->donor_id,
+            'appointment_date' => $validated['donation_date'],
+            'appointment_time' => $validated['time_slot'],
+            'status' => 'pending',
+            'created_at' => Carbon::now(),
+            'admin_id' => null,
+        ]);
+
+        return redirect()
+            ->route('donor.book-appointment')
+            ->with('success', 'Appointment booked successfully.');
     }
 
     public function checkEligibility(Request $request)
@@ -153,5 +244,33 @@ class DonorPortalController extends Controller
             ['key' => 'history', 'label' => 'History', 'href' => route('donor.history')],
             ['key' => 'alerts', 'label' => 'Alerts', 'href' => route('donor.alerts')],
         ];
+    }
+
+    private function buildCalendarAvailability(int $donorId, Carbon $startDate, int $days, int $maxPerDay): array
+    {
+        $appointmentsPerDay = Appointment::query()
+            ->whereDate('appointment_date', '>=', $startDate)
+            ->whereDate('appointment_date', '<=', (clone $startDate)->addDays($days))
+            ->selectRaw('appointment_date, COUNT(*) as total')
+            ->groupBy('appointment_date')
+            ->pluck('total', 'appointment_date');
+
+        $period = CarbonPeriod::create($startDate, (clone $startDate)->addDays($days));
+        $availableDates = [];
+        $fullyBookedDates = [];
+
+        foreach ($period as $date) {
+            $key = $date->toDateString();
+            $count = (int) ($appointmentsPerDay[$key] ?? 0);
+
+            if ($count >= $maxPerDay) {
+                $fullyBookedDates[] = $key;
+                continue;
+            }
+
+            $availableDates[] = $key;
+        }
+
+        return [$availableDates, $fullyBookedDates];
     }
 }

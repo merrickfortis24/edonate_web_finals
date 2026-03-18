@@ -8,51 +8,51 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-800 antialiased">
-<div class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.18),_transparent_42%),radial-gradient(circle_at_top_right,_rgba(248,113,113,0.12),_transparent_36%)]">
+<div class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.16),_transparent_44%),radial-gradient(circle_at_top_right,_rgba(248,113,113,0.10),_transparent_34%)]">
     <x-dashboard.nav :links="$navLinks" :current="$activeNav" :userName="$user->first_name" />
 
-    <main class="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:pl-72 lg:pr-6 lg:py-8">
-        <section class="rounded-2xl bg-gradient-to-r from-red-950 via-red-800 to-red-600 p-6 text-white shadow-md">
-            <div class="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <p class="text-sm font-medium text-red-100">Welcome Back,</p>
-                    <h1 class="mt-1 text-3xl font-extrabold leading-tight">{{ trim($user->first_name . ' ' . $user->last_name) }}</h1>
-                    <p class="mt-2 text-sm text-red-100">Track appointments, eligibility, and your life-saving impact from one place.</p>
+    <main class="mx-auto w-full max-w-7xl px-4 pb-8 pt-5 sm:px-6 lg:pl-72 lg:pr-8 lg:pt-8">
+        <section class="rounded-2xl bg-gradient-to-r from-red-950 via-red-800 to-red-600 p-5 text-white shadow-xl sm:p-6">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div class="max-w-2xl">
+                    <p class="text-xs font-medium uppercase tracking-[0.18em] text-red-100">Dashboard</p>
+                    <h1 class="mt-2 text-2xl font-extrabold leading-tight sm:text-3xl">Welcome Back, {{ trim($user->first_name . ' ' . $user->last_name) }}</h1>
+                    <p class="mt-2 text-sm text-red-100 sm:text-[15px]">Track appointments, eligibility, and your life-saving impact in one place.</p>
                 </div>
-                <a href="{{ route('donor.alerts') }}" class="rounded-xl bg-white/15 px-4 py-3 text-sm backdrop-blur transition hover:bg-white/20">
+                <a href="{{ route('donor.alerts') }}" class="w-full rounded-xl bg-white/15 px-4 py-3 text-sm backdrop-blur transition hover:bg-white/25 sm:w-auto sm:min-w-52">
                     <p class="font-semibold">Alerts</p>
                     <p class="mt-1 text-red-100">{{ $alertsCount }} unread notifications</p>
                 </a>
             </div>
 
-            <div class="mt-6 grid gap-3 sm:grid-cols-2">
+            <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:max-w-2xl">
                 <x-dashboard.stat-card label="Your Blood Type" :value="$user->blood_type" />
                 <x-dashboard.stat-card label="Total Donations" :value="$user->total_donations" />
             </div>
         </section>
 
         @if (session('success'))
-            <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+            <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 shadow-sm">
                 {{ session('success') }}
             </div>
         @endif
 
         @if (session('error'))
-            <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-sm">
                 {{ session('error') }}
             </div>
         @endif
 
-        <section class="mt-6 grid gap-6 lg:grid-cols-3">
-            <div class="space-y-6 lg:col-span-2">
+        <section class="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div class="space-y-6 md:col-span-2 xl:col-span-2">
                 <x-dashboard.card title="Quick Actions" subtitle="Launch key donor actions quickly.">
                     <div class="grid gap-4 sm:grid-cols-2" id="book-appointment">
-                        <a href="{{ route('donor.book-appointment') }}" class="group rounded-xl border border-slate-200 p-4 transition hover:border-red-300 hover:bg-red-50">
+                        <a href="{{ route('donor.book-appointment') }}" class="group rounded-xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-50">
                             <p class="text-sm font-semibold text-slate-900">Book Appointment</p>
                             <p class="mt-1 text-sm text-slate-500">Schedule your next donation slot.</p>
                             <span class="mt-3 inline-block text-sm font-semibold text-red-700">Open booking</span>
                         </a>
-                        <a href="{{ route('donor.history') }}" class="group rounded-xl border border-slate-200 p-4 transition hover:border-red-300 hover:bg-red-50">
+                        <a href="{{ route('donor.history') }}" class="group rounded-xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-50">
                             <p class="text-sm font-semibold text-slate-900">History</p>
                             <p class="mt-1 text-sm text-slate-500">View your previous donation records.</p>
                             <span class="mt-3 inline-block text-sm font-semibold text-red-700">View history</span>
@@ -67,7 +67,26 @@
                             <p class="mt-1 text-sm text-slate-500">Book a schedule to keep your donation streak active.</p>
                         </div>
                     @else
-                        <div class="overflow-x-auto">
+                        <div class="space-y-3 lg:hidden">
+                            @foreach ($upcomingAppointments as $appointment)
+                                <article class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <p class="text-sm font-bold text-slate-900">
+                                            {{ $appointment->appointment_date ? \Carbon\Carbon::parse($appointment->appointment_date)->format('F j, Y') : '-' }}
+                                        </p>
+                                        <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">
+                                            {{ ucfirst($appointment->status ?? 'pending') }}
+                                        </span>
+                                    </div>
+                                    <div class="mt-2 space-y-1.5 text-sm text-slate-600">
+                                        <p><span class="font-semibold text-slate-800">Time:</span> {{ $appointment->appointment_time ? \Carbon\Carbon::parse($appointment->appointment_time)->format('g:i A') : '-' }}</p>
+                                        <p><span class="font-semibold text-slate-800">Location:</span> {{ $location?->city ? $location->city . ' Blood Bank' : 'City Blood Bank' }}</p>
+                                    </div>
+                                </article>
+                            @endforeach
+                        </div>
+
+                        <div class="hidden overflow-x-auto lg:block">
                             <table class="min-w-full text-left text-sm">
                                 <thead>
                                 <tr class="border-b border-slate-200 text-slate-500">
@@ -182,28 +201,31 @@
                 @endif
             </div>
 
-            <div class="space-y-6 lg:col-span-1">
-                <x-dashboard.card id="check-eligibility" title="Donation Eligibility" subtitle="Latest donor eligibility estimate.">
-                    <div class="rounded-xl bg-slate-50 p-4">
-                        <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Next Eligible Date</p>
-                        <p class="mt-1 text-lg font-bold text-red-700">{{ $nextEligibleDate }}</p>
-                    </div>
-                    <a href="{{ route('donor.check-eligibility') }}" class="mt-4 block w-full rounded-xl bg-red-700 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-red-800">
-                        Check Eligibility
-                    </a>
-                </x-dashboard.card>
+            <div class="space-y-6 md:col-span-2 xl:col-span-1">
+                <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-1">
+                    <x-dashboard.card id="check-eligibility" title="Donation Eligibility" subtitle="Latest donor eligibility estimate.">
+                        <div class="rounded-xl bg-slate-50 p-4">
+                            <p class="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Next Eligible Date</p>
+                            <p class="mt-1 text-lg font-bold text-red-700">{{ $nextEligibleDate }}</p>
+                        </div>
+                        <a href="{{ route('donor.check-eligibility') }}" class="mt-4 block w-full rounded-xl bg-red-700 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-red-800">
+                            Check Eligibility
+                        </a>
+                    </x-dashboard.card>
 
-                <x-dashboard.card title="Your Impact" subtitle="Donation outcomes based on your records.">
-                    <div class="rounded-xl bg-gradient-to-r from-red-800 to-red-600 p-5 text-white shadow-md">
-                        <p class="text-sm font-semibold">Your {{ $totalDonations }} donations have potentially saved up to {{ $livesImpacted }} lives.</p>
-                        <p class="mt-3 rounded-lg bg-white/90 px-3 py-2 text-center text-xs font-semibold text-red-700">
-                            Thank you for being a hero in your community.
-                        </p>
-                    </div>
-                </x-dashboard.card>
+                    <x-dashboard.card title="Your Impact" subtitle="Donation outcomes based on your records.">
+                        <div class="rounded-xl bg-gradient-to-r from-red-800 to-red-600 p-5 text-white shadow-md">
+                            <p class="text-sm font-semibold">Your {{ $totalDonations }} donations have potentially saved up to {{ $livesImpacted }} lives.</p>
+                            <p class="mt-3 rounded-lg bg-white/90 px-3 py-2 text-center text-xs font-semibold text-red-700">
+                                Thank you for being a hero in your community.
+                            </p>
+                        </div>
+                    </x-dashboard.card>
+                </div>
             </div>
         </section>
     </main>
+
 </div>
 </body>
 </html>
