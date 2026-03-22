@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorDashboardController;
 use App\Http\Controllers\DonorPortalController;
@@ -31,4 +32,13 @@ Route::post('/logout', [DonorLoginController::class, 'destroy'])->name('donor.lo
 
 Route::view('/terms-of-service', 'donor.terms')->name('terms');
 Route::view('/privacy-policy', 'donor.privacy')->name('privacy');
+Route::get('/admin/login', [AdminAuthController::class, 'create'])->name('admin.login');
+Route::post('/admin/login', [AdminAuthController::class, 'store'])->name('admin.login.store');
+Route::get('/admin/dashboard', [AdminAuthController::class, 'dashboard'])->name('admin.dashboard');
+Route::get('/admin/users', [AdminAuthController::class, 'users'])->name('admin.users');
+Route::get('/admin/appointments', [AdminAuthController::class, 'appointments'])->name('admin.appointments');
+Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
+Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
+Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
+Route::post('/admin/logout', [AdminAuthController::class, 'destroy'])->name('admin.logout');
 
