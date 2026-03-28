@@ -40,5 +40,6 @@ Route::get('/admin/appointments', [AdminAuthController::class, 'appointments'])-
 Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
 Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
 Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
+Route::get('/admin/report-analytics', [AdminAuthController::class, 'reportAnalytics'])->name('admin.report-analytics');
 Route::post('/admin/logout', [AdminAuthController::class, 'destroy'])->name('admin.logout');
 

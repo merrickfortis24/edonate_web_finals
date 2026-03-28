@@ -2,6 +2,7 @@
 
 @section('title', 'eDonate - User Management')
 @section('admin_page_class', 'admin-users-page')
+@section('layout_wrapper_class', 'layout')
 @section('sidebar_link_mode', 'link')
 @section('hamburger_id', 'hamburger')
 @section('sidebar_aria_label', 'Main navigation')
@@ -11,7 +12,7 @@
 @section('header_subtitle', 'Manage donor registration, updates, and account validation')
 
 @section('header_actions')
-	<button class="btn-export" aria-label="Export donor data">
+	<button class="btn-export btn" aria-label="Export donor data">
 		<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 			<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
 			<polyline points="17 8 12 3 7 8"/>
@@ -22,50 +23,58 @@
 @endsection
 
 @section('admin_page_data')
-@json([
+{!! json_encode([
 	'page' => 'user-management',
-])
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
-<main class="main">
-	<div class="content">
-		<section class="stats" aria-label="Donor statistics">
-			<div class="stat-card stat-card--red">
-				<span class="stat-card__label">Total Donors</span>
-				<span class="stat-card__value">9</span>
+<main class="main container-fluid px-0">
+	<div class="content container-fluid py-3">
+		<section class="stats row g-4" aria-label="Donor statistics">
+			<div class="col-12 col-sm-6 col-xl-3">
+				<div class="stat-card stat-card--red h-100">
+					<span class="stat-card__label">Total Donors</span>
+					<span class="stat-card__value">9</span>
+				</div>
 			</div>
-			<div class="stat-card stat-card--green">
-				<span class="stat-card__label">Eligible Donors</span>
-				<span class="stat-card__value">6</span>
+			<div class="col-12 col-sm-6 col-xl-3">
+				<div class="stat-card stat-card--green h-100">
+					<span class="stat-card__label">Eligible Donors</span>
+					<span class="stat-card__value">6</span>
+				</div>
 			</div>
-			<div class="stat-card stat-card--blue">
-				<span class="stat-card__label">Not Eligible</span>
-				<span class="stat-card__value">3</span>
+			<div class="col-12 col-sm-6 col-xl-3">
+				<div class="stat-card stat-card--blue h-100">
+					<span class="stat-card__label">Not Eligible</span>
+					<span class="stat-card__value">3</span>
+				</div>
 			</div>
-			<div class="stat-card stat-card--gold">
-				<span class="stat-card__label">Total Donations</span>
-				<span class="stat-card__value">97</span>
+			<div class="col-12 col-sm-6 col-xl-3">
+				<div class="stat-card stat-card--gold h-100">
+					<span class="stat-card__label">Total Donations</span>
+					<span class="stat-card__value">97</span>
+				</div>
 			</div>
 		</section>
 
-		<div class="filter-bar" role="search">
-			<div class="filter-bar__search">
+		<div class="filter-bar row g-3 align-items-center" role="search">
+			<div class="filter-bar__search col-12 col-lg">
 				<span class="filter-bar__search-icon" aria-hidden="true">
 					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
 					</svg>
 				</span>
-				<input type="text" class="filter-bar__search-input" placeholder="Search by name, ID, or email..." aria-label="Search donors">
+				<input type="text" class="filter-bar__search-input form-control" placeholder="Search by name, ID, or email..." aria-label="Search donors">
 			</div>
 
-			<div class="filter-bar__dropdown">
+			<div class="filter-bar__dropdown col-12 col-md-6 col-xl-4">
 				<span class="filter-bar__dropdown-icon" aria-hidden="true">
 					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
 						<path d="M12 4.5C12 4.5 6.5 11.5 6.5 16C6.5 19.038 9.014 21.5 12 21.5C14.986 21.5 17.5 19.038 17.5 16C17.5 11.5 12 4.5 12 4.5Z" fill="#b60c0c"/>
 					</svg>
 				</span>
-				<select class="filter-bar__select filter-bar__select--blood" aria-label="Filter by blood type">
+				<select class="filter-bar__select filter-bar__select--blood form-select" aria-label="Filter by blood type">
 					<option>All Blood Types</option>
 					<option>A+</option><option>A-</option><option>B+</option><option>B-</option>
 					<option>AB+</option><option>AB-</option><option>O+</option><option>O-</option>
@@ -77,13 +86,13 @@
 				</span>
 			</div>
 
-			<div class="filter-bar__dropdown">
+			<div class="filter-bar__dropdown col-12 col-md-6 col-xl-3">
 				<span class="filter-bar__dropdown-icon" aria-hidden="true">
 					<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
 					</svg>
 				</span>
-				<select class="filter-bar__select filter-bar__select--status" aria-label="Filter by status">
+				<select class="filter-bar__select filter-bar__select--status form-select" aria-label="Filter by status">
 					<option>All Status</option>
 					<option>Eligible</option>
 					<option>Not Eligible</option>
@@ -97,7 +106,7 @@
 		</div>
 
 		<section class="table-wrap" aria-label="Donor list">
-			<div class="table-inner">
+			<div class="table-inner table-responsive">
 				<div class="table-grid table-thead">
 					<div class="table-th">Donor ID</div>
 					<div class="table-th">Name</div>

@@ -16,7 +16,7 @@
 @section('header_right_class', 'header__right page-header__actions')
 
 @section('header_actions')
-	<button class="btn-send" type="button">
+	<button class="btn-send btn" type="button">
 		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 			<path d="M22 2L11 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 			<path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -26,35 +26,41 @@
 @endsection
 
 @section('admin_page_data')
-@json([
+{!! json_encode([
 	'page' => 'notification-center',
 	'summary' => [
 		'total' => 9,
 		'unread' => 6,
 		'read' => 3,
 	],
-])
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('content')
-<main class="main">
-	<div class="page-body">
-		<section class="stats-row" role="region" aria-label="Notification statistics">
-			<article class="stat-card stat-card--blue">
-				<span class="stat-card__label">Total Notifications</span>
-				<span class="stat-card__value">9</span>
-			</article>
-			<article class="stat-card stat-card--red">
-				<span class="stat-card__label">Unread</span>
-				<span class="stat-card__value">6</span>
-			</article>
-			<article class="stat-card stat-card--green">
-				<span class="stat-card__label">Read</span>
-				<span class="stat-card__value">3</span>
-			</article>
+	<main class="main container-fluid px-0">
+	<div class="page-body container-fluid py-3">
+		<section class="stats-row row g-3" role="region" aria-label="Notification statistics">
+			<div class="col-12 col-md-4">
+				<article class="stat-card stat-card--blue h-100">
+					<span class="stat-card__label">Total Notifications</span>
+					<span class="stat-card__value">9</span>
+				</article>
+			</div>
+			<div class="col-12 col-md-4">
+				<article class="stat-card stat-card--red h-100">
+					<span class="stat-card__label">Unread</span>
+					<span class="stat-card__value">6</span>
+				</article>
+			</div>
+			<div class="col-12 col-md-4">
+				<article class="stat-card stat-card--green h-100">
+					<span class="stat-card__label">Read</span>
+					<span class="stat-card__value">3</span>
+				</article>
+			</div>
 		</section>
 
-		<section class="toolbar" role="toolbar" aria-label="Notification controls">
+		<section class="toolbar d-flex align-items-center flex-wrap gap-2" role="toolbar" aria-label="Notification controls">
 			<div class="toolbar__filter">
 				<button class="toolbar__filter-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter notifications">
 					<svg class="filter-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -69,9 +75,9 @@
 
 			<div class="toolbar__spacer"></div>
 
-			<button class="btn-mark-all" type="button">Mark All as Read</button>
+			<button class="btn-mark-all btn" type="button">Mark All as Read</button>
 
-			<button class="btn-clear-all" type="button">
+			<button class="btn-clear-all btn" type="button">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 					<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 					<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

@@ -125,6 +125,18 @@ class AdminAuthController extends Controller
     }
 
     /**
+     * Display report and analytics page.
+     */
+    public function reportAnalytics(Request $request)
+    {
+        if (!$request->session()->has('admin_id')) {
+            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
+        }
+
+        return view('admin.report_analytics');
+    }
+
+    /**
      * Log admin out.
      */
     public function destroy(Request $request): RedirectResponse

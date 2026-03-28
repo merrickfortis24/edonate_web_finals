@@ -10,7 +10,7 @@
 ])
 
 @php
-    $linkClass = $linkMode === 'link' ? 'sidebar__link' : 'sidebar__nav-link';
+    $linkClass = ($linkMode === 'link' ? 'sidebar__link' : 'sidebar__nav-link') . ' d-block text-decoration-none';
     $activeClass = $linkMode === 'link' ? 'sidebar__link--active' : 'sidebar__nav-link--active';
     $logoutFormId = $sidebarId . '-logout-form';
 
@@ -23,7 +23,7 @@
         ['label' => 'Donation Records', 'route' => 'admin.donation-records', 'active' => ['admin.donation-records*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Blood Availability Mapping', 'route' => 'admin.blood-availability-mapping', 'active' => ['admin.blood-availability-mapping*'], 'roles' => ['admin', 'staff'], 'multiline' => true],
         ['label' => 'Notification Center', 'route' => 'admin.notification-center', 'active' => ['admin.notification-center*'], 'roles' => ['admin', 'staff']],
-        ['label' => 'Report & Analytics', 'url' => '#', 'active' => [], 'roles' => ['admin', 'staff']],
+        ['label' => 'Report & Analytics', 'route' => 'admin.report-analytics', 'active' => ['admin.report-analytics*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Audit Logs', 'url' => '#', 'active' => [], 'roles' => ['admin', 'staff']],
     ];
 
@@ -59,7 +59,7 @@
     };
 @endphp
 
-<aside class="sidebar" id="{{ $sidebarId }}" aria-label="{{ $asideAriaLabel }}">
+<aside class="sidebar d-flex flex-column" id="{{ $sidebarId }}" aria-label="{{ $asideAriaLabel }}">
     @if ($linkMode === 'link')
         <div class="sidebar__brand">
             <svg class="sidebar__brand-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -84,8 +84,8 @@
         </div>
     @endif
 
-    <nav class="sidebar__nav" aria-label="{{ $navAriaLabel }}">
-        <ul>
+    <nav class="sidebar__nav d-flex flex-column" aria-label="{{ $navAriaLabel }}">
+        <ul class="list-unstyled d-flex flex-column flex-grow-1 mb-0 p-0">
             @foreach ($menuItems as $item)
                 @continue(!$canRenderItem($item))
 

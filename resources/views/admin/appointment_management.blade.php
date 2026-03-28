@@ -19,58 +19,66 @@
 
 @section('header_actions')
 	<div class="appointment-header__views" role="group" aria-label="Appointment view mode">
-		<button class="appointment-view-btn appointment-view-btn--active" type="button">List View</button>
-		<button class="appointment-view-btn appointment-view-btn--outline" type="button">Calendar View</button>
+		<button class="appointment-view-btn appointment-view-btn--active btn" type="button">List View</button>
+		<button class="appointment-view-btn appointment-view-btn--outline btn" type="button">Calendar View</button>
 	</div>
 @endsection
 
 @section('admin_page_data')
-@json([
+{!! json_encode([
 	'page' => 'appointment-management',
-])
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
-	<main class="appointment-main">
-		<section class="appointment-content" aria-label="Appointments content">
-			<div class="appointment-stats" aria-label="Appointment summary">
-				<article class="stat-card appointment-stat appointment-stat--green">
-					<p class="appointment-stat__label">Confirmed</p>
-					<p class="appointment-stat__value">5</p>
-				</article>
-				<article class="stat-card appointment-stat appointment-stat--gold">
-					<p class="appointment-stat__label">Pending Approval</p>
-					<p class="appointment-stat__value">3</p>
-				</article>
-				<article class="stat-card appointment-stat appointment-stat--red">
-					<p class="appointment-stat__label">Cancelled</p>
-					<p class="appointment-stat__value">1</p>
-				</article>
-				<article class="stat-card appointment-stat appointment-stat--blue">
-					<p class="appointment-stat__label">Rescheduled</p>
-					<p class="appointment-stat__value">1</p>
-				</article>
+	<main class="appointment-main container-fluid px-0">
+		<section class="appointment-content container-fluid py-3" aria-label="Appointments content">
+			<div class="appointment-stats row g-3" aria-label="Appointment summary">
+				<div class="col-12 col-sm-6 col-xl-3">
+					<article class="stat-card appointment-stat appointment-stat--green h-100">
+						<p class="appointment-stat__label">Confirmed</p>
+						<p class="appointment-stat__value">5</p>
+					</article>
+				</div>
+				<div class="col-12 col-sm-6 col-xl-3">
+					<article class="stat-card appointment-stat appointment-stat--gold h-100">
+						<p class="appointment-stat__label">Pending Approval</p>
+						<p class="appointment-stat__value">3</p>
+					</article>
+				</div>
+				<div class="col-12 col-sm-6 col-xl-3">
+					<article class="stat-card appointment-stat appointment-stat--red h-100">
+						<p class="appointment-stat__label">Cancelled</p>
+						<p class="appointment-stat__value">1</p>
+					</article>
+				</div>
+				<div class="col-12 col-sm-6 col-xl-3">
+					<article class="stat-card appointment-stat appointment-stat--blue h-100">
+						<p class="appointment-stat__label">Rescheduled</p>
+						<p class="appointment-stat__value">1</p>
+					</article>
+				</div>
 			</div>
 
-			<form class="appointment-filter" role="search" aria-label="Filter appointments" action="#" method="get" onsubmit="return false;">
-				<div class="appointment-filter__search">
+			<form class="appointment-filter row g-3 align-items-center" role="search" aria-label="Filter appointments" action="#" method="get" onsubmit="return false;">
+				<div class="appointment-filter__search col-12 col-lg">
 					<span class="appointment-filter__search-icon" aria-hidden="true">
 						<svg viewBox="0 0 24 24" aria-hidden="true">
 							<circle cx="11" cy="11" r="7"></circle>
 							<line x1="16.5" y1="16.5" x2="22" y2="22"></line>
 						</svg>
 					</span>
-					<input type="search" class="appointment-filter__input" placeholder="Search by name, ID, or email..." aria-label="Search appointments">
+					<input type="search" class="appointment-filter__input form-control" placeholder="Search by name, ID, or email..." aria-label="Search appointments">
 				</div>
 
-				<div class="appointment-filter__select-wrap appointment-filter__select-wrap--center">
+				<div class="appointment-filter__select-wrap appointment-filter__select-wrap--center col-12 col-md-6 col-xl-3">
 					<span class="appointment-filter__select-icon" aria-hidden="true">
 						<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
 							<path d="M10 2C7.23858 2 5 4.23858 5 7C5 10.5 10 17 10 17C10 17 15 10.5 15 7C15 4.23858 12.7614 2 10 2Z" stroke="#333" stroke-width="1.5"></path>
 							<circle cx="10" cy="7" r="2" stroke="#333" stroke-width="1.5"></circle>
 						</svg>
 					</span>
-					<select class="appointment-filter__select" aria-label="Filter by center" name="center">
+					<select class="appointment-filter__select form-select" aria-label="Filter by center" name="center">
 						<option value="">Filter By Center</option>
 						<option value="lipa">Lipa Medix</option>
 					</select>
@@ -79,13 +87,13 @@
 					</span>
 				</div>
 
-				<div class="appointment-filter__select-wrap appointment-filter__select-wrap--status">
+				<div class="appointment-filter__select-wrap appointment-filter__select-wrap--status col-12 col-md-6 col-xl-2">
 					<span class="appointment-filter__select-icon" aria-hidden="true">
 						<svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
 							<path d="M10 3C10 3 5 9 5 13C5 15.7614 7.23858 18 10 18C12.7614 18 15 15.7614 15 13C15 9 10 3 10 3Z" stroke="#b60c0c" stroke-width="1.5"></path>
 						</svg>
 					</span>
-					<select class="appointment-filter__select" aria-label="Filter by status" name="status">
+					<select class="appointment-filter__select form-select" aria-label="Filter by status" name="status">
 						<option value="">All Status</option>
 						<option value="confirmed">Confirmed</option>
 						<option value="pending">Pending</option>
@@ -99,7 +107,7 @@
 			</form>
 
 			<section class="appointment-table" aria-label="Appointment list">
-				<div class="appointment-table-scroll">
+				<div class="appointment-table-scroll table-responsive">
 					<div class="appointment-table__head" role="rowgroup">
 						<div class="appointment-table__head-cell">Appointment ID</div>
 						<div class="appointment-table__head-cell">Donor</div>

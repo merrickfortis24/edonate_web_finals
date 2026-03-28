@@ -11,7 +11,7 @@
 @section('header_subtitle', 'View donation history and eligibility logs')
 
 @section('header_actions')
-  <button class="btn-export" type="button">
+  <button class="btn-export btn" type="button">
     <svg class="btn-export__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
       <path d="M12 3v10M12 3l-3.5 3.5M12 3l3.5 3.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M5 17v2a1 1 0 001 1h12a1 1 0 001-1v-2" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
@@ -21,9 +21,9 @@
 @endsection
 
 @section('admin_page_data')
-@json([
+{!! json_encode([
   'page' => 'donation-records',
-])
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
@@ -31,16 +31,17 @@
   <!-- ======================== -->
   <!-- MAIN                     -->
   <!-- ======================== -->
-  <div class="main">
+  <div class="main container-fluid px-0">
 
     <!-- PAGE BODY -->
-    <main class="page-body">
+    <main class="page-body container-fluid py-3">
 
       <!-- STAT CARDS -->
-      <section class="stats-grid" aria-label="Statistics overview">
+      <section class="stats-grid row g-3" aria-label="Statistics overview">
 
         <!-- Total Donations -->
-        <div class="stat-card stat-card--red">
+        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card stat-card--red h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">Total Donations</span>
             <!-- Blood drop icon red -->
@@ -51,9 +52,11 @@
           <div class="stat-card__value">1</div>
           <div class="stat-card__note">All time</div>
         </div>
+        </div>
 
         <!-- This Month -->
-        <div class="stat-card stat-card--green">
+        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card stat-card--green h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">This Month</span>
             <!-- Calendar icon -->
@@ -66,9 +69,11 @@
           <div class="stat-card__value">1</div>
           <div class="stat-card__note">+12% vs last month</div>
         </div>
+        </div>
 
         <!-- Active Donors -->
-        <div class="stat-card stat-card--blue">
+        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card stat-card--blue h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">Active Donors</span>
             <!-- Person icon -->
@@ -80,9 +85,11 @@
           <div class="stat-card__value">1</div>
           <div class="stat-card__note">With donation history</div>
         </div>
+        </div>
 
         <!-- Average Volume -->
-        <div class="stat-card stat-card--gold">
+        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="stat-card stat-card--gold h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">Average Volume</span>
             <!-- Blood drop gold -->
@@ -93,25 +100,26 @@
           <div class="stat-card__value">450 mL</div>
           <div class="stat-card__note">Per donation</div>
         </div>
+        </div>
       </section>
 
       <!-- FILTER BAR -->
-      <div class="filter-bar">
+      <div class="filter-bar row g-3 align-items-center">
         <!-- Search -->
-        <div class="filter-bar__search">
+        <div class="filter-bar__search col-12 col-lg">
           <svg class="filter-bar__search-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <circle cx="11" cy="11" r="7" stroke="#555" stroke-width="1.8"/>
             <path d="M16.5 16.5L21 21" stroke="#555" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
-          <input type="search" placeholder="Search by donor name or record ID..." aria-label="Search by donor name or record ID" />
+          <input class="form-control" type="search" placeholder="Search by donor name or record ID..." aria-label="Search by donor name or record ID" />
         </div>
 
         <!-- Blood Type filter -->
-        <div class="filter-bar__select-wrap">
+        <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-3">
           <svg class="filter-bar__select-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M12 3 C12 3 5 11 5 16 C5 19.87 8.13 23 12 23 C15.87 23 19 19.87 19 16 C19 11 12 3 12 3Z" fill="#b60c0c"/>
           </svg>
-          <select class="filter-bar__select" aria-label="Filter by blood type">
+          <select class="filter-bar__select form-select" aria-label="Filter by blood type">
             <option>All Blood Types</option>
             <option>A+</option>
             <option>A-</option>
@@ -128,11 +136,11 @@
         </div>
 
         <!-- Status filter -->
-        <div class="filter-bar__select-wrap">
+        <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-3">
           <svg class="filter-bar__select-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
             <path d="M4 6h16M7 12h10M10 18h4" stroke="#555" stroke-width="1.8" stroke-linecap="round"/>
           </svg>
-          <select class="filter-bar__select" aria-label="Filter by status">
+          <select class="filter-bar__select form-select" aria-label="Filter by status">
             <option>All Status</option>
             <option>Completed</option>
             <option>Pending</option>
@@ -146,8 +154,8 @@
 
       <!-- RECORDS TABLE -->
       <section class="records-section" aria-label="Donation records table">
-        <div class="records-table-wrap">
-          <table class="records-table">
+        <div class="records-table-wrap table-responsive">
+          <table class="records-table table align-middle mb-0">
             <thead>
               <tr>
                 <th scope="col">Record ID</th>

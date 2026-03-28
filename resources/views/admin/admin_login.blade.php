@@ -7,6 +7,7 @@
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
 	<style>
 		:root {
 			--color-bg-from: #750000;
@@ -402,9 +403,9 @@
 	</style>
 </head>
 <body>
-<main class="page" role="main">
-	<div class="card">
-		<section class="card__left" aria-label="eDonate branding">
+<main class="page container-fluid" role="main">
+	<div class="card row g-0">
+		<section class="card__left col-12 col-md-5" aria-label="eDonate branding">
 			<div class="card__left__icon" aria-hidden="true">
 				<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
 					<path d="M32 6C32 6 15 24 15 37.5C15 47.7173 23.2827 56 33.5 56C43.7173 56 52 47.7173 52 37.5C52 24 32 6 32 6Z" fill="white"/>
@@ -435,7 +436,7 @@
 			</div>
 		</section>
 
-		<section class="card__right" aria-label="Login form">
+		<section class="card__right col-12 col-md-7" aria-label="Login form">
 			<h1 class="form__heading">Welcome Back</h1>
 			<p class="form__subheading">Log in to continue to your admin account</p>
 
@@ -447,11 +448,11 @@
 				<div class="form__alert form__alert--success">{{ session('success') }}</div>
 			@endif
 
-			@if ($errors->any())
+			@if (isset($errors) && $errors->any())
 				<div class="form__alert form__alert--error">{{ $errors->first() }}</div>
 			@endif
 
-			<button type="button" class="form__admin-btn" aria-label="Log in as admin">
+			<button type="button" class="form__admin-btn btn" aria-label="Log in as admin">
 				Log In as Admin
 			</button>
 
@@ -459,7 +460,7 @@
 				@csrf
 				<label class="form__label" for="email">Email Address</label>
 				<input
-					class="form__input"
+					class="form__input form-control"
 					id="email"
 					type="email"
 					name="email"
@@ -471,7 +472,7 @@
 
 				<label class="form__label" for="password">Password</label>
 				<input
-					class="form__input"
+					class="form__input form-control"
 					id="password"
 					type="password"
 					name="password"
@@ -482,10 +483,11 @@
 
 				<a href="#" class="form__forgot">Forgot Password?</a>
 
-				<button type="submit" class="form__submit">Log In</button>
+				<button type="submit" class="form__submit btn">Log In</button>
 			</form>
 		</section>
 	</div>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 </body>
 </html>

@@ -20,12 +20,29 @@
 @endsection
 
 @section('header_actions')
-	<p class="header__date-label">Today's Date</p>
-	<p class="header__date-value" id="todayDate">-</p>
+	<div class="header__date-group" aria-label="Current date">
+		<p class="header__date-label">Today's Date</p>
+		<p class="header__date-value" id="todayDate">-</p>
+	</div>
+
+	<div class="header__icon-actions" aria-label="Dashboard quick actions">
+		<button class="header__icon-btn" type="button" aria-label="Notifications (9 or more)">
+			<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+				<path d="M12 2C10.07 2 8.32 2.85 7.14 4.21L3 8.99V15H5V20H19V15H21V8.99L16.86 4.21C15.68 2.85 13.93 2 12 2ZM12 4C13.38 4 14.63 4.57 15.52 5.5H8.48C9.37 4.57 10.62 4 12 4ZM5 10.41L8.14 7H15.86L19 10.41V13H5V10.41ZM7 15H17V18H7V15Z" />
+			</svg>
+			<span class="header__badge" aria-hidden="true">9+</span>
+		</button>
+
+		<button class="header__icon-btn" type="button" aria-label="Settings">
+			<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+				<path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.92c.04-.34.07-.69.07-1.08s-.03-.74-.07-1.08l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.34-.07.69-.07 1.08s.03.74.07 1.08l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65z" />
+			</svg>
+		</button>
+	</div>
 @endsection
 
 @section('admin_page_data')
-@json([
+{!! json_encode([
 	'page' => 'admin-dashboard',
 	'dashboard' => [
 		'monthlyDonations' => [
@@ -42,55 +59,63 @@
 			['label' => 'O-', 'value' => 0.05, 'color' => '#ffd0d0'],
 		],
 	],
-])
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
-	<div class="main">
-		<main class="content">
-			<section class="stats" aria-label="Dashboard statistics">
-				<div class="stat-card stat-card--red">
-					<div class="stat-card__icons">
-						<span class="stat-card__icon-main" aria-hidden="true">&#128101;</span>
-						<span class="stat-card__icon-aux" aria-hidden="true">&#8599;</span>
+	<div class="main container-fluid px-0">
+		<main class="content container-fluid py-3">
+			<section class="dashboard-stats row" aria-label="Dashboard statistics">
+				<div class="col-12 col-sm-6 col-lg-3">
+					<div class="stat-card stat-card--red h-100">
+						<div class="stat-card__icons">
+							<span class="stat-card__icon-main" aria-hidden="true">&#128101;</span>
+							<span class="stat-card__icon-aux" aria-hidden="true">&#8599;</span>
+						</div>
+						<p class="stat-card__label stat-card__label--white">Total Donors</p>
+						<p class="stat-card__value stat-card__value--white">10,143</p>
+						<p class="stat-card__change stat-card__change--white">+12% this month</p>
 					</div>
-					<p class="stat-card__label stat-card__label--white">Total Donors</p>
-					<p class="stat-card__value stat-card__value--white">10,143</p>
-					<p class="stat-card__change stat-card__change--white">+12% this month</p>
 				</div>
 
-				<div class="stat-card stat-card--green">
-					<div class="stat-card__icons">
-						<span class="stat-card__icon-main" aria-hidden="true">&#10004;</span>
-						<span class="stat-card__icon-aux" aria-hidden="true">&#128202;</span>
+				<div class="col-12 col-sm-6 col-lg-3">
+					<div class="stat-card stat-card--green h-100">
+						<div class="stat-card__icons">
+							<span class="stat-card__icon-main" aria-hidden="true">&#10004;</span>
+							<span class="stat-card__icon-aux" aria-hidden="true">&#128202;</span>
+						</div>
+						<p class="stat-card__label">Successful Donations</p>
+						<p class="stat-card__value">25,143</p>
+						<p class="stat-card__change stat-card__change--green">+12% this month</p>
 					</div>
-					<p class="stat-card__label">Successful Donations</p>
-					<p class="stat-card__value">25,143</p>
-					<p class="stat-card__change stat-card__change--green">+12% this month</p>
 				</div>
 
-				<div class="stat-card stat-card--blue">
-					<div class="stat-card__icons">
-						<span class="stat-card__icon-main" aria-hidden="true">&#128197;</span>
-						<span class="stat-card__icon-aux" aria-hidden="true">&#128339;</span>
+				<div class="col-12 col-sm-6 col-lg-3">
+					<div class="stat-card stat-card--blue h-100">
+						<div class="stat-card__icons">
+							<span class="stat-card__icon-main" aria-hidden="true">&#128197;</span>
+							<span class="stat-card__icon-aux" aria-hidden="true">&#128339;</span>
+						</div>
+						<p class="stat-card__label">Upcoming Appointments</p>
+						<p class="stat-card__value">143</p>
+						<p class="stat-card__change stat-card__change--blue">+12% this month</p>
 					</div>
-					<p class="stat-card__label">Upcoming Appointments</p>
-					<p class="stat-card__value">143</p>
-					<p class="stat-card__change stat-card__change--blue">+12% this month</p>
 				</div>
 
-				<div class="stat-card stat-card--gold">
-					<div class="stat-card__icons">
-						<span class="stat-card__icon-main" aria-hidden="true">&#129656;</span>
-						<span class="stat-card__icon-aux" aria-hidden="true">&#128204;</span>
+				<div class="col-12 col-sm-6 col-lg-3">
+					<div class="stat-card stat-card--gold h-100">
+						<div class="stat-card__icons">
+							<span class="stat-card__icon-main" aria-hidden="true">&#129656;</span>
+							<span class="stat-card__icon-aux" aria-hidden="true">&#128204;</span>
+						</div>
+						<p class="stat-card__label">Donation Records</p>
+						<p class="stat-card__value">1,921</p>
+						<p class="stat-card__change stat-card__change--gold">+12% this month</p>
 					</div>
-					<p class="stat-card__label">Donation Records</p>
-					<p class="stat-card__value">1,921</p>
-					<p class="stat-card__change stat-card__change--gold">+12% this month</p>
 				</div>
 			</section>
 
-			<section class="map-banner" aria-label="Geographic blood availability map">
+			<section class="map-banner d-flex align-items-center" aria-label="Geographic blood availability map">
 				<div class="map-banner__pin" aria-hidden="true">
 					<svg width="22" height="28" viewBox="0 0 22 28" fill="none" xmlns="http://www.w3.org/2000/svg">
 						<path d="M11 0C4.925 0 0 4.925 0 11c0 8.25 11 17 11 17s11-8.75 11-17C22 4.925 17.075 0 11 0zm0 14.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z" fill="white"/>
@@ -100,26 +125,31 @@
 					<p class="map-banner__title">Geographic Blood Availability Map</p>
 					<p class="map-banner__subtitle">Monitor blood availability across all locations in real-time</p>
 				</div>
-				<button class="map-banner__btn" type="button">View Map</button>
+				<button class="map-banner__btn btn" type="button">View Map</button>
 			</section>
 
-			<section class="charts" aria-label="Data visualization charts">
-				<div class="chart-panel">
-					<h2 class="chart-panel__title">Monthly Donations Trend</h2>
-					<div class="chart-panel__body">
-						<canvas id="lineChart" aria-label="Monthly donations trend line chart"></canvas>
+			<section class="dashboard-charts row" aria-label="Data visualization charts">
+				<div class="col-12 col-lg-6">
+					<div class="chart-panel h-100">
+						<h2 class="chart-panel__title">Monthly Donations Trend</h2>
+						<div class="chart-panel__body">
+							<canvas id="lineChart" aria-label="Monthly donations trend line chart"></canvas>
+						</div>
 					</div>
 				</div>
-				<div class="chart-panel">
-					<h2 class="chart-panel__title">Blood Type Distribution</h2>
-					<div class="chart-panel__body">
-						<canvas id="pieChart" aria-label="Blood type distribution pie chart"></canvas>
+				<div class="col-12 col-lg-6">
+					<div class="chart-panel h-100">
+						<h2 class="chart-panel__title">Blood Type Distribution</h2>
+						<div class="chart-panel__body">
+							<canvas id="pieChart" aria-label="Blood type distribution pie chart"></canvas>
+						</div>
 					</div>
 				</div>
 			</section>
 
-			<section class="bottom" aria-label="Recent activities and pending approvals">
-				<div class="panel">
+			<section class="dashboard-bottom row" aria-label="Recent activities and pending approvals">
+				<div class="col-12 col-lg-6">
+					<div class="panel h-100">
 					<h2 class="panel__title">Recent Activities</h2>
 					<ul class="activity-list">
 						<li class="activity-item">
@@ -155,10 +185,12 @@
 							<span class="activity-item__time">20 min ago</span>
 						</li>
 					</ul>
-					<button class="panel__footer-btn panel__footer-btn--red" type="button">View All Activities</button>
+					<button class="panel__footer-btn panel__footer-btn--red btn" type="button">View All Activities</button>
+					</div>
 				</div>
 
-				<div class="panel">
+				<div class="col-12 col-lg-6">
+					<div class="panel h-100">
 					<h2 class="panel__title">Pending Approvals</h2>
 					<ul class="approval-list">
 						<li class="approval-item">
@@ -167,8 +199,8 @@
 								<p class="approval-item__type">New Registration</p>
 							</div>
 							<div class="approval-item__actions">
-								<button class="btn-approve" type="button">Approve</button>
-								<button class="btn-review" type="button">Review</button>
+								<button class="btn-approve btn" type="button">Approve</button>
+								<button class="btn-review btn" type="button">Review</button>
 							</div>
 						</li>
 						<li class="approval-item">
@@ -177,8 +209,8 @@
 								<p class="approval-item__type">Eligibility Review</p>
 							</div>
 							<div class="approval-item__actions">
-								<button class="btn-approve" type="button">Approve</button>
-								<button class="btn-review" type="button">Review</button>
+								<button class="btn-approve btn" type="button">Approve</button>
+								<button class="btn-review btn" type="button">Review</button>
 							</div>
 						</li>
 						<li class="approval-item">
@@ -187,12 +219,13 @@
 								<p class="approval-item__type">Appointment Change</p>
 							</div>
 							<div class="approval-item__actions">
-								<button class="btn-approve" type="button">Approve</button>
-								<button class="btn-review" type="button">Review</button>
+								<button class="btn-approve btn" type="button">Approve</button>
+								<button class="btn-review btn" type="button">Review</button>
 							</div>
 						</li>
 					</ul>
-					<button class="panel__footer-btn panel__footer-btn--green" type="button">View All Approvals</button>
+					<button class="panel__footer-btn panel__footer-btn--green btn" type="button">View All Approvals</button>
+					</div>
 				</div>
 			</section>
 		</main>

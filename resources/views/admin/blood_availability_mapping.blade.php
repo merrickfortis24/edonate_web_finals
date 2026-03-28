@@ -21,13 +21,13 @@
 @endsection
 
 @section('admin_page_data')
-@json([
+{!! json_encode([
 	'page' => 'blood-availability-mapping',
-])
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
-<main class="main">
+<main class="main container-fluid px-0">
 	<section class="panels-row" aria-label="Filters and Location Map">
 		<div class="filter-panel">
 			<div class="filter-panel__header">
@@ -39,7 +39,7 @@
 
 			<p class="filter-panel__label">Blood Type</p>
 			<div class="filter-panel__select-wrap">
-				<select class="filter-panel__select" aria-label="Filter by blood type">
+				<select class="filter-panel__select form-select" aria-label="Filter by blood type">
 					<option value="A+">A+</option>
 					<option value="A-">A-</option>
 					<option value="B+">B+</option>
@@ -58,7 +58,7 @@
 
 			<p class="filter-panel__label">Barangay</p>
 			<div class="filter-panel__select-wrap">
-				<select class="filter-panel__select" aria-label="Filter by barangay">
+				<select class="filter-panel__select form-select" aria-label="Filter by barangay">
 					<option value="Balintawak">Balintawak</option>
 					<option value="Marawoy">Marawoy</option>
 					<option value="Sabang">Sabang</option>
@@ -70,7 +70,7 @@
 				</span>
 			</div>
 
-			<button class="filter-panel__clear-btn" type="button">Clear Filters</button>
+			<button class="filter-panel__clear-btn btn btn-outline-secondary" type="button">Clear Filters</button>
 
 			<hr class="filter-panel__divider" />
 
@@ -175,7 +175,7 @@
 					<span class="blood-card__dot blood-card__dot--critical"></span>
 					<span class="blood-card__status-label">Critical</span>
 				</div>
-				<button class="blood-card__request-btn blood-card__request-btn--dark" type="button">Request Blood</button>
+				<button class="blood-card__request-btn blood-card__request-btn--dark btn" type="button">Request Blood</button>
 			</div>
 
 			<div class="blood-card blood-card--red">
@@ -188,7 +188,7 @@
 					<span class="blood-card__dot blood-card__dot--critical"></span>
 					<span class="blood-card__status-label">Critical</span>
 				</div>
-				<button class="blood-card__request-btn" type="button">Request Blood</button>
+				<button class="blood-card__request-btn btn" type="button">Request Blood</button>
 			</div>
 
 			<div class="blood-card blood-card--yellow">
