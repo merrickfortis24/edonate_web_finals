@@ -8,24 +8,45 @@
 @section('sidebar_nav_aria_label', 'Main navigation')
 @section('render_default_hamburger', 'false')
 
+@section('header_title', 'Admin Dashboard')
+@section('header_subtitle', 'Blood Donation Management System - Web Portal')
+
+@section('header_slot')
+	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+	</button>
+@endsection
+
+@section('header_actions')
+	<p class="header__date-label">Today's Date</p>
+	<p class="header__date-value" id="todayDate">-</p>
+@endsection
+
+@section('admin_page_data')
+@json([
+	'page' => 'admin-dashboard',
+	'dashboard' => [
+		'monthlyDonations' => [
+			'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+			'values' => [3, 4, 5.5, 7, 9, 11, 13, 15, 17, 18.5, 19.5, 20.5],
+			'maxY' => 25,
+			'stepY' => 5,
+		],
+		'bloodTypeDistribution' => [
+			['label' => 'O+', 'value' => 0.38, 'color' => '#b60c0c'],
+			['label' => 'A+', 'value' => 0.29, 'color' => '#5a0000'],
+			['label' => 'B+', 'value' => 0.20, 'color' => '#e83333'],
+			['label' => 'AB+', 'value' => 0.08, 'color' => '#f07070'],
+			['label' => 'O-', 'value' => 0.05, 'color' => '#ffd0d0'],
+		],
+	],
+])
+@endsection
+
 @section('main_content')
 	<div class="main">
-		<x-admin-header
-			title="Admin Dashboard"
-			subtitle="Blood Donation Management System - Web Portal"
-		>
-			<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-				<span class="hamburger__bar"></span>
-				<span class="hamburger__bar"></span>
-				<span class="hamburger__bar"></span>
-			</button>
-
-			<x-slot:actions>
-				<p class="header__date-label">Today's Date</p>
-				<p class="header__date-value" id="todayDate">-</p>
-			</x-slot:actions>
-		</x-admin-header>
-
 		<main class="content">
 			<section class="stats" aria-label="Dashboard statistics">
 				<div class="stat-card stat-card--red">
@@ -191,6 +212,8 @@
 			});
 		}
 
+		var dashboardData = (window.AdminPageData && window.AdminPageData.dashboard) ? window.AdminPageData.dashboard : {};
+
 		function setupCanvas(canvas) {
 			var parent = canvas.parentElement;
 			var ratio = window.devicePixelRatio || 1;
@@ -244,10 +267,15 @@
 			var plotW = w - mL - mR;
 			var plotH = h - mT - mB;
 
-			var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-			var values = [3, 4, 5.5, 7, 9, 11, 13, 15, 17, 18.5, 19.5, 20.5];
-			var yMax = 25;
-			var yStep = 5;
+			var lineChartData = (dashboardData && dashboardData.monthlyDonations) ? dashboardData.monthlyDonations : {};
+			var months = Array.isArray(lineChartData.labels) && lineChartData.labels.length
+				? lineChartData.labels
+				: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+			var values = Array.isArray(lineChartData.values) && lineChartData.values.length
+				? lineChartData.values
+				: [3, 4, 5.5, 7, 9, 11, 13, 15, 17, 18.5, 19.5, 20.5];
+			var yMax = Number(lineChartData.maxY || 25);
+			var yStep = Number(lineChartData.stepY || 5);
 
 			ctx.clearRect(0, 0, w, h);
 			ctx.font = '11px Poppins, sans-serif';
@@ -332,13 +360,25 @@
 			var w = setup.width;
 			var h = setup.height;
 
-			var segments = [
+			var fallbackSegments = [
 				{ label: 'O+', value: 0.38, color: '#b60c0c' },
 				{ label: 'A+', value: 0.29, color: '#5a0000' },
 				{ label: 'B+', value: 0.20, color: '#e83333' },
 				{ label: 'AB+', value: 0.08, color: '#f07070' },
 				{ label: 'O-', value: 0.05, color: '#ffd0d0' }
 			];
+
+			var segmentSource = Array.isArray(dashboardData.bloodTypeDistribution) && dashboardData.bloodTypeDistribution.length
+				? dashboardData.bloodTypeDistribution
+				: fallbackSegments;
+
+			var segments = segmentSource.map(function (item) {
+				return {
+					label: String(item.label || ''),
+					value: Number(item.value || 0),
+					color: item.color || '#b60c0c'
+				};
+			});
 
 			var legendW = 112;
 			var chartW = w - legendW;

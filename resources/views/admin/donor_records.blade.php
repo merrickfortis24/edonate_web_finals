@@ -7,28 +7,31 @@
 @section('sidebar_aria_label', 'Main navigation')
 @section('sidebar_nav_aria_label', 'Main navigation')
 
+@section('header_title', 'Donation Records')
+@section('header_subtitle', 'View donation history and eligibility logs')
+
+@section('header_actions')
+  <button class="btn-export" type="button">
+    <svg class="btn-export__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M12 3v10M12 3l-3.5 3.5M12 3l3.5 3.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M5 17v2a1 1 0 001 1h12a1 1 0 001-1v-2" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    Export Records
+  </button>
+@endsection
+
+@section('admin_page_data')
+@json([
+  'page' => 'donation-records',
+])
+@endsection
+
 @section('main_content')
 
   <!-- ======================== -->
   <!-- MAIN                     -->
   <!-- ======================== -->
   <div class="main">
-
-    <!-- PAGE HEADER -->
-    <x-admin-header
-      title="Donation Records"
-      subtitle="View donation history and eligibility logs"
-    >
-      <x-slot:actions>
-        <button class="btn-export" type="button">
-          <svg class="btn-export__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M12 3v10M12 3l-3.5 3.5M12 3l3.5 3.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M5 17v2a1 1 0 001 1h12a1 1 0 001-1v-2" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          Export Records
-        </button>
-      </x-slot:actions>
-    </x-admin-header>
 
     <!-- PAGE BODY -->
     <main class="page-body">

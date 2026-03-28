@@ -9,21 +9,25 @@
 @section('sidebar_open_class', 'is-open')
 @section('hamburger_class', 'sidebar__hamburger hamburger')
 
+@section('header_title', 'Geographic Blood Availability')
+@section('header_subtitle', 'Monitor blood type availability across different locations in real-time')
+@section('header_class', 'page-header')
+@section('header_left_class', 'page-header__left')
+@section('header_right_class', 'page-header__date')
+
+@section('header_actions')
+	<p class="page-header__date-label">Today's Date</p>
+	<p class="page-header__date-value" id="todayDate">-</p>
+@endsection
+
+@section('admin_page_data')
+@json([
+	'page' => 'blood-availability-mapping',
+])
+@endsection
+
 @section('main_content')
 <main class="main">
-	<x-admin-header
-		title="Geographic Blood Availability"
-		subtitle="Monitor blood type availability across different locations in real-time"
-		header-class="page-header"
-		left-class="page-header__left"
-		right-class="page-header__date"
-	>
-		<x-slot:actions>
-			<p class="page-header__date-label">Today's Date</p>
-			<p class="page-header__date-value" id="todayDate">-</p>
-		</x-slot:actions>
-	</x-admin-header>
-
 	<section class="panels-row" aria-label="Filters and Location Map">
 		<div class="filter-panel">
 			<div class="filter-panel__header">

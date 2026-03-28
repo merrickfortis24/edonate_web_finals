@@ -18,6 +18,23 @@
     $renderDefaultHamburger = strtolower(trim($__env->yieldContent('render_default_hamburger') ?: 'true')) !== 'false';
 
     $sidebarOpenClass = trim($__env->yieldContent('sidebar_open_class')) ?: 'sidebar--open';
+
+    $headerTitle = trim($__env->yieldContent('header_title'));
+    $headerSubtitle = trim($__env->yieldContent('header_subtitle'));
+    $headerClass = trim($__env->yieldContent('header_class')) ?: 'header';
+    $headerLeftClass = trim($__env->yieldContent('header_left_class')) ?: 'header__left-group';
+    $headerRightClass = trim($__env->yieldContent('header_right_class')) ?: 'header__right';
+    $headerSlot = $__env->yieldContent('header_slot');
+    $headerActions = $__env->yieldContent('header_actions');
+
+    $renderPageHeaderRaw = trim($__env->yieldContent('render_page_header'));
+    if ($renderPageHeaderRaw === '') {
+        $renderPageHeader = $headerTitle !== '';
+    } else {
+        $renderPageHeader = strtolower($renderPageHeaderRaw) !== 'false';
+    }
+
+    $adminPageData = trim($__env->yieldContent('admin_page_data'));
 @endphp
 
 <!doctype html>
@@ -62,6 +79,26 @@
     :role="$sidebarRole"
 />
 
+@if ($renderPageHeader)
+<x-admin-header
+    :title="$headerTitle"
+    :subtitle="$headerSubtitle !== '' ? $headerSubtitle : null"
+    :header-class="$headerClass"
+    :left-class="$headerLeftClass"
+    :right-class="$headerRightClass"
+>
+    @if (trim($headerSlot) !== '')
+        {!! $headerSlot !!}
+    @endif
+
+    @if (trim($headerActions) !== '')
+        <x-slot:actions>
+            {!! $headerActions !!}
+        </x-slot:actions>
+    @endif
+</x-admin-header>
+@endif
+
 @hasSection('main_content')
     @yield('main_content')
 @else
@@ -71,6 +108,24 @@
 @if ($layoutWrapperClass !== '')
 </div>
 @endif
+
+<script type="application/json" id="adminPageData">{!! $adminPageData !== '' ? $adminPageData : '{}' !!}</script>
+<script>
+    (function () {
+        var payloadElement = document.getElementById('adminPageData');
+        if (!payloadElement) {
+            window.AdminPageData = {};
+            return;
+        }
+
+        try {
+            window.AdminPageData = JSON.parse(payloadElement.textContent || '{}');
+        } catch (error) {
+            console.warn('Invalid admin page JSON payload.', error);
+            window.AdminPageData = {};
+        }
+    })();
+</script>
 
 <script>
     (function () {

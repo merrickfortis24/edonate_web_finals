@@ -9,26 +9,35 @@
 @section('sidebar_open_class', 'is-open')
 @section('hamburger_class', 'sidebar__hamburger hamburger')
 
+@section('header_title', 'Notification Center')
+@section('header_subtitle', 'Manage email and push notifications for confirmations and updates')
+@section('header_class', 'page-header')
+@section('header_left_class', 'header__left-group page-header__left')
+@section('header_right_class', 'header__right page-header__actions')
+
+@section('header_actions')
+	<button class="btn-send" type="button">
+		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+			<path d="M22 2L11 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+			<path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+		</svg>
+		Send Notifications
+	</button>
+@endsection
+
+@section('admin_page_data')
+@json([
+	'page' => 'notification-center',
+	'summary' => [
+		'total' => 9,
+		'unread' => 6,
+		'read' => 3,
+	],
+])
+@endsection
+
 @section('content')
 <main class="main">
-	<x-admin-header
-		title="Notification Center"
-		subtitle="Manage email and push notifications for confirmations and updates"
-		header-class="page-header"
-		left-class="header__left-group page-header__left"
-		right-class="header__right page-header__actions"
-	>
-		<x-slot:actions>
-			<button class="btn-send" type="button">
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-					<path d="M22 2L11 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-				Send Notifications
-			</button>
-		</x-slot:actions>
-	</x-admin-header>
-
 	<div class="page-body">
 		<section class="stats-row" role="region" aria-label="Notification statistics">
 			<article class="stat-card stat-card--blue">

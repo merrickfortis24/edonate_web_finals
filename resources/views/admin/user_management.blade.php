@@ -7,24 +7,27 @@
 @section('sidebar_aria_label', 'Main navigation')
 @section('sidebar_nav_aria_label', 'Main navigation')
 
+@section('header_title', 'User Management')
+@section('header_subtitle', 'Manage donor registration, updates, and account validation')
+
+@section('header_actions')
+	<button class="btn-export" aria-label="Export donor data">
+		<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+			<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+			<polyline points="17 8 12 3 7 8"/>
+			<line x1="12" y1="3" x2="12" y2="15"/>
+		</svg>
+		Export Data
+	</button>
+@endsection
+
+@section('admin_page_data')
+@json([
+	'page' => 'user-management',
+])
+@endsection
+
 @section('main_content')
-
-<x-admin-header
-	title="User Management"
-	subtitle="Manage donor registration, updates, and account validation"
->
-	<x-slot:actions>
-		<button class="btn-export" aria-label="Export donor data">
-			<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-				<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-				<polyline points="17 8 12 3 7 8"/>
-				<line x1="12" y1="3" x2="12" y2="15"/>
-			</svg>
-			Export Data
-		</button>
-	</x-slot:actions>
-</x-admin-header>
-
 <main class="main">
 	<div class="content">
 		<section class="stats" aria-label="Donor statistics">

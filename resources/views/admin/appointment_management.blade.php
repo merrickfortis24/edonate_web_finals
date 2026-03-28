@@ -14,20 +14,24 @@
 @section('hamburger_id', 'appointmentHamburger')
 @section('hamburger_class', 'appointment-hamburger hamburger')
 
+@section('header_title', 'Appointment Management')
+@section('header_subtitle', 'Approve, reject, or reschedule donation appointments')
+
+@section('header_actions')
+	<div class="appointment-header__views" role="group" aria-label="Appointment view mode">
+		<button class="appointment-view-btn appointment-view-btn--active" type="button">List View</button>
+		<button class="appointment-view-btn appointment-view-btn--outline" type="button">Calendar View</button>
+	</div>
+@endsection
+
+@section('admin_page_data')
+@json([
+	'page' => 'appointment-management',
+])
+@endsection
+
 @section('main_content')
 	<main class="appointment-main">
-		<x-admin-header
-			title="Appointment Management"
-			subtitle="Approve, reject, or reschedule donation appointments"
-		>
-			<x-slot:actions>
-				<div class="appointment-header__views" role="group" aria-label="Appointment view mode">
-					<button class="appointment-view-btn appointment-view-btn--active" type="button">List View</button>
-					<button class="appointment-view-btn appointment-view-btn--outline" type="button">Calendar View</button>
-				</div>
-			</x-slot:actions>
-		</x-admin-header>
-
 		<section class="appointment-content" aria-label="Appointments content">
 			<div class="appointment-stats" aria-label="Appointment summary">
 				<article class="stat-card appointment-stat appointment-stat--green">
