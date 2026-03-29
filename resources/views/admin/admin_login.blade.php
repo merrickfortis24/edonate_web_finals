@@ -74,10 +74,11 @@
 			padding: 40px 24px;
 		}
 
-		.card {
+		.login-card {
 			width: 100%;
 			max-width: 1197px;
 			display: flex;
+			flex-direction: row;
 			border-radius: var(--radius-card);
 			overflow: hidden;
 			box-shadow: var(--shadow-card);
@@ -239,6 +240,34 @@
 			text-decoration: underline;
 		}
 
+		.form__meta {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+			margin-top: -8px;
+			margin-bottom: 20px;
+		}
+
+		.form__remember {
+			display: inline-flex;
+			align-items: center;
+			gap: 8px;
+			font-size: var(--fs-sm);
+			color: var(--color-text-dark);
+			font-weight: 500;
+			margin: 0;
+			cursor: pointer;
+			user-select: none;
+		}
+
+		.form__remember input[type="checkbox"] {
+			width: 16px;
+			height: 16px;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+
 		.form__submit {
 			width: 100%;
 			height: 39px;
@@ -278,7 +307,7 @@
 		}
 
 		@media (max-width: 1024px) {
-			.card {
+			.login-card {
 				max-width: 860px;
 			}
 
@@ -335,7 +364,7 @@
 				padding: 24px 16px;
 			}
 
-			.card {
+			.login-card {
 				flex-direction: column;
 				max-width: 480px;
 			}
@@ -399,13 +428,23 @@
 			.form__submit {
 				font-size: 15px;
 			}
+
+			.form__meta {
+				flex-direction: column;
+				align-items: flex-start;
+				gap: 10px;
+			}
+
+			.form__forgot {
+				margin: 0;
+			}
 		}
 	</style>
 </head>
 <body>
-<main class="page container-fluid" role="main">
-	<div class="card row g-0">
-		<section class="card__left col-12 col-md-5" aria-label="eDonate branding">
+<main class="page" role="main">
+	<div class="login-card">
+		<section class="card__left" aria-label="eDonate branding">
 			<div class="card__left__icon" aria-hidden="true">
 				<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
 					<path d="M32 6C32 6 15 24 15 37.5C15 47.7173 23.2827 56 33.5 56C43.7173 56 52 47.7173 52 37.5C52 24 32 6 32 6Z" fill="white"/>
@@ -436,7 +475,7 @@
 			</div>
 		</section>
 
-		<section class="card__right col-12 col-md-7" aria-label="Login form">
+		<section class="card__right" aria-label="Login form">
 			<h1 class="form__heading">Welcome Back</h1>
 			<p class="form__subheading">Log in to continue to your admin account</p>
 
@@ -451,10 +490,6 @@
 			@if (isset($errors) && $errors->any())
 				<div class="form__alert form__alert--error">{{ $errors->first() }}</div>
 			@endif
-
-			<button type="button" class="form__admin-btn btn" aria-label="Log in as admin">
-				Log In as Admin
-			</button>
 
 			<form id="adminLoginForm" method="POST" action="{{ route('admin.login.store') }}" novalidate>
 				@csrf
@@ -481,7 +516,20 @@
 					required
 				>
 
-				<a href="#" class="form__forgot">Forgot Password?</a>
+				<div class="form__meta">
+					<label class="form__remember" for="remember">
+						<input
+							type="checkbox"
+							id="remember"
+							name="remember"
+							value="1"
+							{{ old('remember') ? 'checked' : '' }}
+						>
+						<span>Remember Me</span>
+					</label>
+
+					<a href="#" class="form__forgot">Forgot Password?</a>
+				</div>
 
 				<button type="submit" class="form__submit btn">Log In</button>
 			</form>

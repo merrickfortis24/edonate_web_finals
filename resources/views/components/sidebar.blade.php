@@ -24,11 +24,12 @@
         ['label' => 'Blood Availability Mapping', 'route' => 'admin.blood-availability-mapping', 'active' => ['admin.blood-availability-mapping*'], 'roles' => ['admin', 'staff'], 'multiline' => true],
         ['label' => 'Notification Center', 'route' => 'admin.notification-center', 'active' => ['admin.notification-center*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Report & Analytics', 'route' => 'admin.report-analytics', 'active' => ['admin.report-analytics*'], 'roles' => ['admin', 'staff']],
-        ['label' => 'Audit Logs', 'url' => '#', 'active' => [], 'roles' => ['admin', 'staff']],
+        ['label' => 'Audit Logs', 'route' => 'admin.audit-logs', 'active' => ['admin.audit-logs*'], 'roles' => ['admin', 'staff']],
+        ['label' => 'RBAC', 'route' => 'admin.rbac', 'active' => ['admin.rbac*'], 'roles' => ['admin', 'staff']],
     ];
 
     $utilityItems = $utilityItems ?? [
-        ['label' => 'Settings', 'url' => '#', 'active' => [], 'roles' => ['admin', 'staff']],
+        ['label' => 'Settings', 'route' => 'admin.settings', 'active' => ['admin.settings*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Logout', 'route' => 'admin.logout', 'active' => [], 'roles' => ['admin', 'staff'], 'logout' => true],
     ];
 
