@@ -5,11 +5,20 @@
 @section('layout_wrapper_class', 'layout')
 @section('sidebar_link_mode', 'link')
 @section('hamburger_id', 'hamburger')
+@section('render_default_hamburger', 'false')
 @section('sidebar_aria_label', 'Main navigation')
 @section('sidebar_nav_aria_label', 'Main navigation')
 
 @section('header_title', 'User Management')
 @section('header_subtitle', 'Manage donor registration, updates, and account validation')
+
+@section('header_slot')
+	<button class="hamburger" id="hamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+	</button>
+@endsection
 
 @section('header_actions')
 	<button class="btn-export btn" aria-label="Export donor data">
@@ -31,26 +40,26 @@
 @section('main_content')
 <main class="main container-fluid px-0">
 	<div class="content container-fluid py-3">
-		<section class="stats row g-4" aria-label="Donor statistics">
-			<div class="col-12 col-sm-6 col-xl-3">
+		<section class="stats row g-3" aria-label="Donor statistics">
+			<div class="col-6">
 				<div class="stat-card stat-card--red h-100">
 					<span class="stat-card__label">Total Donors</span>
 					<span class="stat-card__value">9</span>
 				</div>
 			</div>
-			<div class="col-12 col-sm-6 col-xl-3">
+			<div class="col-6">
 				<div class="stat-card stat-card--green h-100">
 					<span class="stat-card__label">Eligible Donors</span>
 					<span class="stat-card__value">6</span>
 				</div>
 			</div>
-			<div class="col-12 col-sm-6 col-xl-3">
+			<div class="col-6">
 				<div class="stat-card stat-card--blue h-100">
 					<span class="stat-card__label">Not Eligible</span>
 					<span class="stat-card__value">3</span>
 				</div>
 			</div>
-			<div class="col-12 col-sm-6 col-xl-3">
+			<div class="col-6">
 				<div class="stat-card stat-card--gold h-100">
 					<span class="stat-card__label">Total Donations</span>
 					<span class="stat-card__value">97</span>

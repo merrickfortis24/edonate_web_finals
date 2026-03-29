@@ -6,9 +6,18 @@
 @section('sidebar_link_mode', 'link')
 @section('sidebar_aria_label', 'Main navigation')
 @section('sidebar_nav_aria_label', 'Main navigation')
+@section('render_default_hamburger', 'false')
 
 @section('header_title', 'Donation Records')
 @section('header_subtitle', 'View donation history and eligibility logs')
+
+@section('header_slot')
+  <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
+    <span class="hamburger__bar"></span>
+    <span class="hamburger__bar"></span>
+    <span class="hamburger__bar"></span>
+  </button>
+@endsection
 
 @section('header_actions')
   <button class="btn-export btn" type="button">
@@ -40,7 +49,7 @@
       <section class="stats-grid row g-3" aria-label="Statistics overview">
 
         <!-- Total Donations -->
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-6 col-xl-3">
         <div class="stat-card stat-card--red h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">Total Donations</span>
@@ -55,7 +64,7 @@
         </div>
 
         <!-- This Month -->
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-6 col-xl-3">
         <div class="stat-card stat-card--green h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">This Month</span>
@@ -72,7 +81,7 @@
         </div>
 
         <!-- Active Donors -->
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-6 col-xl-3">
         <div class="stat-card stat-card--blue h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">Active Donors</span>
@@ -88,7 +97,7 @@
         </div>
 
         <!-- Average Volume -->
-        <div class="col-12 col-sm-6 col-xl-3">
+        <div class="col-6 col-xl-3">
         <div class="stat-card stat-card--gold h-100">
           <div class="stat-card__header">
             <span class="stat-card__label">Average Volume</span>

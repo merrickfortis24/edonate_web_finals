@@ -6,9 +6,18 @@
 @section('sidebar_link_mode', 'link')
 @section('sidebar_aria_label', 'Main navigation')
 @section('sidebar_nav_aria_label', 'Main navigation')
+@section('render_default_hamburger', 'false')
 
 @section('header_title', 'Reports & Analytics')
 @section('header_subtitle', 'Visual charts summarizing donation trends and user activity')
+
+@section('header_slot')
+	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+	</button>
+@endsection
 
 @section('header_actions')
 	<button class="report-header-export btn" type="button" aria-label="Export all reports">
@@ -116,7 +125,7 @@
 			</section>
 
 			<section class="report-stats row g-3" aria-label="Report summary metrics">
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="report-stat-card report-stat-card--red h-100">
 						<span class="report-stat-card__label">Total Donations</span>
 						<span class="report-stat-card__value">2,956</span>
@@ -124,7 +133,7 @@
 					</article>
 				</div>
 
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="report-stat-card report-stat-card--green h-100">
 						<span class="report-stat-card__label">Active Donors</span>
 						<span class="report-stat-card__value">1,847</span>
@@ -132,7 +141,7 @@
 					</article>
 				</div>
 
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="report-stat-card report-stat-card--blue h-100">
 						<span class="report-stat-card__label">Avg. per Month</span>
 						<span class="report-stat-card__value">369</span>
@@ -140,7 +149,7 @@
 					</article>
 				</div>
 
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="report-stat-card report-stat-card--gold h-100">
 						<span class="report-stat-card__label">Success Rate</span>
 						<span class="report-stat-card__value">94.6%</span>

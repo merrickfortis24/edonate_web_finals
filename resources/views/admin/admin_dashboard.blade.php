@@ -66,7 +66,7 @@
 	<div class="main container-fluid px-0">
 		<main class="content container-fluid py-3">
 			<section class="dashboard-stats row" aria-label="Dashboard statistics">
-				<div class="col-12 col-sm-6 col-lg-3">
+				<div class="col-6 col-lg-3">
 					<div class="stat-card stat-card--red h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#128101;</span>
@@ -78,7 +78,7 @@
 					</div>
 				</div>
 
-				<div class="col-12 col-sm-6 col-lg-3">
+				<div class="col-6 col-lg-3">
 					<div class="stat-card stat-card--green h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#10004;</span>
@@ -90,7 +90,7 @@
 					</div>
 				</div>
 
-				<div class="col-12 col-sm-6 col-lg-3">
+				<div class="col-6 col-lg-3">
 					<div class="stat-card stat-card--blue h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#128197;</span>
@@ -102,7 +102,7 @@
 					</div>
 				</div>
 
-				<div class="col-12 col-sm-6 col-lg-3">
+				<div class="col-6 col-lg-3">
 					<div class="stat-card stat-card--gold h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#129656;</span>

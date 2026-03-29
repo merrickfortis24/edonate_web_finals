@@ -12,10 +12,18 @@
 @section('overlay_class', 'appointment-overlay overlay')
 @section('overlay_open_class', 'is-visible')
 @section('hamburger_id', 'appointmentHamburger')
-@section('hamburger_class', 'appointment-hamburger hamburger')
+@section('render_default_hamburger', 'false')
 
 @section('header_title', 'Appointment Management')
 @section('header_subtitle', 'Approve, reject, or reschedule donation appointments')
+
+@section('header_slot')
+	<button class="hamburger" id="appointmentHamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="appointmentSidebar">
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+	</button>
+@endsection
 
 @section('header_actions')
 	<div class="appointment-header__views" role="group" aria-label="Appointment view mode">
@@ -34,25 +42,25 @@
 	<main class="appointment-main container-fluid px-0">
 		<section class="appointment-content container-fluid py-3" aria-label="Appointments content">
 			<div class="appointment-stats row g-3" aria-label="Appointment summary">
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="stat-card appointment-stat appointment-stat--green h-100">
 						<p class="appointment-stat__label">Confirmed</p>
 						<p class="appointment-stat__value">5</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="stat-card appointment-stat appointment-stat--gold h-100">
 						<p class="appointment-stat__label">Pending Approval</p>
 						<p class="appointment-stat__value">3</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="stat-card appointment-stat appointment-stat--red h-100">
 						<p class="appointment-stat__label">Cancelled</p>
 						<p class="appointment-stat__value">1</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="stat-card appointment-stat appointment-stat--blue h-100">
 						<p class="appointment-stat__label">Rescheduled</p>
 						<p class="appointment-stat__value">1</p>

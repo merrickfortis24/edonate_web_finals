@@ -7,13 +7,18 @@
 @section('sidebar_aria_label', 'Main navigation')
 @section('sidebar_nav_aria_label', 'Main navigation')
 @section('sidebar_open_class', 'is-open')
-@section('hamburger_class', 'sidebar__hamburger hamburger')
+@section('render_default_hamburger', 'false')
 
 @section('header_title', 'Geographic Blood Availability')
 @section('header_subtitle', 'Monitor blood type availability across different locations in real-time')
-@section('header_class', 'page-header')
-@section('header_left_class', 'page-header__left')
-@section('header_right_class', 'page-header__date')
+
+@section('header_slot')
+	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+		<span class="hamburger__bar"></span>
+	</button>
+@endsection
 
 @section('header_actions')
 	<p class="page-header__date-label">Today's Date</p>

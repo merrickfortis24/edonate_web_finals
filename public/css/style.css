@@ -932,10 +932,16 @@ button {
 	overflow: hidden;
 }
 
+.admin-users-page .table-inner {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
 .table-grid {
 	display: grid;
 	grid-template-columns: 100px 195px 115px 185px 158px 100px 95px 138px;
 	align-items: center;
+	min-width: 1100px;
 }
 
 .table-thead {
@@ -1174,6 +1180,7 @@ button {
 	flex: 1;
 }
 
+.appointment-header .header__title,
 .appointment-header__title {
 	font-size: var(--fs-3xl);
 	font-weight: 700;
@@ -1181,6 +1188,7 @@ button {
 	line-height: 1.2;
 }
 
+.appointment-header .header__subtitle,
 .appointment-header__subtitle {
 	font-size: var(--fs-2xl);
 	font-weight: 400;
@@ -1655,11 +1663,11 @@ button {
 
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
-	.overlay {
+	.admin-page .overlay {
 		display: block;
 	}
 
-	.sidebar {
+	.admin-page .sidebar {
 		position: fixed;
 		left: 0;
 		top: 0;
@@ -1667,11 +1675,11 @@ button {
 		transform: translateX(-100%);
 	}
 
-	.sidebar--open {
+	.admin-page .sidebar.sidebar--open {
 		transform: translateX(0);
 	}
 
-	.hamburger {
+	.admin-page .hamburger {
 		display: flex;
 	}
 
@@ -1768,7 +1776,7 @@ button {
 		transform: translateX(-100%);
 		transition: transform 0.35s ease;
 		overflow-y: auto;
-		z-index: 150;
+		z-index: 1000;
 	}
 
 	.admin-appointments-page .sidebar.is-open {
@@ -1786,11 +1794,13 @@ button {
 		gap: 12px;
 	}
 
+	.appointment-header .header__title,
 	.appointment-header__title {
 		font-size: 24px;
 		margin-top: 0;
 	}
 
+	.appointment-header .header__subtitle,
 	.appointment-header__subtitle {
 		font-size: 16px;
 	}
@@ -1944,6 +1954,7 @@ button {
 		width: 100%;
 	}
 
+	.appointment-header .header__title,
 	.appointment-header__title {
 		font-size: var(--fs-lg);
 	}
@@ -1957,6 +1968,7 @@ button {
 		min-height: auto;
 	}
 
+	.appointment-header .header__subtitle,
 	.appointment-header__subtitle {
 		font-size: var(--fs-sm);
 	}
@@ -2073,6 +2085,7 @@ button {
 	z-index: 50;
 }
 
+.admin-donor-records-page .page-header .header__title,
 .admin-donor-records-page .page-header__title {
 	font-size: 32px;
 	font-weight: 700;
@@ -2080,6 +2093,7 @@ button {
 	line-height: 1.2;
 }
 
+.admin-donor-records-page .page-header .header__subtitle,
 .admin-donor-records-page .page-header__subtitle {
 	font-size: 24px;
 	font-weight: 400;
@@ -2497,6 +2511,22 @@ button {
 }
 
 @media (max-width: 1024px) {
+	.admin-donor-records-page .sidebar {
+		position: fixed;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		height: 100%;
+		transform: translateX(-100%);
+		transition: transform 0.3s ease;
+		overflow-y: auto;
+		z-index: 1000;
+	}
+
+	.admin-donor-records-page .sidebar.sidebar--open {
+		transform: translateX(0);
+	}
+
 	.admin-donor-records-page .main {
 		width: 100%;
 		margin-left: 0;
@@ -2506,10 +2536,12 @@ button {
 		padding: 0 24px 0 64px;
 	}
 
+	.admin-donor-records-page .page-header .header__title,
 	.admin-donor-records-page .page-header__title {
 		font-size: 26px;
 	}
 
+	.admin-donor-records-page .page-header .header__subtitle,
 	.admin-donor-records-page .page-header__subtitle {
 		font-size: 18px;
 	}
@@ -2548,10 +2580,12 @@ button {
 		gap: 14px;
 	}
 
+	.admin-donor-records-page .page-header .header__title,
 	.admin-donor-records-page .page-header__title {
 		font-size: 22px;
 	}
 
+	.admin-donor-records-page .page-header .header__subtitle,
 	.admin-donor-records-page .page-header__subtitle {
 		font-size: 15px;
 	}
@@ -3614,7 +3648,7 @@ button {
 		transform: translateX(-100%);
 		transition: transform 0.3s ease;
 		overflow-y: auto;
-		z-index: 150;
+		z-index: 1000;
 	}
 
 	.admin-notification-center-page .sidebar.is-open {
@@ -3652,10 +3686,20 @@ button {
 		gap: 10px;
 	}
 
-	.admin-notification-center-page .toolbar__filter,
+	.admin-notification-center-page .toolbar__filter {
+		flex: 1 1 100%;
+		min-width: 0;
+	}
+
+	.admin-notification-center-page .toolbar__filter-btn {
+		width: 100%;
+	}
+
 	.admin-notification-center-page .btn-mark-all,
 	.admin-notification-center-page .btn-clear-all {
-		flex: 1 1 220px;
+		flex: 1 1 calc(50% - 6px);
+		min-width: 0;
+		width: auto;
 	}
 
 	.admin-notification-center-page .toolbar__spacer {
@@ -3718,6 +3762,7 @@ button {
 	.admin-notification-center-page .btn-mark-all,
 	.admin-notification-center-page .btn-clear-all {
 		width: 100%;
+		flex: 1 1 100%;
 	}
 
 	.admin-notification-center-page .notif-item {
@@ -4147,7 +4192,7 @@ button {
 		transform: translateX(-100%);
 		transition: transform 0.3s ease;
 		overflow-y: auto;
-		z-index: 150;
+		z-index: 1000;
 	}
 
 	.admin-report-analytics-page .sidebar.sidebar--open {
@@ -4836,7 +4881,7 @@ button {
 		transform: translateX(-100%);
 		transition: transform 0.3s ease;
 		overflow-y: auto;
-		z-index: 150;
+		z-index: 1000;
 	}
 
 	.admin-audit-logs-page .sidebar.sidebar--open {
@@ -5272,7 +5317,7 @@ button {
 		transform: translateX(-100%);
 		transition: transform 0.3s ease;
 		overflow-y: auto;
-		z-index: 150;
+		z-index: 1000;
 	}
 
 	.admin-rbac-page .sidebar.sidebar--open {
@@ -5607,7 +5652,7 @@ button {
 		transform: translateX(-100%);
 		transition: transform 0.3s ease;
 		overflow-y: auto;
-		z-index: 150;
+		z-index: 1000;
 	}
 
 	.admin-settings-page .sidebar.sidebar--open {

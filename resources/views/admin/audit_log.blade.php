@@ -202,25 +202,25 @@
 	<main class="main container-fluid px-0">
 		<div class="page-body container-fluid py-3">
 			<section class="audit-stats row g-3" aria-label="Audit statistics">
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="audit-stat-card audit-stat-card--green h-100">
 						<p class="audit-stat-card__label">Total Logs</p>
 						<p class="audit-stat-card__value" id="auditStatTotal">0</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="audit-stat-card audit-stat-card--gold h-100">
 						<p class="audit-stat-card__label">Success</p>
 						<p class="audit-stat-card__value" id="auditStatSuccess">0</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="audit-stat-card audit-stat-card--red h-100">
 						<p class="audit-stat-card__label">Failed</p>
 						<p class="audit-stat-card__value" id="auditStatFailed">0</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="audit-stat-card audit-stat-card--blue h-100">
 						<p class="audit-stat-card__label">Warnings</p>
 						<p class="audit-stat-card__value" id="auditStatWarnings">0</p>

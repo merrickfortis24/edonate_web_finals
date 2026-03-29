@@ -76,25 +76,25 @@
 			<div id="rbacAlertHost" class="rbac-alert-host"></div>
 
 			<section class="rbac-summary row g-3" aria-label="RBAC overview">
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="rbac-summary-card rbac-summary-card--red h-100">
 						<p class="rbac-summary-card__label">Roles</p>
 						<p class="rbac-summary-card__value" id="rbacStatRoles">0</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="rbac-summary-card rbac-summary-card--blue h-100">
 						<p class="rbac-summary-card__label">Permissions</p>
 						<p class="rbac-summary-card__value" id="rbacStatPermissions">0</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="rbac-summary-card rbac-summary-card--green h-100">
 						<p class="rbac-summary-card__label">Users Assigned</p>
 						<p class="rbac-summary-card__value" id="rbacStatUsers">0</p>
 					</article>
 				</div>
-				<div class="col-12 col-sm-6 col-xl-3">
+				<div class="col-6 col-xl-3">
 					<article class="rbac-summary-card rbac-summary-card--gold h-100">
 						<p class="rbac-summary-card__label">Total Assignments</p>
 						<p class="rbac-summary-card__value" id="rbacStatAssignments">0</p>
