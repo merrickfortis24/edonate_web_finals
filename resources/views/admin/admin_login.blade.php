@@ -500,7 +500,6 @@
 					type="email"
 					name="email"
 					value="{{ old('email') }}"
-					placeholder="Johndoe@sample.com"
 					autocomplete="email"
 					required
 				>
@@ -511,7 +510,6 @@
 					id="password"
 					type="password"
 					name="password"
-					placeholder="***********"
 					autocomplete="current-password"
 					required
 				>
