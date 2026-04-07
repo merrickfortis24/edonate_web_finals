@@ -2,21 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\AdminPasswordResetMail;
 use Carbon\Carbon;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Throwable;
 
 class AdminAuthController extends Controller
 {
     private const REMEMBER_COOKIE_NAME = 'admin_remember';
     private const REMEMBER_DAYS = 30;
+    private const RESET_TOKEN_TTL_MINUTES = 30;
+    private const RESET_CACHE_PREFIX = 'admin_password_reset:';
+    private const RESET_CACHE_STORE = 'file';
 
     /**
      * Display admin login page.
@@ -60,6 +67,135 @@ class AdminAuthController extends Controller
         }
 
         return redirect()->route('admin.dashboard');
+    }
+
+    /**
+     * Display forgot password module for admin accounts.
+     */
+    public function forgotPassword(Request $request)
+    {
+        if ($this->hasActiveAdminSession($request)) {
+            return redirect()->route('admin.dashboard');
+        }
+
+        return view('admin.forgot_pass');
+    }
+
+    /**
+     * Handle admin forgot password request.
+     */
+    public function sendPasswordResetLink(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email', 'max:150'],
+        ]);
+
+        $admin = DB::table('admins')
+            ->select('admin_id', 'email', 'full_name', 'username')
+            ->where('email', $validated['email'])
+            ->first();
+
+        if ($admin) {
+            $token = Str::random(64);
+            $resetPath = route('admin.password.reset.form', [
+                'email' => $admin->email,
+                'token' => $token,
+            ], false);
+            $resetUrl = rtrim($request->getSchemeAndHttpHost(), '/').$resetPath;
+
+            Cache::store(self::RESET_CACHE_STORE)->put(
+                $this->makePasswordResetCacheKey($admin->email),
+                ['token_hash' => Hash::make($token)],
+                now()->addMinutes(self::RESET_TOKEN_TTL_MINUTES)
+            );
+
+            try {
+                Mail::to($admin->email)->send(new AdminPasswordResetMail(
+                    (string) ($admin->full_name ?: $admin->username ?: 'Admin'),
+                    $resetUrl,
+                    self::RESET_TOKEN_TTL_MINUTES
+                ));
+            } catch (Throwable $exception) {
+                logger()->error('Failed to send admin password reset email.', [
+                    'email' => $admin->email,
+                    'ip' => $request->ip(),
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+
+            logger()->info('Admin password reset requested.', [
+                'admin_id' => $admin->admin_id,
+                'email' => $admin->email,
+                'ip' => $request->ip(),
+            ]);
+        }
+
+        return back()->with('success', 'If an account exists for that email, a reset link has been sent.');
+    }
+
+    /**
+     * Display reset password form for valid admin reset links.
+     */
+    public function showResetPasswordForm(Request $request)
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email', 'max:150'],
+            'token' => ['required', 'string', 'size:64'],
+        ]);
+
+        if (!$this->isValidPasswordResetToken($validated['email'], $validated['token'])) {
+            return redirect()
+                ->route('admin.password.request')
+                ->withErrors(['email' => 'This reset link is invalid or has expired.']);
+        }
+
+        return view('admin.reset_password', [
+            'email' => $validated['email'],
+            'token' => $validated['token'],
+        ]);
+    }
+
+    /**
+     * Update admin password using a valid reset token.
+     */
+    public function resetPassword(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'email' => ['required', 'email', 'max:150'],
+            'token' => ['required', 'string', 'size:64'],
+            'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
+        ]);
+
+        if (!$this->isValidPasswordResetToken($validated['email'], $validated['token'])) {
+            return redirect()
+                ->route('admin.password.request')
+                ->withErrors(['email' => 'This reset link is invalid or has expired.']);
+        }
+
+        $updatePayload = [
+            'password' => Hash::make($validated['password']),
+        ];
+
+        if ($this->supportsRememberMeStorage()) {
+            $updatePayload['remember_token'] = null;
+            $updatePayload['remember_token_expires_at'] = null;
+        }
+
+        $updatedRows = DB::table('admins')
+            ->where('email', $validated['email'])
+            ->update($updatePayload);
+
+        Cache::store(self::RESET_CACHE_STORE)->forget($this->makePasswordResetCacheKey($validated['email']));
+
+        if ($updatedRows === 0) {
+            return redirect()
+                ->route('admin.password.request')
+                ->withErrors(['email' => 'Unable to reset password for this account.']);
+        }
+
+        return redirect()
+            ->route('admin.login')
+            ->with('success', 'Your password has been reset. You can now log in.');
     }
 
     /**
@@ -329,6 +465,28 @@ class AdminAuthController extends Controller
 
         return Schema::hasColumn('admins', 'remember_token')
             && Schema::hasColumn('admins', 'remember_token_expires_at');
+    }
+
+    /**
+     * Build cache key for admin password reset token state.
+     */
+    private function makePasswordResetCacheKey(string $email): string
+    {
+        return self::RESET_CACHE_PREFIX.Str::lower(trim($email));
+    }
+
+    /**
+     * Validate password reset token against cached hash.
+     */
+    private function isValidPasswordResetToken(string $email, string $token): bool
+    {
+        $cacheData = Cache::store(self::RESET_CACHE_STORE)->get($this->makePasswordResetCacheKey($email));
+
+        if (!is_array($cacheData) || empty($cacheData['token_hash'])) {
+            return false;
+        }
+
+        return Hash::check($token, (string) $cacheData['token_hash']);
     }
 
     /**

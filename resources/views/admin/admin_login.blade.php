@@ -526,7 +526,7 @@
 						<span>Remember Me</span>
 					</label>
 
-					<a href="#" class="form__forgot">Forgot Password?</a>
+					<a href="{{ route('admin.password.request') }}" class="form__forgot">Forgot Password?</a>
 				</div>
 
 				<button type="submit" class="form__submit btn">Log In</button>
