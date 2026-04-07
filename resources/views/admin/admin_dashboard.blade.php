@@ -26,18 +26,18 @@
 	</div>
 
 	<div class="header__icon-actions" aria-label="Dashboard quick actions">
-		<button class="header__icon-btn" type="button" aria-label="Notifications (9 or more)">
+		<a class="header__icon-btn" href="{{ route('admin.notification-center') }}" aria-label="Go to Notification Center">
 			<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
 				<path d="M12 2C10.07 2 8.32 2.85 7.14 4.21L3 8.99V15H5V20H19V15H21V8.99L16.86 4.21C15.68 2.85 13.93 2 12 2ZM12 4C13.38 4 14.63 4.57 15.52 5.5H8.48C9.37 4.57 10.62 4 12 4ZM5 10.41L8.14 7H15.86L19 10.41V13H5V10.41ZM7 15H17V18H7V15Z" />
 			</svg>
 			<span class="header__badge" aria-hidden="true">9+</span>
-		</button>
+		</a>
 
-		<button class="header__icon-btn" type="button" aria-label="Settings">
+		<a class="header__icon-btn" href="{{ route('admin.settings') }}" aria-label="Go to Settings">
 			<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
 				<path d="M12 15.5A3.5 3.5 0 0 1 8.5 12 3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5 3.5 3.5 0 0 1-3.5 3.5m7.43-2.92c.04-.34.07-.69.07-1.08s-.03-.74-.07-1.08l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.34-.07.69-.07 1.08s.03.74.07 1.08l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65z" />
 			</svg>
-		</button>
+		</a>
 	</div>
 @endsection
 
