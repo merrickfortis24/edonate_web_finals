@@ -20,7 +20,7 @@
 @endsection
 
 @section('header_actions')
-	<button class="audit-export-btn btn" type="button" aria-label="Export logs">
+	<button class="audit-export-btn btn" id="auditExportBtn" type="button" aria-label="Export logs">
 		<svg class="audit-export-btn__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 			<path d="M21 15V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V15" stroke="white" stroke-width="2" stroke-linecap="round"/>
 			<path d="M7 10L12 15L17 10" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -34,164 +34,19 @@
 {!! json_encode([
 	'page' => 'audit-logs',
 	'auditLogs' => [
+		'api' => [
+			'listUrl' => $auditApi['listUrl'] ?? '',
+			'exportUrl' => $auditApi['exportUrl'] ?? '',
+		],
+		'defaults' => [
+			'perPage' => 10,
+		],
 		'filters' => [
 			'actions' => [
 				['value' => '', 'label' => 'All Actions'],
-				['value' => 'approve', 'label' => 'Approve'],
-				['value' => 'create', 'label' => 'Create'],
-				['value' => 'export', 'label' => 'Export'],
-				['value' => 'update', 'label' => 'Update'],
-				['value' => 'login', 'label' => 'Login'],
-				['value' => 'delete', 'label' => 'Delete'],
-				['value' => 'view', 'label' => 'View'],
 			],
 			'users' => [
 				['value' => '', 'label' => 'All Users'],
-				['value' => 'admin', 'label' => 'Admin'],
-				['value' => 'donor', 'label' => 'Donor'],
-				['value' => 'system', 'label' => 'System'],
-			],
-		],
-		'entries' => [
-			[
-				'timestamp' => '2026-02-04 14:32:15',
-				'userName' => 'Admin User',
-				'userRole' => 'Admin',
-				'userType' => 'admin',
-				'actionType' => 'approve',
-				'actionLabel' => 'Approve',
-				'description' => 'Approved donor registration',
-				'moduleType' => 'user-mgmt',
-				'moduleLabel' => 'User Management',
-				'ipAddress' => '192.168.1.100',
-				'result' => 'success',
-				'resultLabel' => 'Success',
-			],
-			[
-				'timestamp' => '2026-02-04 14:28:03',
-				'userName' => 'Sarah Johnson',
-				'userRole' => 'Donor',
-				'userType' => 'donor',
-				'actionType' => 'create',
-				'actionLabel' => 'Create',
-				'description' => 'Booked appointment',
-				'moduleType' => 'appointments',
-				'moduleLabel' => 'Appointments',
-				'ipAddress' => '203.123.45.67',
-				'result' => 'success',
-				'resultLabel' => 'Success',
-			],
-			[
-				'timestamp' => '2026-02-04 14:15:42',
-				'userName' => 'Admin User',
-				'userRole' => 'Admin',
-				'userType' => 'admin',
-				'actionType' => 'export',
-				'actionLabel' => 'Export',
-				'description' => 'Exported donation records',
-				'moduleType' => 'reports',
-				'moduleLabel' => 'Reports',
-				'ipAddress' => '192.168.1.100',
-				'result' => 'success',
-				'resultLabel' => 'Success',
-			],
-			[
-				'timestamp' => '2026-02-04 14:05:21',
-				'userName' => 'System',
-				'userRole' => 'System',
-				'userType' => 'system',
-				'actionType' => 'create',
-				'actionLabel' => 'Create',
-				'description' => 'Automated backup completed',
-				'moduleType' => 'settings',
-				'moduleLabel' => 'Settings',
-				'ipAddress' => '127.0.0.1',
-				'result' => 'success',
-				'resultLabel' => 'Success',
-			],
-			[
-				'timestamp' => '2026-02-04 13:58:16',
-				'userName' => 'Admin User',
-				'userRole' => 'Admin',
-				'userType' => 'admin',
-				'actionType' => 'update',
-				'actionLabel' => 'Update',
-				'description' => 'Updated donor profile',
-				'moduleType' => 'user-mgmt',
-				'moduleLabel' => 'User Management',
-				'ipAddress' => '192.168.1.100',
-				'result' => 'success',
-				'resultLabel' => 'Success',
-			],
-			[
-				'timestamp' => '2026-02-04 13:45:33',
-				'userName' => 'Robert Chen',
-				'userRole' => 'Donor',
-				'userType' => 'donor',
-				'actionType' => 'login',
-				'actionLabel' => 'Login',
-				'description' => 'Failed login attempt',
-				'moduleType' => 'auth',
-				'moduleLabel' => 'Authentication',
-				'ipAddress' => '187.45.67.89',
-				'result' => 'failed',
-				'resultLabel' => 'Failed',
-			],
-			[
-				'timestamp' => '2026-02-04 13:40:12',
-				'userName' => 'Admin User',
-				'userRole' => 'Admin',
-				'userType' => 'admin',
-				'actionType' => 'delete',
-				'actionLabel' => 'Delete',
-				'description' => 'Deleted cancelled appointment',
-				'moduleType' => 'appointments',
-				'moduleLabel' => 'Appointments',
-				'ipAddress' => '192.168.1.100',
-				'result' => 'success',
-				'resultLabel' => 'Success',
-			],
-			[
-				'timestamp' => '2026-02-04 13:25:47',
-				'userName' => 'Admin User',
-				'userRole' => 'Admin',
-				'userType' => 'admin',
-				'actionType' => 'view',
-				'actionLabel' => 'View',
-				'description' => 'Viewed blood availability map',
-				'moduleType' => 'blood-map',
-				'moduleLabel' => 'Blood Map',
-				'ipAddress' => '192.168.1.100',
-				'result' => 'warning',
-				'resultLabel' => 'Warning',
-			],
-			[
-				'timestamp' => '2026-02-04 13:12:05',
-				'userName' => 'Emily Rodriguez',
-				'userRole' => 'Donor',
-				'userType' => 'donor',
-				'actionType' => 'view',
-				'actionLabel' => 'View',
-				'description' => 'Completed eligibility check',
-				'moduleType' => 'user-mgmt',
-				'moduleLabel' => 'User Management',
-				'ipAddress' => '180.95.23.11',
-				'result' => 'success',
-				'resultLabel' => 'Success',
-			],
-			[
-				'timestamp' => '2026-02-04 13:05:28',
-				'userName' => 'System',
-				'userRole' => 'System',
-				'userType' => 'system',
-				'actionType' => 'create',
-				'actionLabel' => 'Create',
-				'description' => 'Sent appointment reminders',
-				'moduleType' => 'notifications',
-				'moduleLabel' => 'Notifications',
-				'ipAddress' => '127.0.0.1',
-				'result' => 'success',
-				'resultLabel' => 'Success',
 			],
 		],
 	],
@@ -286,6 +141,10 @@
 						<tbody id="auditTableBody"></tbody>
 					</table>
 				</div>
+
+				<div class="audit-pagination-wrap mt-3">
+					<ul class="pagination pagination-sm justify-content-end mb-0" id="auditPagination"></ul>
+				</div>
 			</section>
 		</div>
 	</main>
@@ -295,14 +154,46 @@
 <script>
 	(function () {
 		var payload = window.AdminPageData && window.AdminPageData.auditLogs ? window.AdminPageData.auditLogs : {};
-		var entries = Array.isArray(payload.entries) ? payload.entries.slice() : [];
-		var filters = payload.filters || {};
+		var api = payload.api && typeof payload.api === 'object' ? payload.api : {};
+		var defaults = payload.defaults && typeof payload.defaults === 'object' ? payload.defaults : {};
+
+		var listUrl = String(api.listUrl || '');
+		var exportUrl = String(api.exportUrl || '');
+
+		var state = {
+			search: '',
+			actionType: '',
+			userType: '',
+			page: 1,
+			perPage: Math.max(1, Number(defaults.perPage || 10)),
+			total: 0,
+			lastPage: 1,
+			isLoading: false,
+			errorMessage: ''
+		};
+
+		var entries = [];
+		var stats = {
+			total: 0,
+			success: 0,
+			failed: 0,
+			warning: 0
+		};
+
+		var filtersCache = {
+			actions: Array.isArray(payload.filters && payload.filters.actions) ? payload.filters.actions : [{ value: '', label: 'All Actions' }],
+			users: Array.isArray(payload.filters && payload.filters.users) ? payload.filters.users : [{ value: '', label: 'All Users' }]
+		};
+
+		var searchDebounceHandle = null;
 
 		var searchInput = document.getElementById('auditSearchInput');
 		var actionFilter = document.getElementById('auditActionFilter');
 		var userFilter = document.getElementById('auditUserFilter');
+		var exportBtn = document.getElementById('auditExportBtn');
 		var tableBody = document.getElementById('auditTableBody');
 		var tableMeta = document.getElementById('auditTableMeta');
+		var pagination = document.getElementById('auditPagination');
 
 		var statTotal = document.getElementById('auditStatTotal');
 		var statSuccess = document.getElementById('auditStatSuccess');
@@ -318,7 +209,13 @@
 				.replace(/'/g, '&#39;');
 		}
 
-		function populateSelect(selectElement, options, fallbackLabel) {
+		function classToken(value) {
+			return String(value || '')
+				.toLowerCase()
+				.replace(/[^a-z0-9_-]/g, '-');
+		}
+
+		function populateSelect(selectElement, options, fallbackLabel, currentValue) {
 			if (!selectElement) {
 				return;
 			}
@@ -330,36 +227,9 @@
 			selectElement.innerHTML = list.map(function (option) {
 				return '<option value="' + escapeHtml(option.value) + '">' + escapeHtml(option.label) + '</option>';
 			}).join('');
-		}
 
-		function renderStats(items) {
-			var total = items.length;
-			var successCount = 0;
-			var failedCount = 0;
-			var warningCount = 0;
-
-			for (var i = 0; i < items.length; i += 1) {
-				var result = String(items[i].result || '').toLowerCase();
-				if (result === 'success') {
-					successCount += 1;
-				} else if (result === 'failed') {
-					failedCount += 1;
-				} else if (result === 'warning') {
-					warningCount += 1;
-				}
-			}
-
-			if (statTotal) {
-				statTotal.textContent = String(total);
-			}
-			if (statSuccess) {
-				statSuccess.textContent = String(successCount);
-			}
-			if (statFailed) {
-				statFailed.textContent = String(failedCount);
-			}
-			if (statWarnings) {
-				statWarnings.textContent = String(warningCount);
+			if (typeof currentValue !== 'undefined') {
+				selectElement.value = String(currentValue);
 			}
 		}
 
@@ -382,24 +252,94 @@
 			return '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
 		}
 
-		function renderRows(items) {
+		function renderStats() {
+			if (statTotal) {
+				statTotal.textContent = String(Math.max(0, Number(stats.total || 0)));
+			}
+			if (statSuccess) {
+				statSuccess.textContent = String(Math.max(0, Number(stats.success || 0)));
+			}
+			if (statFailed) {
+				statFailed.textContent = String(Math.max(0, Number(stats.failed || 0)));
+			}
+			if (statWarnings) {
+				statWarnings.textContent = String(Math.max(0, Number(stats.warning || 0)));
+			}
+		}
+
+		function renderPagination() {
+			if (!pagination) {
+				return;
+			}
+
+			pagination.innerHTML = '';
+			if (state.lastPage <= 1) {
+				return;
+			}
+
+			function appendPageButton(label, targetPage, disabled, active) {
+				var li = document.createElement('li');
+				li.className = 'page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '');
+
+				var button = document.createElement('button');
+				button.type = 'button';
+				button.className = 'page-link';
+				button.textContent = label;
+				button.disabled = disabled;
+
+				button.addEventListener('click', function () {
+					if (!disabled) {
+						fetchLogs(targetPage);
+					}
+				});
+
+				li.appendChild(button);
+				pagination.appendChild(li);
+			}
+
+			appendPageButton('Prev', state.page - 1, state.page <= 1, false);
+
+			for (var page = 1; page <= state.lastPage; page += 1) {
+				appendPageButton(String(page), page, false, page === state.page);
+			}
+
+			appendPageButton('Next', state.page + 1, state.page >= state.lastPage, false);
+		}
+
+		function renderRows() {
 			if (!tableBody) {
 				return;
 			}
 
-			if (!items.length) {
-				tableBody.innerHTML = '<tr><td colspan="7" class="audit-table__empty">No log entries found.</td></tr>';
+			if (state.isLoading) {
+				tableBody.innerHTML = '<tr><td colspan="7" class="audit-table__empty">Loading log entries...</td></tr>';
 				if (tableMeta) {
-					tableMeta.textContent = 'Showing 0 of ' + entries.length + ' entries';
+					tableMeta.textContent = 'Loading entries...';
 				}
 				return;
 			}
 
-			tableBody.innerHTML = items.map(function (entry) {
-				var userType = String(entry.userType || '').toLowerCase();
-				var actionType = String(entry.actionType || '').toLowerCase();
-				var moduleType = String(entry.moduleType || '').toLowerCase();
-				var resultType = String(entry.result || '').toLowerCase();
+			if (state.errorMessage) {
+				tableBody.innerHTML = '<tr><td colspan="7" class="audit-table__empty">' + escapeHtml(state.errorMessage) + '</td></tr>';
+				if (tableMeta) {
+					tableMeta.textContent = 'Showing 0 of 0 entries';
+				}
+				return;
+			}
+
+			if (!entries.length) {
+				tableBody.innerHTML = '<tr><td colspan="7" class="audit-table__empty">No log entries found.</td></tr>';
+				if (tableMeta) {
+					tableMeta.textContent = 'Showing 0 of ' + state.total + ' entries';
+				}
+				return;
+			}
+
+			tableBody.innerHTML = entries.map(function (entry) {
+				var userType = classToken(entry.userType);
+				var actionType = classToken(entry.actionType);
+				var moduleType = classToken(entry.moduleType);
+				var resultType = classToken(entry.result);
 
 				var userAvatarClass = 'audit-user__avatar--admin';
 				if (userType === 'donor') {
@@ -418,63 +358,167 @@
 					'<span class="audit-user__meta"><span class="audit-user__name">' + escapeHtml(entry.userName) + '</span><span class="audit-user__role">' + escapeHtml(entry.userRole) + '</span></span>' +
 					'</div></td>' +
 					'<td><div class="audit-action"><span class="audit-action__desc">' + escapeHtml(entry.description) + '</span>' +
-					'<span class="audit-action-badge audit-action-badge--' + escapeHtml(actionType) + '">' + escapeHtml(entry.actionLabel) + '</span></div></td>' +
-					'<td class="audit-col-module"><span class="audit-module-chip audit-module-chip--' + escapeHtml(moduleType) + '">' + escapeHtml(entry.moduleLabel) + '</span></td>' +
+					'<span class="audit-action-badge audit-action-badge--' + actionType + '">' + escapeHtml(entry.actionLabel) + '</span></div></td>' +
+					'<td class="audit-col-module"><span class="audit-module-chip audit-module-chip--' + moduleType + '">' + escapeHtml(entry.moduleLabel) + '</span></td>' +
 					'<td class="audit-col-ip"><span class="audit-ip-text">' + escapeHtml(entry.ipAddress) + '</span></td>' +
-					'<td><span class="audit-result-pill audit-result-pill--' + escapeHtml(resultType) + '">' + getResultIcon(resultType) + escapeHtml(entry.resultLabel) + '</span></td>' +
+					'<td><span class="audit-result-pill audit-result-pill--' + resultType + '">' + getResultIcon(resultType) + escapeHtml(entry.resultLabel) + '</span></td>' +
 					'<td><button class="audit-view-link btn btn-link p-0" type="button" aria-label="View log details for ' + escapeHtml(entry.userName) + '"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View</button></td>' +
 					'</tr>';
 			}).join('');
 
 			if (tableMeta) {
-				tableMeta.textContent = 'Showing ' + items.length + ' of ' + entries.length + ' entries';
+				var start = state.total === 0 ? 0 : ((state.page - 1) * state.perPage + 1);
+				var end = state.total === 0 ? 0 : (start + entries.length - 1);
+				tableMeta.textContent = 'Showing ' + start + ' to ' + end + ' of ' + state.total + ' entries';
 			}
 		}
 
-		function filterRows() {
-			var keyword = searchInput ? searchInput.value.trim().toLowerCase() : '';
-			var actionValue = actionFilter ? actionFilter.value : '';
-			var userValue = userFilter ? userFilter.value : '';
+		function buildQueryParams(includePagination) {
+			var params = new URLSearchParams();
 
-			var filtered = entries.filter(function (entry) {
-				var matchesKeyword = true;
-				if (keyword) {
-					var searchPool = [
-						entry.timestamp,
-						entry.userName,
-						entry.userRole,
-						entry.description,
-						entry.moduleLabel,
-						entry.ipAddress,
-					].join(' ').toLowerCase();
+			if (state.search) {
+				params.set('search', state.search);
+			}
+			if (state.actionType) {
+				params.set('action_type', state.actionType);
+			}
+			if (state.userType) {
+				params.set('user_type', state.userType);
+			}
 
-					matchesKeyword = searchPool.indexOf(keyword) !== -1;
-				}
+			if (includePagination) {
+				params.set('page', String(state.page));
+				params.set('per_page', String(state.perPage));
+			}
 
-				var matchesAction = !actionValue || entry.actionType === actionValue;
-				var matchesUser = !userValue || entry.userType === userValue;
-
-				return matchesKeyword && matchesAction && matchesUser;
-			});
-
-			renderStats(filtered);
-			renderRows(filtered);
+			return params;
 		}
 
-		populateSelect(actionFilter, filters.actions, 'All Actions');
-		populateSelect(userFilter, filters.users, 'All Users');
+		function fetchLogs(page) {
+			if (!listUrl) {
+				state.errorMessage = 'Audit logs API endpoint is not configured.';
+				state.isLoading = false;
+				entries = [];
+				renderStats();
+				renderRows();
+				renderPagination();
+				return;
+			}
 
-		filterRows();
+			state.page = Math.max(1, Number(page || state.page || 1));
+			state.isLoading = true;
+			state.errorMessage = '';
+			renderRows();
+
+			var query = buildQueryParams(true).toString();
+			var requestUrl = listUrl + (query ? ('?' + query) : '');
+
+			fetch(requestUrl, {
+				method: 'GET',
+				headers: {
+					'Accept': 'application/json',
+					'X-Requested-With': 'XMLHttpRequest'
+				},
+				credentials: 'same-origin'
+			})
+				.then(function (response) {
+					return response.json().catch(function () {
+						return {};
+					}).then(function (responsePayload) {
+						if (!response.ok) {
+							throw new Error(responsePayload.message || 'Unable to load audit logs.');
+						}
+						return responsePayload;
+					});
+				})
+				.then(function (responsePayload) {
+					entries = Array.isArray(responsePayload.data) ? responsePayload.data : [];
+
+					var meta = responsePayload.meta && typeof responsePayload.meta === 'object' ? responsePayload.meta : {};
+					state.page = Math.max(1, Number(meta.current_page || state.page));
+					state.lastPage = Math.max(1, Number(meta.last_page || 1));
+					state.perPage = Math.max(1, Number(meta.per_page || state.perPage));
+					state.total = Math.max(0, Number(meta.total || entries.length));
+
+					stats = responsePayload.stats && typeof responsePayload.stats === 'object'
+						? responsePayload.stats
+						: { total: state.total, success: 0, failed: 0, warning: 0 };
+
+					if (responsePayload.filters && typeof responsePayload.filters === 'object') {
+						filtersCache.actions = Array.isArray(responsePayload.filters.actions) && responsePayload.filters.actions.length
+							? responsePayload.filters.actions
+							: filtersCache.actions;
+						filtersCache.users = Array.isArray(responsePayload.filters.users) && responsePayload.filters.users.length
+							? responsePayload.filters.users
+							: filtersCache.users;
+					}
+
+					populateSelect(actionFilter, filtersCache.actions, 'All Actions', state.actionType);
+					populateSelect(userFilter, filtersCache.users, 'All Users', state.userType);
+
+					state.isLoading = false;
+					renderStats();
+					renderRows();
+					renderPagination();
+				})
+				.catch(function (error) {
+					state.isLoading = false;
+					entries = [];
+					stats = { total: 0, success: 0, failed: 0, warning: 0 };
+					state.errorMessage = error && error.message ? error.message : 'Unable to load audit logs.';
+					renderStats();
+					renderRows();
+					renderPagination();
+				});
+		}
+
+		populateSelect(actionFilter, filtersCache.actions, 'All Actions', state.actionType);
+		populateSelect(userFilter, filtersCache.users, 'All Users', state.userType);
+		renderStats();
+		renderRows();
+		renderPagination();
 
 		if (searchInput) {
-			searchInput.addEventListener('input', filterRows);
+			searchInput.addEventListener('input', function () {
+				state.search = searchInput.value.trim();
+
+				if (searchDebounceHandle) {
+					window.clearTimeout(searchDebounceHandle);
+				}
+
+				searchDebounceHandle = window.setTimeout(function () {
+					fetchLogs(1);
+				}, 250);
+			});
 		}
+
 		if (actionFilter) {
-			actionFilter.addEventListener('change', filterRows);
+			actionFilter.addEventListener('change', function () {
+				state.actionType = actionFilter.value;
+				fetchLogs(1);
+			});
 		}
+
 		if (userFilter) {
-			userFilter.addEventListener('change', filterRows);
+			userFilter.addEventListener('change', function () {
+				state.userType = userFilter.value;
+				fetchLogs(1);
+			});
 		}
+
+		if (exportBtn) {
+			exportBtn.addEventListener('click', function () {
+				if (!exportUrl) {
+					return;
+				}
+
+				var query = buildQueryParams(false).toString();
+				var targetUrl = exportUrl + (query ? ('?' + query) : '');
+				window.location.href = targetUrl;
+			});
+		}
+
+		fetchLogs(1);
 	})();
 </script>
 @endpush

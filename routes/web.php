@@ -9,7 +9,7 @@ use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('donor.signup');
+    return redirect()->route('admin.login');
 });
 
 Route::get('/signup', [DonorSignupController::class, 'create'])->name('donor.signup');
@@ -51,6 +51,8 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
         Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
         Route::get('/admin/audit-logs', [AdminAuthController::class, 'auditLogs'])->name('admin.audit-logs');
+        Route::get('/admin/audit-logs/data', [AdminAuthController::class, 'listAuditLogs'])->name('admin.audit-logs.data');
+        Route::get('/admin/audit-logs/export', [AdminAuthController::class, 'exportAuditLogsCsv'])->name('admin.audit-logs.export');
     });
 
     Route::middleware('admin.role:admin')->group(function () {
@@ -58,6 +60,22 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/users', [AdminAuthController::class, 'users'])->name('admin.users');
         Route::get('/admin/report-analytics', [AdminAuthController::class, 'reportAnalytics'])->name('admin.report-analytics');
         Route::get('/admin/rbac', [AdminAuthController::class, 'rbac'])->name('admin.rbac');
+        Route::get('/admin/rbac/users', [AdminAuthController::class, 'listRbacUsers'])
+            ->name('admin.rbac.users.index');
+        Route::post('/admin/rbac/users', [AdminAuthController::class, 'storeRbacUser'])
+            ->name('admin.rbac.users.store');
+        Route::put('/admin/rbac/users/{admin}', [AdminAuthController::class, 'updateRbacUser'])
+            ->whereNumber('admin')
+            ->name('admin.rbac.users.update');
+        Route::delete('/admin/rbac/users/{admin}', [AdminAuthController::class, 'deleteRbacUser'])
+            ->whereNumber('admin')
+            ->name('admin.rbac.users.delete');
+        Route::patch('/admin/rbac/users/{admin}/password/reset', [AdminAuthController::class, 'resetRbacUserPassword'])
+            ->whereNumber('admin')
+            ->name('admin.rbac.users.password.reset');
+        Route::patch('/admin/rbac/users/{admin}/role', [AdminAuthController::class, 'updateRbacUserRole'])
+            ->whereNumber('admin')
+            ->name('admin.rbac.users.role.update');
         Route::get('/admin/settings', [AdminAuthController::class, 'settings'])->name('admin.settings');
     });
 });

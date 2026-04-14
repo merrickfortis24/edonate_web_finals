@@ -52,20 +52,12 @@
 			['id' => 13, 'key' => 'blood.map.view', 'name' => 'View Blood Map', 'module' => 'Blood Availability Mapping', 'description' => 'Access blood availability map'],
 			['id' => 14, 'key' => 'rbac.manage', 'name' => 'Manage RBAC', 'module' => 'RBAC', 'description' => 'Manage roles and permissions'],
 		],
-		'users' => [
-			['id' => 1, 'name' => 'Mark Dela Cruz', 'email' => 'mark.delacruz@edonate.local', 'roleIds' => [1]],
-			['id' => 2, 'name' => 'Angelique Rivera', 'email' => 'angelique.rivera@edonate.local', 'roleIds' => [1]],
-			['id' => 3, 'name' => 'John Santos', 'email' => 'john.santos@edonate.local', 'roleIds' => [2]],
-			['id' => 4, 'name' => 'Lea Garcia', 'email' => 'lea.garcia@edonate.local', 'roleIds' => [2]],
-			['id' => 5, 'name' => 'Nico Mendoza', 'email' => 'nico.mendoza@edonate.local', 'roleIds' => [2]],
-			['id' => 6, 'name' => 'Shane Flores', 'email' => 'shane.flores@edonate.local', 'roleIds' => [2]],
-			['id' => 7, 'name' => 'Paolo Reyes', 'email' => 'paolo.reyes@edonate.local', 'roleIds' => [1]],
-			['id' => 8, 'name' => 'Ivy Lopez', 'email' => 'ivy.lopez@edonate.local', 'roleIds' => [2]],
-		],
+		'users' => $rbacUsers ?? [],
 		'rolePermissions' => [
 			'1' => [1,2,3,4,5,6,7,8,9,10,11,12,13,14],
 			'2' => [1,5,6,7,9,10,13],
 		],
+		'api' => $rbacApi ?? [],
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
@@ -200,6 +192,23 @@
 							<div class="rbac-search-wrap flex-grow-1">
 								<input type="text" class="form-control" id="rbacUsersSearchInput" placeholder="Search users by name, email, or role" aria-label="Search users">
 							</div>
+							<div class="d-flex align-items-center gap-2">
+								<select class="form-select form-select-sm" id="rbacUsersSortBySelect" aria-label="Sort admin users">
+									<option value="created_at">Newest Created</option>
+									<option value="name">Name</option>
+									<option value="username">Username</option>
+									<option value="email">Email</option>
+									<option value="role">Role</option>
+									<option value="admin_id">ID</option>
+								</select>
+								<button class="btn btn-outline-secondary btn-sm" id="rbacUsersSortDirBtn" type="button" data-dir="desc" aria-label="Toggle sort direction">Desc</button>
+							</div>
+							<button class="btn btn-danger" id="rbacAddUserBtn" type="button">
+								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+									<path d="M12 5V19M5 12H19" stroke="white" stroke-width="2" stroke-linecap="round"/>
+								</svg>
+								Add Admin
+							</button>
 						</div>
 
 						<div class="table-responsive">
@@ -275,6 +284,96 @@
 			</div>
 		</div>
 	</div>
+
+	<div class="modal fade" id="rbacUserModal" tabindex="-1" aria-labelledby="rbacUserModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="rbacUserModalLabel">Add Admin User</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<form id="rbacUserForm" novalidate>
+					<input type="hidden" id="rbacUserIdInput">
+					<div class="modal-body">
+						<div class="mb-3">
+							<label class="form-label" for="rbacUserFullNameInput">Full Name</label>
+							<input type="text" class="form-control" id="rbacUserFullNameInput" placeholder="Example: Maria Santos">
+						</div>
+						<div class="mb-3">
+							<label class="form-label" for="rbacUserUsernameInput">Username</label>
+							<input type="text" class="form-control" id="rbacUserUsernameInput" placeholder="example.username" required>
+						</div>
+						<div class="mb-3">
+							<label class="form-label" for="rbacUserEmailInput">Email</label>
+							<input type="email" class="form-control" id="rbacUserEmailInput" placeholder="name@edonate.local" required>
+						</div>
+						<div class="mb-3">
+							<label class="form-label" for="rbacUserRoleInput">Role</label>
+							<select class="form-select" id="rbacUserRoleInput" required>
+								<option value="1">Admin</option>
+								<option value="2">Staff</option>
+							</select>
+						</div>
+						<div id="rbacUserPasswordGroup">
+							<label class="form-label" for="rbacUserPasswordInput">Password</label>
+							<input type="password" class="form-control" id="rbacUserPasswordInput" minlength="8" placeholder="Minimum 8 characters">
+							<div class="form-text" id="rbacUserPasswordHint">Required when creating a user.</div>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+						<button type="submit" class="btn btn-danger" id="rbacUserSaveBtn">Save User</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="rbacDeleteUserModal" tabindex="-1" aria-labelledby="rbacDeleteUserModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="rbacDeleteUserModalLabel">Delete Admin User</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					This will permanently remove the selected admin account. Continue?
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+					<button type="button" class="btn btn-danger" id="rbacConfirmDeleteUserBtn">Delete User</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal fade" id="rbacResetPasswordModal" tabindex="-1" aria-labelledby="rbacResetPasswordModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="rbacResetPasswordModalLabel">Reset Admin Password</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<form id="rbacResetPasswordForm" novalidate>
+					<input type="hidden" id="rbacResetPasswordUserIdInput">
+					<div class="modal-body">
+						<div class="mb-3">
+							<label class="form-label" for="rbacResetPasswordInput">New Password</label>
+							<input type="password" class="form-control" id="rbacResetPasswordInput" minlength="8" placeholder="Minimum 8 characters" required>
+						</div>
+						<div>
+							<label class="form-label" for="rbacResetPasswordConfirmInput">Confirm Password</label>
+							<input type="password" class="form-control" id="rbacResetPasswordConfirmInput" minlength="8" placeholder="Re-enter password" required>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+						<button type="submit" class="btn btn-danger" id="rbacResetPasswordSaveBtn">Reset Password</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
 @endsection
 
 @push('admin_scripts')
@@ -290,6 +389,11 @@
 		}) : [];
 		var users = Array.isArray(rbacData.users) ? rbacData.users.map(function (user) {
 			var clone = Object.assign({}, user);
+			clone.id = Number(clone.id || 0);
+			clone.fullName = String(clone.fullName || '');
+			clone.username = String(clone.username || '');
+			clone.name = String(clone.name || clone.fullName || clone.username || ('Admin #' + clone.id));
+			clone.email = String(clone.email || '');
 			clone.roleIds = Array.isArray(clone.roleIds) ? clone.roleIds.slice() : [];
 			return clone;
 		}) : [];
@@ -297,17 +401,39 @@
 		var rolePermissions = (rbacData.rolePermissions && typeof rbacData.rolePermissions === 'object')
 			? JSON.parse(JSON.stringify(rbacData.rolePermissions))
 			: {};
+		var rbacApi = (rbacData.api && typeof rbacData.api === 'object') ? rbacData.api : {};
+		var listUsersUrl = String(rbacApi.listUsersUrl || '');
+		var createUserUrl = String(rbacApi.createUserUrl || '');
+		var updateUserUrlTemplate = String(rbacApi.updateUserUrlTemplate || '');
+		var deleteUserUrlTemplate = String(rbacApi.deleteUserUrlTemplate || '');
+		var resetUserPasswordUrlTemplate = String(rbacApi.resetUserPasswordUrlTemplate || '');
+		var updateUserRoleUrlTemplate = String(rbacApi.updateUserRoleUrlTemplate || '');
+		var currentAdminId = Number(rbacApi.currentAdminId || 0);
+		var csrfToken = String(rbacApi.csrfToken || '');
 
 		var state = {
 			roleSearch: '',
 			permissionSearch: '',
 			userSearch: '',
+			userSortBy: 'created_at',
+			userSortDir: 'desc',
 			rolesPage: 1,
 			permissionsPage: 1,
 			usersPage: 1,
+			usersTotalPages: 1,
+			usersLoading: false,
 			selectedPermissionRoleId: '',
 			roleToDeleteId: null,
+			userToDeleteId: null,
+			userToResetPasswordId: null,
 		};
+
+		var usersTotalCount = 0;
+		var roleUserCounts = {
+			'1': 0,
+			'2': 0,
+		};
+		var usersFetchDebounceHandle = null;
 
 		var settings = {
 			rolesPerPage: 5,
@@ -339,18 +465,27 @@
 
 		var roleModalElement = document.getElementById('rbacRoleModal');
 		var deleteModalElement = document.getElementById('rbacDeleteRoleModal');
+		var userModalElement = document.getElementById('rbacUserModal');
+		var deleteUserModalElement = document.getElementById('rbacDeleteUserModal');
+		var resetPasswordModalElement = document.getElementById('rbacResetPasswordModal');
 		var roleModal = roleModalElement ? bootstrap.Modal.getOrCreateInstance(roleModalElement) : null;
 		var deleteModal = deleteModalElement ? bootstrap.Modal.getOrCreateInstance(deleteModalElement) : null;
+		var userModal = userModalElement ? bootstrap.Modal.getOrCreateInstance(userModalElement) : null;
+		var deleteUserModal = deleteUserModalElement ? bootstrap.Modal.getOrCreateInstance(deleteUserModalElement) : null;
+		var resetPasswordModal = resetPasswordModalElement ? bootstrap.Modal.getOrCreateInstance(resetPasswordModalElement) : null;
 
 		var alertHost = document.getElementById('rbacAlertHost');
 		var roleSearchInput = document.getElementById('rbacRolesSearchInput');
 		var permissionSearchInput = document.getElementById('rbacPermissionsSearchInput');
 		var userSearchInput = document.getElementById('rbacUsersSearchInput');
+		var userSortBySelect = document.getElementById('rbacUsersSortBySelect');
+		var userSortDirBtn = document.getElementById('rbacUsersSortDirBtn');
 
 		var addRoleButtons = [
 			document.getElementById('rbacHeaderAddRoleBtn'),
 			document.getElementById('rbacInlineAddRoleBtn'),
 		];
+		var addUserButton = document.getElementById('rbacAddUserBtn');
 
 		var rolesTableBody = document.getElementById('rbacRolesTableBody');
 		var permissionsTableBody = document.getElementById('rbacPermissionsTableBody');
@@ -373,6 +508,23 @@
 		var roleSaveButton = document.getElementById('rbacRoleSaveBtn');
 
 		var deleteRoleBtn = document.getElementById('rbacConfirmDeleteRoleBtn');
+		var userForm = document.getElementById('rbacUserForm');
+		var userIdInput = document.getElementById('rbacUserIdInput');
+		var userFullNameInput = document.getElementById('rbacUserFullNameInput');
+		var userUsernameInput = document.getElementById('rbacUserUsernameInput');
+		var userEmailInput = document.getElementById('rbacUserEmailInput');
+		var userRoleInput = document.getElementById('rbacUserRoleInput');
+		var userPasswordGroup = document.getElementById('rbacUserPasswordGroup');
+		var userPasswordInput = document.getElementById('rbacUserPasswordInput');
+		var userPasswordHint = document.getElementById('rbacUserPasswordHint');
+		var userModalTitle = document.getElementById('rbacUserModalLabel');
+		var userSaveButton = document.getElementById('rbacUserSaveBtn');
+		var deleteUserBtn = document.getElementById('rbacConfirmDeleteUserBtn');
+		var resetPasswordForm = document.getElementById('rbacResetPasswordForm');
+		var resetPasswordUserIdInput = document.getElementById('rbacResetPasswordUserIdInput');
+		var resetPasswordInput = document.getElementById('rbacResetPasswordInput');
+		var resetPasswordConfirmInput = document.getElementById('rbacResetPasswordConfirmInput');
+		var resetPasswordSaveBtn = document.getElementById('rbacResetPasswordSaveBtn');
 
 		function escapeHtml(value) {
 			return String(value || '')
@@ -419,6 +571,235 @@
 			}, 2600);
 		}
 
+		function buildUpdateUserRoleUrl(userId) {
+			if (!updateUserRoleUrlTemplate) {
+				return '';
+			}
+
+			return updateUserRoleUrlTemplate.replace('__ADMIN_ID__', encodeURIComponent(String(userId)));
+		}
+
+		function buildUpdateUserUrl(userId) {
+			if (!updateUserUrlTemplate) {
+				return '';
+			}
+
+			return updateUserUrlTemplate.replace('__ADMIN_ID__', encodeURIComponent(String(userId)));
+		}
+
+		function buildDeleteUserUrl(userId) {
+			if (!deleteUserUrlTemplate) {
+				return '';
+			}
+
+			return deleteUserUrlTemplate.replace('__ADMIN_ID__', encodeURIComponent(String(userId)));
+		}
+
+		function buildResetUserPasswordUrl(userId) {
+			if (!resetUserPasswordUrlTemplate) {
+				return '';
+			}
+
+			return resetUserPasswordUrlTemplate.replace('__ADMIN_ID__', encodeURIComponent(String(userId)));
+		}
+
+		function normalizeRoleId(value) {
+			return Number(value) === 1 ? 1 : 2;
+		}
+
+		function normalizeIncomingUser(userPayload) {
+			var clone = Object.assign({}, userPayload || {});
+			clone.id = Number(clone.id || 0);
+			clone.fullName = String(clone.fullName || '');
+			clone.username = String(clone.username || '');
+			clone.name = String(clone.name || clone.fullName || clone.username || ('Admin #' + clone.id));
+			clone.email = String(clone.email || '');
+			clone.roleIds = [normalizeRoleId(Array.isArray(clone.roleIds) && clone.roleIds.length ? clone.roleIds[0] : 2)];
+
+			return clone;
+		}
+
+		function getUserById(userId) {
+			var targetId = Number(userId);
+			for (var i = 0; i < users.length; i += 1) {
+				if (Number(users[i].id) === targetId) {
+					return users[i];
+				}
+			}
+
+			return null;
+		}
+
+		function upsertUserLocalCache(userPayload) {
+			if (!userPayload || typeof userPayload !== 'object') {
+				return;
+			}
+
+			var preparedUser = normalizeIncomingUser(userPayload);
+
+			var existingIndex = users.findIndex(function (user) {
+				return Number(user.id) === preparedUser.id;
+			});
+
+			if (existingIndex === -1) {
+				users.push(preparedUser);
+				return;
+			}
+
+			users[existingIndex] = Object.assign({}, users[existingIndex], preparedUser);
+		}
+
+		function removeUserFromLocalCache(userId) {
+			var targetId = Number(userId);
+			users = users.filter(function (user) {
+				return Number(user.id) !== targetId;
+			});
+		}
+
+		function setUsersSortDirection(direction) {
+			state.userSortDir = direction === 'asc' ? 'asc' : 'desc';
+
+			if (userSortDirBtn) {
+				userSortDirBtn.dataset.dir = state.userSortDir;
+				userSortDirBtn.textContent = state.userSortDir === 'asc' ? 'Asc' : 'Desc';
+			}
+		}
+
+		function fetchUsers(page) {
+			if (!listUsersUrl) {
+				showAlert('danger', 'RBAC users listing route is not configured.');
+				return;
+			}
+
+			var targetPage = Math.max(1, Number(page || state.usersPage || 1));
+			var params = new URLSearchParams();
+			params.set('page', String(targetPage));
+			params.set('per_page', String(settings.usersPerPage));
+			params.set('sort_by', String(state.userSortBy || 'created_at'));
+			params.set('sort_dir', String(state.userSortDir || 'desc'));
+			if (state.userSearch) {
+				params.set('search', state.userSearch);
+			}
+
+			state.usersLoading = true;
+			renderUsers();
+
+			fetch(listUsersUrl + '?' + params.toString(), {
+				method: 'GET',
+				headers: {
+					'Accept': 'application/json',
+					'X-Requested-With': 'XMLHttpRequest'
+				},
+				credentials: 'same-origin'
+			})
+				.then(function (response) {
+					return response.json().catch(function () {
+						return {};
+					}).then(function (payload) {
+						if (!response.ok) {
+							throw new Error(payload.message || 'Unable to load admin users.');
+						}
+
+						return payload;
+					});
+				})
+				.then(function (payload) {
+					var meta = (payload.meta && typeof payload.meta === 'object') ? payload.meta : {};
+					var summary = (payload.summary && typeof payload.summary === 'object') ? payload.summary : {};
+					var summaryRoleCounts = (summary.role_user_counts && typeof summary.role_user_counts === 'object')
+						? summary.role_user_counts
+						: {};
+
+					users = Array.isArray(payload.data)
+						? payload.data.map(function (user) { return normalizeIncomingUser(user); })
+						: [];
+
+					state.usersPage = Math.max(1, Number(meta.current_page || targetPage));
+					state.usersTotalPages = Math.max(1, Number(meta.last_page || 1));
+					usersTotalCount = Math.max(0, Number(summary.total_users || meta.total || users.length));
+					roleUserCounts = {
+						'1': Math.max(0, Number(summaryRoleCounts['1'] || summaryRoleCounts[1] || 0)),
+						'2': Math.max(0, Number(summaryRoleCounts['2'] || summaryRoleCounts[2] || 0)),
+					};
+
+					if (users.length === 0 && state.usersPage > state.usersTotalPages) {
+						fetchUsers(state.usersTotalPages);
+						return;
+					}
+
+					state.usersLoading = false;
+					renderSummary();
+					renderRoles();
+					renderUsers();
+				})
+				.catch(function (error) {
+					state.usersLoading = false;
+					renderUsers();
+					showAlert('danger', error.message || 'Unable to load admin users.');
+				});
+		}
+
+		function openCreateUserModal() {
+			if (!userModal || !userForm) {
+				return;
+			}
+
+			userForm.reset();
+			userIdInput.value = '';
+			userModalTitle.textContent = 'Add Admin User';
+			userSaveButton.textContent = 'Create User';
+			if (userPasswordGroup) {
+				userPasswordGroup.classList.remove('d-none');
+			}
+			userPasswordInput.required = true;
+			userPasswordHint.textContent = 'Required when creating a user. Minimum 8 characters.';
+			userRoleInput.value = '2';
+			userModal.show();
+		}
+
+		function openEditUserModal(userId) {
+			if (!userModal || !userForm) {
+				return;
+			}
+
+			var user = getUserById(userId);
+			if (!user) {
+				showAlert('warning', 'Selected user was not found.');
+				return;
+			}
+
+			userIdInput.value = String(user.id);
+			userFullNameInput.value = String(user.fullName || '');
+			userUsernameInput.value = String(user.username || '');
+			userEmailInput.value = String(user.email || '');
+			userRoleInput.value = String(normalizeRoleId(Array.isArray(user.roleIds) && user.roleIds.length ? user.roleIds[0] : 2));
+			if (userPasswordGroup) {
+				userPasswordGroup.classList.add('d-none');
+			}
+			userPasswordInput.value = '';
+			userPasswordInput.required = false;
+			userModalTitle.textContent = 'Edit Admin User';
+			userSaveButton.textContent = 'Update User';
+			userModal.show();
+		}
+
+		function openResetPasswordModal(userId) {
+			if (!resetPasswordModal || !resetPasswordForm) {
+				return;
+			}
+
+			var user = getUserById(userId);
+			if (!user) {
+				showAlert('warning', 'Selected user was not found.');
+				return;
+			}
+
+			state.userToResetPasswordId = Number(user.id);
+			resetPasswordForm.reset();
+			resetPasswordUserIdInput.value = String(user.id);
+			resetPasswordModal.show();
+		}
+
 		function normalizeRolePermissions() {
 			var existingIds = roles.map(function (role) {
 				return String(role.id);
@@ -460,15 +841,7 @@
 		}
 
 		function getUsersCountForRole(roleId) {
-			var target = Number(roleId);
-			var count = 0;
-			for (var i = 0; i < users.length; i += 1) {
-				var roleIds = Array.isArray(users[i].roleIds) ? users[i].roleIds : [];
-				if (roleIds.some(function (id) { return Number(id) === target; })) {
-					count += 1;
-				}
-			}
-			return count;
+			return Math.max(0, Number(roleUserCounts[String(roleId)] || 0));
 		}
 
 		function getPermissionsCountForRole(roleId) {
@@ -538,9 +911,7 @@
 			var usersCountElement = document.getElementById('rbacStatUsers');
 			var assignmentCountElement = document.getElementById('rbacStatAssignments');
 
-			var assignmentCount = users.reduce(function (sum, user) {
-				return sum + (Array.isArray(user.roleIds) ? user.roleIds.length : 0);
-			}, 0);
+			var assignmentCount = usersTotalCount;
 
 			if (rolesCountElement) {
 				rolesCountElement.textContent = String(roles.length);
@@ -549,7 +920,7 @@
 				permissionsCountElement.textContent = String(permissions.length);
 			}
 			if (usersCountElement) {
-				usersCountElement.textContent = String(users.length);
+				usersCountElement.textContent = String(usersTotalCount);
 			}
 			if (assignmentCountElement) {
 				assignmentCountElement.textContent = String(assignmentCount);
@@ -719,7 +1090,7 @@
 
 			return users.filter(function (user) {
 				var rolesText = getRoleNames(user.roleIds || []).join(' ');
-				var text = [user.name, user.email, rolesText].join(' ').toLowerCase();
+				var text = [user.name, user.fullName, user.username, user.email, rolesText].join(' ').toLowerCase();
 				return text.indexOf(term) !== -1;
 			});
 		}
@@ -746,27 +1117,39 @@
 				return;
 			}
 
-			var filtered = getFilteredUsers();
-			var paged = paginate(filtered, state.usersPage, settings.usersPerPage);
-			state.usersPage = paged.page;
+			if (state.usersLoading) {
+				usersTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Loading users...</td></tr>';
+				if (userPagination) {
+					userPagination.innerHTML = '';
+				}
+				return;
+			}
 
-			if (!paged.items.length) {
+			if (!users.length) {
 				usersTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No users found.</td></tr>';
 			} else {
-				usersTableBody.innerHTML = paged.items.map(function (user) {
+				usersTableBody.innerHTML = users.map(function (user) {
+					var isCurrentAdmin = Number(user.id) === currentAdminId;
+					var deleteButtonDisabled = isCurrentAdmin ? ' disabled' : '';
+					var deleteButtonTitle = isCurrentAdmin ? ' title="You cannot delete your own logged-in account"' : '';
+
 					return '<tr>' +
-						'<td><span class="fw-medium">' + escapeHtml(user.name) + '</span></td>' +
+						'<td><span class="fw-medium">' + escapeHtml(user.name) + '</span><div class="small text-muted">@' + escapeHtml(user.username || '-') + '</div></td>' +
 						'<td>' + escapeHtml(user.email) + '</td>' +
 						'<td>' + getRoleBadges(user.roleIds) + '</td>' +
 						'<td>' + getAssignRoleSelect(user) + '</td>' +
-						'<td><button class="btn btn-sm btn-outline-danger" type="button" data-user-action="save" data-user-id="' + user.id + '">Save</button></td>' +
+						'<td><div class="d-flex flex-wrap gap-1">' +
+						'<button class="btn btn-sm btn-outline-danger" type="button" data-user-action="save" data-user-id="' + user.id + '">Save Role</button>' +
+						'<button class="btn btn-sm btn-outline-primary" type="button" data-user-action="edit" data-user-id="' + user.id + '">Edit</button>' +
+						'<button class="btn btn-sm btn-outline-warning" type="button" data-user-action="reset-password" data-user-id="' + user.id + '">Reset Password</button>' +
+						'<button class="btn btn-sm btn-outline-secondary" type="button" data-user-action="delete" data-user-id="' + user.id + '"' + deleteButtonDisabled + deleteButtonTitle + '>Delete</button>' +
+						'</div></td>' +
 						'</tr>';
 				}).join('');
 			}
 
-			renderPagination(userPagination, paged.page, paged.totalPages, function (nextPage) {
-				state.usersPage = nextPage;
-				renderUsers();
+			renderPagination(userPagination, state.usersPage, state.usersTotalPages, function (nextPage) {
+				fetchUsers(nextPage);
 			});
 		}
 
@@ -1037,19 +1420,181 @@
 		if (userSearchInput) {
 			userSearchInput.addEventListener('input', function () {
 				state.userSearch = userSearchInput.value.trim();
-				state.usersPage = 1;
-				renderUsers();
+
+				if (usersFetchDebounceHandle) {
+					window.clearTimeout(usersFetchDebounceHandle);
+				}
+
+				usersFetchDebounceHandle = window.setTimeout(function () {
+					fetchUsers(1);
+				}, 250);
+			});
+		}
+
+		if (userSortBySelect) {
+			userSortBySelect.value = state.userSortBy;
+
+			userSortBySelect.addEventListener('change', function () {
+				state.userSortBy = String(userSortBySelect.value || 'created_at');
+				fetchUsers(1);
+			});
+		}
+
+		if (userSortDirBtn) {
+			setUsersSortDirection(state.userSortDir);
+
+			userSortDirBtn.addEventListener('click', function () {
+				setUsersSortDirection(state.userSortDir === 'asc' ? 'desc' : 'asc');
+				fetchUsers(1);
+			});
+		}
+
+		if (addUserButton) {
+			addUserButton.addEventListener('click', openCreateUserModal);
+		}
+
+		if (userForm) {
+			userForm.addEventListener('submit', function (event) {
+				event.preventDefault();
+
+				var editingUserId = Number(userIdInput.value || 0);
+				var isEditing = editingUserId > 0;
+				var fullName = userFullNameInput.value.trim();
+				var username = userUsernameInput.value.trim();
+				var email = userEmailInput.value.trim();
+				var password = userPasswordInput.value;
+				var roleId = Number(userRoleInput.value || 0);
+
+				if (!username) {
+					showAlert('warning', 'Username is required.');
+					return;
+				}
+
+				if (!email) {
+					showAlert('warning', 'Email is required.');
+					return;
+				}
+
+				if (roleId !== 1 && roleId !== 2) {
+					showAlert('warning', 'Please select Admin or Staff role.');
+					return;
+				}
+
+				if (!isEditing && String(password || '').trim().length < 8) {
+					showAlert('warning', 'Password is required and must be at least 8 characters.');
+					return;
+				}
+
+				var requestUrl = isEditing ? buildUpdateUserUrl(editingUserId) : createUserUrl;
+				var requestMethod = isEditing ? 'PUT' : 'POST';
+				if (!requestUrl) {
+					showAlert('danger', 'RBAC user CRUD route is not configured.');
+					return;
+				}
+
+				var payload = {
+					full_name: fullName,
+					username: username,
+					email: email,
+					role_id: roleId
+				};
+
+				if (!isEditing) {
+					payload.password = String(password || '');
+				}
+
+				var originalButtonText = userSaveButton.textContent;
+				userSaveButton.disabled = true;
+				userSaveButton.textContent = isEditing ? 'Updating...' : 'Creating...';
+
+				fetch(requestUrl, {
+					method: requestMethod,
+					headers: {
+						'Accept': 'application/json',
+						'Content-Type': 'application/json',
+						'X-CSRF-TOKEN': csrfToken,
+						'X-Requested-With': 'XMLHttpRequest'
+					},
+					credentials: 'same-origin',
+					body: JSON.stringify(payload)
+				})
+					.then(function (response) {
+						return response.json().catch(function () {
+							return {};
+						}).then(function (responsePayload) {
+							if (!response.ok) {
+								if (responsePayload.errors && typeof responsePayload.errors === 'object') {
+									var firstErrorKey = Object.keys(responsePayload.errors)[0];
+									if (firstErrorKey && Array.isArray(responsePayload.errors[firstErrorKey]) && responsePayload.errors[firstErrorKey][0]) {
+										throw new Error(responsePayload.errors[firstErrorKey][0]);
+									}
+								}
+
+								throw new Error(responsePayload.message || 'Unable to save admin user.');
+							}
+
+							return responsePayload;
+						});
+					})
+					.then(function (responsePayload) {
+						if (userModal) {
+							userModal.hide();
+						}
+
+						showAlert('success', responsePayload.message || 'Admin user saved successfully.');
+						fetchUsers(isEditing ? state.usersPage : 1);
+					})
+					.catch(function (error) {
+						showAlert('danger', error.message || 'Unable to save admin user.');
+					})
+					.finally(function () {
+						userSaveButton.disabled = false;
+						userSaveButton.textContent = originalButtonText;
+					});
 			});
 		}
 
 		if (usersTableBody) {
 			usersTableBody.addEventListener('click', function (event) {
-				var button = event.target.closest('button[data-user-action="save"]');
+				var button = event.target.closest('button[data-user-action]');
 				if (!button) {
 					return;
 				}
 
+				var action = String(button.getAttribute('data-user-action') || '');
 				var userId = Number(button.getAttribute('data-user-id'));
+
+				if (!userId) {
+					return;
+				}
+
+				if (action === 'edit') {
+					openEditUserModal(userId);
+					return;
+				}
+
+				if (action === 'delete') {
+					if (userId === currentAdminId) {
+						showAlert('warning', 'You cannot delete your own logged-in account.');
+						return;
+					}
+
+					state.userToDeleteId = userId;
+					if (deleteUserModal) {
+						deleteUserModal.show();
+					}
+					return;
+				}
+
+				if (action === 'reset-password') {
+					openResetPasswordModal(userId);
+					return;
+				}
+
+				if (action !== 'save') {
+					return;
+				}
+
 				var select = usersTableBody.querySelector('select[data-user-id="' + userId + '"]');
 				var selectedRole = select ? Number(select.value || 0) : 0;
 				var user = users.find(function (item) { return Number(item.id) === userId; });
@@ -1058,22 +1603,210 @@
 					return;
 				}
 
-				user.roleIds = selectedRole ? [selectedRole] : [];
-				showAlert('success', 'User role assignment updated.');
+				if (selectedRole !== 1 && selectedRole !== 2) {
+					showAlert('warning', 'Please assign Admin or Staff role.');
+					return;
+				}
 
-				renderSummary();
-				renderUsers();
-				renderRoles();
+				var requestUrl = buildUpdateUserRoleUrl(userId);
+				if (!requestUrl) {
+					showAlert('danger', 'RBAC user role update route is not configured.');
+					return;
+				}
+
+				var originalButtonText = button.textContent;
+				button.disabled = true;
+				button.textContent = 'Saving...';
+
+				fetch(requestUrl, {
+					method: 'PATCH',
+					headers: {
+						'Accept': 'application/json',
+						'Content-Type': 'application/json',
+						'X-CSRF-TOKEN': csrfToken,
+						'X-Requested-With': 'XMLHttpRequest'
+					},
+					credentials: 'same-origin',
+					body: JSON.stringify({
+						role_id: selectedRole
+					})
+				})
+					.then(function (response) {
+						return response.json().catch(function () {
+							return {};
+						}).then(function (payload) {
+							if (!response.ok) {
+								throw new Error(payload.message || 'Unable to update admin user role.');
+							}
+
+							return payload;
+						});
+					})
+					.then(function (payload) {
+						showAlert('success', payload.message || 'Admin user role assignment updated.');
+						fetchUsers(state.usersPage);
+					})
+					.catch(function (error) {
+						showAlert('danger', error.message || 'Unable to update admin user role.');
+					})
+					.finally(function () {
+						button.disabled = false;
+						button.textContent = originalButtonText;
+					});
+			});
+		}
+
+		if (deleteUserBtn) {
+			deleteUserBtn.addEventListener('click', function () {
+				if (!state.userToDeleteId) {
+					return;
+				}
+
+				var deletingUserId = Number(state.userToDeleteId);
+				if (deletingUserId === currentAdminId) {
+					showAlert('warning', 'You cannot delete your own logged-in account.');
+					return;
+				}
+
+				var requestUrl = buildDeleteUserUrl(deletingUserId);
+				if (!requestUrl) {
+					showAlert('danger', 'RBAC delete user route is not configured.');
+					return;
+				}
+
+				deleteUserBtn.disabled = true;
+
+				fetch(requestUrl, {
+					method: 'DELETE',
+					headers: {
+						'Accept': 'application/json',
+						'Content-Type': 'application/json',
+						'X-CSRF-TOKEN': csrfToken,
+						'X-Requested-With': 'XMLHttpRequest'
+					},
+					credentials: 'same-origin'
+				})
+					.then(function (response) {
+						return response.json().catch(function () {
+							return {};
+						}).then(function (payload) {
+							if (!response.ok) {
+								throw new Error(payload.message || 'Unable to delete admin user.');
+							}
+
+							return payload;
+						});
+					})
+					.then(function (payload) {
+						state.userToDeleteId = null;
+
+						if (deleteUserModal) {
+							deleteUserModal.hide();
+						}
+
+						showAlert('success', payload.message || 'Admin user deleted successfully.');
+						fetchUsers(state.usersPage);
+					})
+					.catch(function (error) {
+						showAlert('danger', error.message || 'Unable to delete admin user.');
+					})
+					.finally(function () {
+						deleteUserBtn.disabled = false;
+					});
+			});
+		}
+
+		if (resetPasswordForm) {
+			resetPasswordForm.addEventListener('submit', function (event) {
+				event.preventDefault();
+
+				var targetUserId = Number(resetPasswordUserIdInput.value || state.userToResetPasswordId || 0);
+				var newPassword = String(resetPasswordInput.value || '');
+				var confirmPassword = String(resetPasswordConfirmInput.value || '');
+
+				if (!targetUserId) {
+					showAlert('warning', 'Please select a valid admin user.');
+					return;
+				}
+
+				if (newPassword.length < 8) {
+					showAlert('warning', 'New password must be at least 8 characters.');
+					return;
+				}
+
+				if (newPassword !== confirmPassword) {
+					showAlert('warning', 'Password confirmation does not match.');
+					return;
+				}
+
+				var requestUrl = buildResetUserPasswordUrl(targetUserId);
+				if (!requestUrl) {
+					showAlert('danger', 'RBAC reset password route is not configured.');
+					return;
+				}
+
+				var originalButtonText = resetPasswordSaveBtn.textContent;
+				resetPasswordSaveBtn.disabled = true;
+				resetPasswordSaveBtn.textContent = 'Resetting...';
+
+				fetch(requestUrl, {
+					method: 'PATCH',
+					headers: {
+						'Accept': 'application/json',
+						'Content-Type': 'application/json',
+						'X-CSRF-TOKEN': csrfToken,
+						'X-Requested-With': 'XMLHttpRequest'
+					},
+					credentials: 'same-origin',
+					body: JSON.stringify({
+						password: newPassword,
+						password_confirmation: confirmPassword
+					})
+				})
+					.then(function (response) {
+						return response.json().catch(function () {
+							return {};
+						}).then(function (payload) {
+							if (!response.ok) {
+								if (payload.errors && typeof payload.errors === 'object') {
+									var firstErrorKey = Object.keys(payload.errors)[0];
+									if (firstErrorKey && Array.isArray(payload.errors[firstErrorKey]) && payload.errors[firstErrorKey][0]) {
+										throw new Error(payload.errors[firstErrorKey][0]);
+									}
+								}
+
+								throw new Error(payload.message || 'Unable to reset admin password.');
+							}
+
+							return payload;
+						});
+					})
+					.then(function (payload) {
+						state.userToResetPasswordId = null;
+						if (resetPasswordModal) {
+							resetPasswordModal.hide();
+						}
+
+						showAlert('success', payload.message || 'Admin password reset successfully.');
+					})
+					.catch(function (error) {
+						showAlert('danger', error.message || 'Unable to reset admin password.');
+					})
+					.finally(function () {
+						resetPasswordSaveBtn.disabled = false;
+						resetPasswordSaveBtn.textContent = originalButtonText;
+					});
 			});
 		}
 
 		normalizeRolePermissions();
-		renderSummary();
+		setUsersSortDirection(state.userSortDir);
 		renderRoles();
 		renderPermissionRoleSelect();
 		renderPermissionCheckboxes();
 		renderPermissionsTable();
-		renderUsers();
+		renderSummary();
+		fetchUsers(1);
 	})();
 </script>
 @endpush
