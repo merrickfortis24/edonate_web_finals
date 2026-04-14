@@ -7,7 +7,11 @@
     $navAriaLabel = trim($__env->yieldContent('sidebar_nav_aria_label')) ?: 'Main navigation';
     $sidebarLinkMode = trim($__env->yieldContent('sidebar_link_mode')) ?: 'nav';
     $sidebarBottomClass = trim($__env->yieldContent('sidebar_bottom_class')) ?: 'sidebar__nav-bottom';
-    $sidebarRole = trim($__env->yieldContent('sidebar_role')) ?: 'admin';
+    $sidebarRoleSection = trim($__env->yieldContent('sidebar_role'));
+    $sessionRole = strtolower((string) session('admin_role', ''));
+    $sidebarRole = $sidebarRoleSection !== ''
+        ? strtolower($sidebarRoleSection)
+        : ($sessionRole !== '' ? $sessionRole : 'admin');
 
     $overlayId = trim($__env->yieldContent('overlay_id')) ?: 'overlay';
     $overlayClass = trim($__env->yieldContent('overlay_class')) ?: 'overlay';

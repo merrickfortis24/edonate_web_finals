@@ -31,7 +31,9 @@ class AdminAuthController extends Controller
     public function create(Request $request)
     {
         if ($this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.dashboard');
+            return redirect()->route(
+                $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''))
+            );
         }
 
         return view('admin.admin_login');
@@ -58,7 +60,14 @@ class AdminAuthController extends Controller
                 ->withErrors(['email' => 'Invalid email or password.']);
         }
 
-        $this->setAdminSession($request, $admin);
+        $role = $this->normalizeRole((string) ($admin->role ?? ''));
+        if (!$this->isSupportedRole($role)) {
+            return back()
+                ->withInput($request->only('email', 'remember'))
+                ->withErrors(['email' => 'Your account role is not authorized to access this portal.']);
+        }
+
+        $this->setAdminSession($request, $admin, $role);
 
         if ($request->boolean('remember')) {
             $this->issueRememberMeToken((int) $admin->admin_id);
@@ -66,7 +75,7 @@ class AdminAuthController extends Controller
             $this->clearRememberMeToken((int) $admin->admin_id);
         }
 
-        return redirect()->route('admin.dashboard');
+        return redirect()->route($this->dashboardRouteForRole($role));
     }
 
     /**
@@ -75,7 +84,9 @@ class AdminAuthController extends Controller
     public function forgotPassword(Request $request)
     {
         if ($this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.dashboard');
+            return redirect()->route(
+                $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''))
+            );
         }
 
         return view('admin.forgot_pass');
@@ -203,11 +214,15 @@ class AdminAuthController extends Controller
      */
     public function dashboard(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.admin_dashboard');
+    }
+
+    /**
+     * Display staff dashboard.
+     */
+    public function staffDashboard(Request $request)
+    {
+        return view('admin.staff_dashboard');
     }
 
     /**
@@ -215,10 +230,6 @@ class AdminAuthController extends Controller
      */
     public function users(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.user_management');
     }
 
@@ -227,10 +238,6 @@ class AdminAuthController extends Controller
      */
     public function appointments(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.appointment_management');
     }
 
@@ -239,10 +246,6 @@ class AdminAuthController extends Controller
      */
     public function donationRecords(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.donor_records');
     }
 
@@ -251,10 +254,6 @@ class AdminAuthController extends Controller
      */
     public function bloodAvailabilityMapping(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.blood_availability_mapping');
     }
 
@@ -263,10 +262,6 @@ class AdminAuthController extends Controller
      */
     public function notificationCenter(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.notification_center');
     }
 
@@ -275,10 +270,6 @@ class AdminAuthController extends Controller
      */
     public function reportAnalytics(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.report_analytics');
     }
 
@@ -287,10 +278,6 @@ class AdminAuthController extends Controller
      */
     public function auditLogs(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.audit_log');
     }
 
@@ -299,10 +286,6 @@ class AdminAuthController extends Controller
      */
     public function rbac(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.rbac');
     }
 
@@ -311,11 +294,15 @@ class AdminAuthController extends Controller
      */
     public function settings(Request $request)
     {
-        if (!$this->hasActiveAdminSession($request)) {
-            return redirect()->route('admin.login')->with('error', 'Please log in as admin to continue.');
-        }
-
         return view('admin.settings');
+    }
+
+    /**
+     * Display unauthorized page for signed-in users.
+     */
+    public function unauthorized(Request $request)
+    {
+        return response()->view('admin.unauthorized', [], 403);
     }
 
     /**
@@ -324,7 +311,14 @@ class AdminAuthController extends Controller
     private function hasActiveAdminSession(Request $request): bool
     {
         if ($request->session()->has('admin_id')) {
-            return true;
+            $adminId = $request->session()->get('admin_id');
+            $role = $this->normalizeRole((string) $request->session()->get('admin_role', ''));
+
+            if (is_numeric($adminId) && $this->isSupportedRole($role)) {
+                return true;
+            }
+
+            $request->session()->forget(['admin_id', 'admin_username', 'admin_full_name', 'admin_role']);
         }
 
         return $this->attemptRememberedLogin($request);
@@ -369,6 +363,12 @@ class AdminAuthController extends Controller
             return false;
         }
 
+        $role = $this->normalizeRole((string) ($admin->role ?? ''));
+        if (!$this->isSupportedRole($role)) {
+            $this->clearRememberMeToken((int) $admin->admin_id);
+            return false;
+        }
+
         $expiresAt = !empty($admin->remember_token_expires_at)
             ? Carbon::parse($admin->remember_token_expires_at)
             : null;
@@ -383,7 +383,7 @@ class AdminAuthController extends Controller
             return false;
         }
 
-        $this->setAdminSession($request, $admin);
+        $this->setAdminSession($request, $admin, $role);
         $this->issueRememberMeToken((int) $admin->admin_id);
 
         return true;
@@ -392,15 +392,43 @@ class AdminAuthController extends Controller
     /**
      * Set authenticated admin data in session.
      */
-    private function setAdminSession(Request $request, object $admin): void
+    private function setAdminSession(Request $request, object $admin, ?string $role = null): void
     {
+        $normalizedRole = $this->normalizeRole($role ?? (string) ($admin->role ?? ''));
+
         $request->session()->regenerate();
         $request->session()->put([
             'admin_id' => $admin->admin_id,
             'admin_username' => $admin->username,
             'admin_full_name' => $admin->full_name,
-            'admin_role' => $admin->role,
+            'admin_role' => $normalizedRole,
         ]);
+    }
+
+    /**
+     * Resolve the correct post-login dashboard route per role.
+     */
+    private function dashboardRouteForRole(string $role): string
+    {
+        return $this->normalizeRole($role) === 'staff'
+            ? 'staff.dashboard'
+            : 'admin.dashboard';
+    }
+
+    /**
+     * Normalize role strings before comparison.
+     */
+    private function normalizeRole(string $role): string
+    {
+        return Str::lower(trim($role));
+    }
+
+    /**
+     * Restrict portal access to known admin roles.
+     */
+    private function isSupportedRole(string $role): bool
+    {
+        return in_array($this->normalizeRole($role), ['admin', 'staff'], true);
     }
 
     /**
