@@ -218,6 +218,7 @@
 										<th scope="col">User</th>
 										<th scope="col">Email</th>
 										<th scope="col">Current Roles</th>
+										<th scope="col">2FA Status</th>
 										<th scope="col">Assign Role</th>
 										<th scope="col">Action</th>
 									</tr>
@@ -394,6 +395,7 @@
 			clone.username = String(clone.username || '');
 			clone.name = String(clone.name || clone.fullName || clone.username || ('Admin #' + clone.id));
 			clone.email = String(clone.email || '');
+			clone.twoFactorEnrolled = !!clone.twoFactorEnrolled;
 			clone.roleIds = Array.isArray(clone.roleIds) ? clone.roleIds.slice() : [];
 			return clone;
 		}) : [];
@@ -614,6 +616,7 @@
 			clone.username = String(clone.username || '');
 			clone.name = String(clone.name || clone.fullName || clone.username || ('Admin #' + clone.id));
 			clone.email = String(clone.email || '');
+			clone.twoFactorEnrolled = !!clone.twoFactorEnrolled;
 			clone.roleIds = [normalizeRoleId(Array.isArray(clone.roleIds) && clone.roleIds.length ? clone.roleIds[0] : 2)];
 
 			return clone;
@@ -1090,7 +1093,8 @@
 
 			return users.filter(function (user) {
 				var rolesText = getRoleNames(user.roleIds || []).join(' ');
-				var text = [user.name, user.fullName, user.username, user.email, rolesText].join(' ').toLowerCase();
+				var twoFactorText = user.twoFactorEnrolled ? '2fa enrolled enabled' : '2fa not enrolled disabled';
+				var text = [user.name, user.fullName, user.username, user.email, rolesText, twoFactorText].join(' ').toLowerCase();
 				return text.indexOf(term) !== -1;
 			});
 		}
@@ -1100,6 +1104,14 @@
 				return '<span class="badge rounded-pill text-bg-danger-subtle border border-danger-subtle text-danger-emphasis me-1 mb-1">' + escapeHtml(name) + '</span>';
 			});
 			return badges.length ? badges.join('') : '<span class="text-muted small">No role</span>';
+		}
+
+		function getTwoFactorStatusBadge(user) {
+			if (user && user.twoFactorEnrolled) {
+				return '<span class="badge text-bg-success">Enrolled</span>';
+			}
+
+			return '<span class="badge text-bg-warning">Not Enrolled</span>';
 		}
 
 		function getAssignRoleSelect(user) {
@@ -1118,7 +1130,7 @@
 			}
 
 			if (state.usersLoading) {
-				usersTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Loading users...</td></tr>';
+				usersTableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Loading users...</td></tr>';
 				if (userPagination) {
 					userPagination.innerHTML = '';
 				}
@@ -1126,7 +1138,7 @@
 			}
 
 			if (!users.length) {
-				usersTableBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No users found.</td></tr>';
+				usersTableBody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No users found.</td></tr>';
 			} else {
 				usersTableBody.innerHTML = users.map(function (user) {
 					var isCurrentAdmin = Number(user.id) === currentAdminId;
@@ -1137,6 +1149,7 @@
 						'<td><span class="fw-medium">' + escapeHtml(user.name) + '</span><div class="small text-muted">@' + escapeHtml(user.username || '-') + '</div></td>' +
 						'<td>' + escapeHtml(user.email) + '</td>' +
 						'<td>' + getRoleBadges(user.roleIds) + '</td>' +
+						'<td>' + getTwoFactorStatusBadge(user) + '</td>' +
 						'<td>' + getAssignRoleSelect(user) + '</td>' +
 						'<td><div class="d-flex flex-wrap gap-1">' +
 						'<button class="btn btn-sm btn-outline-danger" type="button" data-user-action="save" data-user-id="' + user.id + '">Save Role</button>' +

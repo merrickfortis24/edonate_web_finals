@@ -117,6 +117,13 @@
 						</span>
 					</div>
 				</div>
+
+				<div class="col-12 col-xl-3">
+					<div class="form-check form-switch px-3 py-2 rounded border bg-white h-100 d-flex align-items-center">
+						<input class="form-check-input me-2" type="checkbox" role="switch" id="auditSecurityPolicyFilter" aria-label="Filter global security policy changes only">
+						<label class="form-check-label small fw-semibold" for="auditSecurityPolicyFilter">Global Security Policy Changes Only</label>
+					</div>
+				</div>
 			</section>
 
 			<section class="audit-table-card" aria-label="Activity logs">
@@ -164,6 +171,7 @@
 			search: '',
 			actionType: '',
 			userType: '',
+			securityPolicyOnly: false,
 			page: 1,
 			perPage: Math.max(1, Number(defaults.perPage || 10)),
 			total: 0,
@@ -190,6 +198,7 @@
 		var searchInput = document.getElementById('auditSearchInput');
 		var actionFilter = document.getElementById('auditActionFilter');
 		var userFilter = document.getElementById('auditUserFilter');
+		var securityPolicyFilter = document.getElementById('auditSecurityPolicyFilter');
 		var exportBtn = document.getElementById('auditExportBtn');
 		var tableBody = document.getElementById('auditTableBody');
 		var tableMeta = document.getElementById('auditTableMeta');
@@ -385,6 +394,9 @@
 			if (state.userType) {
 				params.set('user_type', state.userType);
 			}
+			if (state.securityPolicyOnly) {
+				params.set('security_policy_only', '1');
+			}
 
 			if (includePagination) {
 				params.set('page', String(state.page));
@@ -502,6 +514,14 @@
 		if (userFilter) {
 			userFilter.addEventListener('change', function () {
 				state.userType = userFilter.value;
+				fetchLogs(1);
+			});
+		}
+
+		if (securityPolicyFilter) {
+			securityPolicyFilter.checked = !!state.securityPolicyOnly;
+			securityPolicyFilter.addEventListener('change', function () {
+				state.securityPolicyOnly = !!securityPolicyFilter.checked;
 				fetchLogs(1);
 			});
 		}

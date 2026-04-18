@@ -28,6 +28,11 @@ use App\Http\Controllers\Controller as BaseController;
 
 class AdminAuthController extends BaseController
 {
+    private const SECURITY_SETTINGS_TABLE = 'admin_security_settings';
+    private const SECURITY_DEFAULT_TWO_FACTOR_REQUIRED = true;
+    private const SECURITY_DEFAULT_SESSION_TIMEOUT_MINUTES = 10;
+    private const AUDIT_SECURITY_POLICY_ACTION = 'security_policy_update';
+    private const AUDIT_SECURITY_POLICY_MODULE = 'security';
     private const REMEMBER_COOKIE_NAME = 'admin_remember';
     private const REMEMBER_DAYS = 30;
     private const RESET_TOKEN_TTL_MINUTES = 30;
@@ -47,13 +52,28 @@ class AdminAuthController extends BaseController
     public function create(Request $request)
     {
         if ($this->hasActiveAdminSession($request)) {
-            return redirect()->route(
-                $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''))
-            );
+            $dashboardRoute = $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''));
+            $twoFactorSetupModal = $this->buildDashboardTwoFactorModalData($request);
+
+            $requiresEnrollment = (bool) ($twoFactorSetupModal['required'] ?? false);
+            $hasRecoveryCodes = is_array($twoFactorSetupModal['recoveryCodes'] ?? null)
+                && ($twoFactorSetupModal['recoveryCodes'] ?? []) !== [];
+
+            if ($requiresEnrollment || $hasRecoveryCodes) {
+                return view('admin.admin_login', [
+                    'twoFactorSetupModal' => $twoFactorSetupModal,
+                    'postLoginDashboardUrl' => route($dashboardRoute),
+                ]);
+            }
+
+            return redirect()->route($dashboardRoute);
         }
 
-        if ($this->getPendingTwoFactorLogin($request) !== null) {
-            return redirect()->route('admin.2fa.challenge');
+        $twoFactorChallengeModal = $this->buildLoginTwoFactorChallengeModalData($request);
+        if ((bool) ($twoFactorChallengeModal['show'] ?? false)) {
+            return view('admin.admin_login', [
+                'twoFactorChallengeModal' => $twoFactorChallengeModal,
+            ]);
         }
 
         return view('admin.admin_login');
@@ -92,7 +112,10 @@ class AdminAuthController extends BaseController
                 ->withErrors(['email' => 'Your account role is not authorized to access this portal.']);
         }
 
-        if ($this->isTwoFactorEnabledForAdmin($admin)) {
+        $globalTwoFactorRequired = $this->isGlobalTwoFactorRequired();
+        $accountTwoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
+
+        if ($accountTwoFactorEnabled) {
             $this->stagePendingTwoFactorLogin(
                 $request,
                 $admin,
@@ -107,13 +130,27 @@ class AdminAuthController extends BaseController
             ]);
 
             return redirect()
-                ->route('admin.2fa.challenge')
+                ->route('admin.login')
                 ->with('success', 'Enter your Google Authenticator code to continue.');
         }
 
         $this->clearPendingTwoFactorLogin($request);
 
         $this->setAdminSession($request, $admin, $role);
+
+        if ($globalTwoFactorRequired && $this->supportsTwoFactorStorage() && !$accountTwoFactorEnabled) {
+            $this->clearRememberMeToken((int) $admin->admin_id);
+
+            $this->pushFirebaseSecurityEvent('admin_2fa_enrollment_required', [
+                'admin_id' => (int) ($admin->admin_id ?? 0),
+                'email' => Str::lower(trim((string) ($admin->email ?? ''))),
+                'ip' => $request->ip(),
+            ]);
+
+            return redirect()
+                ->route('admin.login')
+                ->with('warning', 'Set up Google Authenticator to continue.');
+        }
 
         if ($request->boolean('remember')) {
             $this->issueRememberMeToken((int) $admin->admin_id);
@@ -125,27 +162,15 @@ class AdminAuthController extends BaseController
     }
 
     /**
-     * Display 2FA challenge page for pending admin login attempts.
+     * Cancel pending admin 2FA challenge and return to plain login state.
      */
-    public function showTwoFactorChallenge(Request $request)
+    public function cancelTwoFactorChallenge(Request $request): RedirectResponse
     {
-        if ($this->hasActiveAdminSession($request)) {
-            return redirect()->route(
-                $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''))
-            );
-        }
+        $this->clearPendingTwoFactorLogin($request);
 
-        $pending = $this->getPendingTwoFactorLogin($request);
-        if ($pending === null) {
-            return redirect()
-                ->route('admin.login')
-                ->with('error', 'Your login verification session has expired. Please log in again.');
-        }
-
-        return view('admin.admin_2fa_challenge', [
-            'maskedEmail' => $this->maskEmail((string) ($pending['email'] ?? '')),
-            'remainingSeconds' => max(0, (int) ($pending['expires_at'] ?? 0) - now()->timestamp),
-        ]);
+        return redirect()
+            ->route('admin.login')
+            ->with('success', 'Two-factor verification was cancelled. You may sign in again.');
     }
 
     /**
@@ -484,6 +509,7 @@ class AdminAuthController extends BaseController
             'search' => ['nullable', 'string', 'max:150'],
             'action_type' => ['nullable', 'string', 'max:50'],
             'user_type' => ['nullable', 'string', Rule::in(['', 'admin', 'donor', 'system', 'other'])],
+            'security_policy_only' => ['nullable', 'boolean'],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
@@ -491,9 +517,10 @@ class AdminAuthController extends BaseController
         $searchTerm = trim((string) ($validated['search'] ?? ''));
         $actionType = Str::lower(trim((string) ($validated['action_type'] ?? '')));
         $userType = Str::lower(trim((string) ($validated['user_type'] ?? '')));
+        $securityPolicyOnly = (bool) ($validated['security_policy_only'] ?? false);
 
         $baseQuery = DB::table('audit_logs');
-        $this->applyAuditLogFilters($baseQuery, $searchTerm, $actionType, $userType);
+        $this->applyAuditLogFilters($baseQuery, $searchTerm, $actionType, $userType, $securityPolicyOnly);
 
         $statsRows = (clone $baseQuery)
             ->selectRaw("LOWER(COALESCE(result, 'success')) as result_key, COUNT(*) as total")
@@ -576,14 +603,16 @@ class AdminAuthController extends BaseController
             'search' => ['nullable', 'string', 'max:150'],
             'action_type' => ['nullable', 'string', 'max:50'],
             'user_type' => ['nullable', 'string', Rule::in(['', 'admin', 'donor', 'system', 'other'])],
+            'security_policy_only' => ['nullable', 'boolean'],
         ]);
 
         $searchTerm = trim((string) ($validated['search'] ?? ''));
         $actionType = Str::lower(trim((string) ($validated['action_type'] ?? '')));
         $userType = Str::lower(trim((string) ($validated['user_type'] ?? '')));
+        $securityPolicyOnly = (bool) ($validated['security_policy_only'] ?? false);
 
         $query = DB::table('audit_logs');
-        $this->applyAuditLogFilters($query, $searchTerm, $actionType, $userType);
+        $this->applyAuditLogFilters($query, $searchTerm, $actionType, $userType, $securityPolicyOnly);
 
         $rows = $query
             ->orderByDesc('created_at')
@@ -674,7 +703,7 @@ class AdminAuthController extends BaseController
         $sortDir = (string) ($validated['sort_dir'] ?? 'desc');
 
         $query = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role', 'created_at');
+            ->select(array_merge($this->rbacAdminSelectColumns(), ['created_at']));
 
         if ($searchTerm !== '') {
             $query->where(function ($builder) use ($searchTerm) {
@@ -758,7 +787,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $createdAdmin = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->where('admin_id', (int) $newAdminId)
             ->first();
 
@@ -790,7 +819,7 @@ class AdminAuthController extends BaseController
     public function updateRbacUser(Request $request, int $adminId): JsonResponse
     {
         $targetAdmin = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->where('admin_id', $adminId)
             ->first();
 
@@ -840,7 +869,7 @@ class AdminAuthController extends BaseController
             ->update($updatePayload);
 
         $updatedAdmin = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->where('admin_id', (int) $targetAdmin->admin_id)
             ->first();
 
@@ -870,7 +899,7 @@ class AdminAuthController extends BaseController
     public function deleteRbacUser(Request $request, int $adminId): JsonResponse
     {
         $targetAdmin = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->where('admin_id', $adminId)
             ->first();
 
@@ -921,7 +950,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $targetAdmin = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->where('admin_id', $adminId)
             ->first();
 
@@ -948,7 +977,7 @@ class AdminAuthController extends BaseController
             ]);
 
         $updatedAdmin = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->where('admin_id', (int) $targetAdmin->admin_id)
             ->first();
 
@@ -983,7 +1012,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $targetAdmin = DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->where('admin_id', $adminId)
             ->first();
 
@@ -1038,7 +1067,8 @@ class AdminAuthController extends BaseController
             ->where('admin_id', $adminId)
             ->first();
 
-        $twoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
+        $currentAccountTwoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
+        $globalSecuritySettings = $this->getGlobalSecuritySettings();
 
         return view('admin.settings', [
             'settingsPayload' => [
@@ -1054,12 +1084,69 @@ class AdminAuthController extends BaseController
                         'sms' => false,
                     ],
                     'security' => [
-                        'twoFactor' => $twoFactorEnabled,
-                        'sessionTimeout' => '10',
+                        'twoFactor' => (bool) ($globalSecuritySettings['two_factor_required'] ?? self::SECURITY_DEFAULT_TWO_FACTOR_REQUIRED),
+                        'sessionTimeout' => (string) ($globalSecuritySettings['session_timeout_minutes'] ?? self::SECURITY_DEFAULT_SESSION_TIMEOUT_MINUTES),
                         'twoFactorSetupUrl' => route('admin.2fa.setup'),
+                        'updateSecurityUrl' => route('admin.settings.security.update'),
+                        'currentAccountTwoFactorEnabled' => $currentAccountTwoFactorEnabled,
                     ],
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * Persist admin security settings from settings page.
+     */
+    public function updateSecuritySettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'two_factor_required' => ['required', 'boolean'],
+            'session_timeout' => ['required', 'integer', Rule::in([5, 10, 30])],
+        ]);
+
+        if (!$this->supportsGlobalSecuritySettingsStorage()) {
+            return response()->json([
+                'message' => 'Security settings storage is not available. Please run migrations first.',
+            ], 422);
+        }
+
+        $this->upsertGlobalSecuritySettings(
+            (bool) $validated['two_factor_required'],
+            (int) $validated['session_timeout']
+        );
+
+        $admin = $this->getCurrentAdminForTwoFactor($request);
+        $currentAccountTwoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
+        $requiresEnrollment = (bool) $validated['two_factor_required'] && !$currentAccountTwoFactorEnabled;
+
+        $adminId = (int) ($request->session()->get('admin_id', 0));
+        $this->logAdminSecurityPolicyAudit(
+            $request,
+            'Updated global admin security settings.',
+            [
+                'two_factor_required' => (bool) $validated['two_factor_required'],
+                'session_timeout' => (int) $validated['session_timeout'],
+            ]
+        );
+
+        $this->pushFirebaseSecurityEvent('admin_security_settings_updated', [
+            'admin_id' => $adminId,
+            'two_factor_required' => (bool) $validated['two_factor_required'],
+            'session_timeout' => (int) $validated['session_timeout'],
+            'ip' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'message' => 'Security settings saved successfully.',
+            'security' => [
+                'twoFactor' => (bool) $validated['two_factor_required'],
+                'sessionTimeout' => (string) ((int) $validated['session_timeout']),
+                'twoFactorSetupUrl' => route('admin.2fa.setup'),
+                'updateSecurityUrl' => route('admin.settings.security.update'),
+                'currentAccountTwoFactorEnabled' => $currentAccountTwoFactorEnabled,
+            ],
+            'requiresTwoFactorEnrollment' => $requiresEnrollment,
         ]);
     }
 
@@ -1081,6 +1168,16 @@ class AdminAuthController extends BaseController
                 ->with('error', 'Two-factor columns are not available yet. Please run migrations first.');
         }
 
+        return view('admin.admin_2fa_setup', $this->prepareTwoFactorSetupViewData($request, $admin));
+    }
+
+    /**
+     * Prepare shared Google Authenticator setup payload for authenticated admin.
+     *
+     * @return array<string, mixed>
+     */
+    private function prepareTwoFactorSetupViewData(Request $request, object $admin): array
+    {
         $twoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
         $secret = null;
         $qrSvg = null;
@@ -1099,7 +1196,7 @@ class AdminAuthController extends BaseController
             $qrSvg = $this->generateSvgQrCode($provisioningUri);
         }
 
-        return view('admin.admin_2fa_setup', [
+        return [
             'twoFactorEnabled' => $twoFactorEnabled,
             'maskedEmail' => $this->maskEmail((string) ($admin->email ?? '')),
             'secret' => $secret,
@@ -1109,7 +1206,67 @@ class AdminAuthController extends BaseController
                 ? Carbon::parse((string) $admin->two_factor_confirmed_at)
                 : null,
             'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
-        ]);
+        ];
+    }
+
+    /**
+     * Build dashboard modal payload when global policy requires 2FA enrollment.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildDashboardTwoFactorModalData(Request $request): array
+    {
+        $defaultPayload = [
+            'required' => false,
+            'maskedEmail' => '',
+            'secret' => null,
+            'qrSvg' => null,
+            'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
+        ];
+
+        if (!$this->isGlobalTwoFactorRequired() || !$this->supportsTwoFactorStorage()) {
+            return $defaultPayload;
+        }
+
+        $admin = $this->getCurrentAdminForTwoFactor($request);
+        if ($admin === null) {
+            return $defaultPayload;
+        }
+
+        $setupData = $this->prepareTwoFactorSetupViewData($request, $admin);
+
+        return [
+            'required' => !(bool) ($setupData['twoFactorEnabled'] ?? false),
+            'maskedEmail' => (string) ($setupData['maskedEmail'] ?? ''),
+            'secret' => $setupData['secret'] ?? null,
+            'qrSvg' => $setupData['qrSvg'] ?? null,
+            'recoveryCodes' => is_array($setupData['recoveryCodes'] ?? null)
+                ? $setupData['recoveryCodes']
+                : [],
+        ];
+    }
+
+    /**
+     * Build login-page 2FA challenge modal payload from pending state.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildLoginTwoFactorChallengeModalData(Request $request): array
+    {
+        $pending = $this->getPendingTwoFactorLogin($request);
+        if ($pending === null) {
+            return [
+                'show' => false,
+                'maskedEmail' => '',
+                'remainingSeconds' => 0,
+            ];
+        }
+
+        return [
+            'show' => true,
+            'maskedEmail' => $this->maskEmail((string) ($pending['email'] ?? '')),
+            'remainingSeconds' => max(0, (int) ($pending['expires_at'] ?? 0) - now()->timestamp),
+        ];
     }
 
     /**
@@ -1119,6 +1276,7 @@ class AdminAuthController extends BaseController
     {
         $validated = $request->validate([
             'otp' => ['required', 'digits:6'],
+            'return_to_dashboard' => ['nullable', 'boolean'],
         ]);
 
         $admin = $this->getCurrentAdminForTwoFactor($request);
@@ -1179,6 +1337,12 @@ class AdminAuthController extends BaseController
             'admin_id' => (int) ($admin->admin_id ?? 0),
             'ip' => $request->ip(),
         ]);
+
+        if ((bool) ($validated['return_to_dashboard'] ?? false)) {
+            return redirect()
+                ->route('admin.login')
+                ->with('success', 'Google Authenticator has been enabled. Save your recovery codes below.');
+        }
 
         return redirect()
             ->route('admin.2fa.setup')
@@ -1446,6 +1610,97 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Resolve global security settings with safe defaults.
+     *
+     * @return array{two_factor_required: bool, session_timeout_minutes: int}
+     */
+    private function getGlobalSecuritySettings(): array
+    {
+        $defaults = [
+            'two_factor_required' => self::SECURITY_DEFAULT_TWO_FACTOR_REQUIRED,
+            'session_timeout_minutes' => self::SECURITY_DEFAULT_SESSION_TIMEOUT_MINUTES,
+        ];
+
+        if (!$this->supportsGlobalSecuritySettingsStorage()) {
+            return $defaults;
+        }
+
+        $row = DB::table(self::SECURITY_SETTINGS_TABLE)
+            ->select('enforce_two_factor', 'session_timeout_minutes')
+            ->orderByDesc('admin_security_setting_id')
+            ->first();
+
+        if (!$row) {
+            return $defaults;
+        }
+
+        return [
+            'two_factor_required' => (bool) ($row->enforce_two_factor ?? $defaults['two_factor_required']),
+            'session_timeout_minutes' => in_array((int) ($row->session_timeout_minutes ?? 0), [5, 10, 30], true)
+                ? (int) $row->session_timeout_minutes
+                : $defaults['session_timeout_minutes'],
+        ];
+    }
+
+    /**
+     * Determine if global policy requires 2FA enrollment for all admin/staff accounts.
+     */
+    private function isGlobalTwoFactorRequired(): bool
+    {
+        return (bool) ($this->getGlobalSecuritySettings()['two_factor_required'] ?? self::SECURITY_DEFAULT_TWO_FACTOR_REQUIRED);
+    }
+
+    /**
+     * Persist global security settings in singleton-style table.
+     */
+    private function upsertGlobalSecuritySettings(bool $twoFactorRequired, int $sessionTimeout): void
+    {
+        if (!$this->supportsGlobalSecuritySettingsStorage()) {
+            return;
+        }
+
+        $normalizedTimeout = in_array($sessionTimeout, [5, 10, 30], true)
+            ? $sessionTimeout
+            : self::SECURITY_DEFAULT_SESSION_TIMEOUT_MINUTES;
+
+        $payload = [
+            'enforce_two_factor' => $twoFactorRequired,
+            'session_timeout_minutes' => $normalizedTimeout,
+            'updated_at' => now(),
+        ];
+
+        $existingId = DB::table(self::SECURITY_SETTINGS_TABLE)
+            ->orderByDesc('admin_security_setting_id')
+            ->value('admin_security_setting_id');
+
+        if (is_numeric($existingId)) {
+            DB::table(self::SECURITY_SETTINGS_TABLE)
+                ->where('admin_security_setting_id', (int) $existingId)
+                ->update($payload);
+
+            return;
+        }
+
+        DB::table(self::SECURITY_SETTINGS_TABLE)
+            ->insert(array_merge($payload, [
+                'created_at' => now(),
+            ]));
+    }
+
+    /**
+     * Detect if global admin security settings table is available.
+     */
+    private function supportsGlobalSecuritySettingsStorage(): bool
+    {
+        if (!Schema::hasTable(self::SECURITY_SETTINGS_TABLE)) {
+            return false;
+        }
+
+        return Schema::hasColumn(self::SECURITY_SETTINGS_TABLE, 'enforce_two_factor')
+            && Schema::hasColumn(self::SECURITY_SETTINGS_TABLE, 'session_timeout_minutes');
+    }
+
+    /**
      * Determine if admin account currently enforces Google Authenticator.
      */
     private function isTwoFactorEnabledForAdmin(?object $admin): bool
@@ -1703,7 +1958,7 @@ class AdminAuthController extends BaseController
     private function getRbacAdminUsers(): array
     {
         return DB::table('admins')
-            ->select('admin_id', 'full_name', 'username', 'email', 'role')
+            ->select($this->rbacAdminSelectColumns())
             ->orderBy('admin_id')
             ->get()
             ->map(fn (object $admin) => $this->transformRbacAdminUser($admin))
@@ -1722,6 +1977,12 @@ class AdminAuthController extends BaseController
 
         $role = $this->normalizeRole((string) ($admin->role ?? ''));
         $roleId = $role === 'admin' ? 1 : 2;
+        $twoFactorEnrolled = false;
+
+        if ($this->supportsTwoFactorStorage()) {
+            $twoFactorEnrolled = (bool) ($admin->two_factor_enabled ?? false)
+                && !empty($admin->two_factor_confirmed_at);
+        }
 
         return [
             'id' => (int) $admin->admin_id,
@@ -1730,7 +1991,25 @@ class AdminAuthController extends BaseController
             'username' => (string) ($admin->username ?? ''),
             'email' => (string) ($admin->email ?? ''),
             'roleIds' => [$roleId],
+            'twoFactorEnrolled' => $twoFactorEnrolled,
         ];
+    }
+
+    /**
+     * Resolve common select columns for RBAC admin user payloads.
+     *
+     * @return array<int, string>
+     */
+    private function rbacAdminSelectColumns(): array
+    {
+        $columns = ['admin_id', 'full_name', 'username', 'email', 'role'];
+
+        if ($this->supportsTwoFactorStorage()) {
+            $columns[] = 'two_factor_enabled';
+            $columns[] = 'two_factor_confirmed_at';
+        }
+
+        return $columns;
     }
 
     /**
@@ -1800,9 +2079,59 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Persist admin global security policy changes to audit logs table.
+     */
+    private function logAdminSecurityPolicyAudit(
+        Request $request,
+        string $description,
+        array $metadata = [],
+        string $result = 'success'
+    ): void {
+        try {
+            $actorName = trim((string) ($request->session()->get('admin_full_name') ?: $request->session()->get('admin_username') ?: 'Admin'));
+            $actorRole = ucfirst($this->normalizeRole((string) $request->session()->get('admin_role', 'admin')));
+
+            if (!Schema::hasTable('audit_logs')) {
+                logger()->info('Security policy audit event', [
+                    'description' => $description,
+                    'metadata' => $metadata,
+                ]);
+
+                return;
+            }
+
+            DB::table('audit_logs')->insert([
+                'actor_admin_id' => is_numeric($request->session()->get('admin_id')) ? (int) $request->session()->get('admin_id') : null,
+                'actor_name' => $actorName,
+                'actor_role' => $actorRole,
+                'action_type' => self::AUDIT_SECURITY_POLICY_ACTION,
+                'module_type' => self::AUDIT_SECURITY_POLICY_MODULE,
+                'target_table' => self::SECURITY_SETTINGS_TABLE,
+                'target_id' => null,
+                'description' => $description,
+                'ip_address' => $request->ip(),
+                'result' => $result,
+                'metadata' => $metadata === [] ? null : json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to persist security policy audit event.', [
+                'description' => $description,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Apply shared audit log filters used by list and export endpoints.
      */
-    private function applyAuditLogFilters($query, string $searchTerm, string $actionType, string $userType): void
+    private function applyAuditLogFilters(
+        $query,
+        string $searchTerm,
+        string $actionType,
+        string $userType,
+        bool $securityPolicyOnly = false
+    ): void
     {
         if ($searchTerm !== '') {
             $likeTerm = '%'.$searchTerm.'%';
@@ -1820,6 +2149,10 @@ class AdminAuthController extends BaseController
 
         if ($actionType !== '') {
             $query->whereRaw('LOWER(action_type) = ?', [$actionType]);
+        }
+
+        if ($securityPolicyOnly) {
+            $query->whereRaw("LOWER(COALESCE(target_table, '')) = ?", [self::SECURITY_SETTINGS_TABLE]);
         }
 
         if ($userType === 'admin') {

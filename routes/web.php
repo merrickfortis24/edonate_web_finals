@@ -35,8 +35,8 @@ Route::view('/privacy-policy', 'donor.privacy')->name('privacy');
 
 Route::get('/admin/login', [AdminAuthController::class, 'create'])->name('admin.login');
 Route::post('/admin/login', [AdminAuthController::class, 'store'])->name('admin.login.store');
-Route::get('/admin/2fa/challenge', [AdminAuthController::class, 'showTwoFactorChallenge'])->name('admin.2fa.challenge');
 Route::post('/admin/2fa/challenge', [AdminAuthController::class, 'verifyTwoFactorChallenge'])->name('admin.2fa.verify');
+Route::post('/admin/2fa/challenge/cancel', [AdminAuthController::class, 'cancelTwoFactorChallenge'])->name('admin.2fa.cancel');
 Route::get('/admin/forgot-password', [AdminAuthController::class, 'forgotPassword'])->name('admin.password.request');
 Route::post('/admin/forgot-password', [AdminAuthController::class, 'sendPasswordResetLink'])->name('admin.password.email');
 Route::get('/admin/reset-password', [AdminAuthController::class, 'showResetPasswordForm'])->name('admin.password.reset.form');
@@ -82,6 +82,8 @@ Route::middleware('admin.auth')->group(function () {
             ->whereNumber('admin')
             ->name('admin.rbac.users.role.update');
         Route::get('/admin/settings', [AdminAuthController::class, 'settings'])->name('admin.settings');
+        Route::post('/admin/settings/security', [AdminAuthController::class, 'updateSecuritySettings'])
+            ->name('admin.settings.security.update');
     });
 });
 

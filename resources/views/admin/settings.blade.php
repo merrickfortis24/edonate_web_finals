@@ -40,6 +40,8 @@
 			'twoFactor' => false,
 			'sessionTimeout' => '10',
 			'twoFactorSetupUrl' => route('admin.2fa.setup'),
+			'updateSecurityUrl' => route('admin.settings.security.update'),
+			'currentAccountTwoFactorEnabled' => false,
 		],
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
@@ -232,13 +234,15 @@
 								<div class="settings-switch-list">
 									<div class="settings-switch-item">
 										<div class="settings-switch-item__copy">
-											<h3>Two-Factor Authentication (2FA)</h3>
-											<p>Require a second verification step for administrator sign-ins.</p>
+											<h3>Require 2FA For All Admin/Staff Accounts</h3>
+											<p>When enabled, every admin and staff user must enroll in Google Authenticator before accessing the portal.</p>
 										</div>
 										<div class="form-check form-switch">
 											<input class="form-check-input" type="checkbox" role="switch" id="settingsTwoFactorToggle">
 										</div>
 									</div>
+
+									<p class="small text-muted mt-2 mb-0" id="settingsTwoFactorEnrollmentHint"></p>
 
 									<p class="small text-muted mt-2 mb-0">
 										Manage enrollment, QR setup, and disable actions on
@@ -294,6 +298,7 @@
 <script>
 	(function () {
 		var payload = (window.AdminPageData && window.AdminPageData.settings) ? window.AdminPageData.settings : {};
+		var csrfToken = '{{ csrf_token() }}';
 		var settingsData = {
 			general: Object.assign({
 				systemName: '',
@@ -308,6 +313,8 @@
 				twoFactor: false,
 				sessionTimeout: '10',
 				twoFactorSetupUrl: '{{ route('admin.2fa.setup') }}',
+				updateSecurityUrl: '{{ route('admin.settings.security.update') }}',
+				currentAccountTwoFactorEnabled: false,
 			}, payload.security || {}),
 		};
 
@@ -343,6 +350,8 @@
 
 		var twoFactorToggle = document.getElementById('settingsTwoFactorToggle');
 		var sessionTimeoutSelect = document.getElementById('settingsSessionTimeoutSelect');
+		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
+		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
 
 		function escapeHtml(value) {
 			return String(value || '')
@@ -378,6 +387,33 @@
 					bootstrap.Alert.getOrCreateInstance(alertElement).close();
 				}
 			}, 2800);
+		}
+
+		function extractApiError(payload) {
+			if (payload && typeof payload.message === 'string' && payload.message.trim() !== '') {
+				return payload.message;
+			}
+
+			if (payload && payload.errors && typeof payload.errors === 'object') {
+				var keys = Object.keys(payload.errors);
+				if (keys.length > 0 && Array.isArray(payload.errors[keys[0]]) && payload.errors[keys[0]].length > 0) {
+					return String(payload.errors[keys[0]][0]);
+				}
+			}
+
+			return '';
+		}
+
+		function parseApiResponse(response) {
+			return response.json().catch(function () {
+				return {};
+			}).then(function (payload) {
+				if (!response.ok) {
+					throw new Error(extractApiError(payload) || 'Unable to save security settings.');
+				}
+
+				return payload;
+			});
 		}
 
 		function setButtonLoading(button, isLoading) {
@@ -432,6 +468,19 @@
 			return isValid;
 		}
 
+		function renderTwoFactorEnrollmentHint() {
+			if (!twoFactorEnrollmentHint) {
+				return;
+			}
+
+			if (settingsData.security.currentAccountTwoFactorEnabled) {
+				twoFactorEnrollmentHint.textContent = 'Current account: enrolled in Google Authenticator.';
+				return;
+			}
+
+			twoFactorEnrollmentHint.textContent = 'Current account: not yet enrolled. If global 2FA is enabled, this account will be redirected to setup before dashboard access.';
+		}
+
 		function hydrateFromPayload() {
 			if (systemNameInput) {
 				systemNameInput.value = settingsData.general.systemName;
@@ -456,6 +505,8 @@
 			if (sessionTimeoutSelect) {
 				sessionTimeoutSelect.value = String(settingsData.security.sessionTimeout || '10');
 			}
+
+			renderTwoFactorEnrollmentHint();
 		}
 
 		if (confirmSaveButton) {
@@ -564,25 +615,57 @@
 				openConfirmModal('Security Settings', function () {
 					setButtonLoading(saveSecurityButton, true);
 
-					var requestedTwoFactor = !!twoFactorToggle.checked;
-					var currentTwoFactor = !!settingsData.security.twoFactor;
-					settingsData.security.sessionTimeout = String(sessionTimeoutSelect.value);
-
-					if (requestedTwoFactor !== currentTwoFactor) {
+					if (!updateSecurityUrl) {
 						setButtonLoading(saveSecurityButton, false);
-						showAlert('info', 'Redirecting to Google Authenticator setup...');
-
-						window.setTimeout(function () {
-							window.location.href = String(settingsData.security.twoFactorSetupUrl || '{{ route('admin.2fa.setup') }}');
-						}, 350);
-
+						showAlert('danger', 'Security settings endpoint is not configured.');
 						return;
 					}
 
-					window.setTimeout(function () {
-						setButtonLoading(saveSecurityButton, false);
-						showAlert('success', 'Security settings saved successfully.');
-					}, 350);
+					fetch(updateSecurityUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-CSRF-TOKEN': csrfToken,
+							'X-Requested-With': 'XMLHttpRequest',
+						},
+						credentials: 'same-origin',
+						body: JSON.stringify({
+							two_factor_required: !!twoFactorToggle.checked,
+							session_timeout: Number(sessionTimeoutSelect.value || 10),
+						}),
+					})
+						.then(parseApiResponse)
+						.then(function (payload) {
+							var incomingSecurity = (payload && payload.security && typeof payload.security === 'object')
+								? payload.security
+								: {};
+
+							settingsData.security.twoFactor = !!incomingSecurity.twoFactor;
+							settingsData.security.sessionTimeout = String(incomingSecurity.sessionTimeout || sessionTimeoutSelect.value || '10');
+							settingsData.security.currentAccountTwoFactorEnabled = !!incomingSecurity.currentAccountTwoFactorEnabled;
+
+							if (typeof incomingSecurity.twoFactorSetupUrl === 'string' && incomingSecurity.twoFactorSetupUrl !== '') {
+								settingsData.security.twoFactorSetupUrl = incomingSecurity.twoFactorSetupUrl;
+							}
+
+							renderTwoFactorEnrollmentHint();
+							setButtonLoading(saveSecurityButton, false);
+
+							if (payload && payload.requiresTwoFactorEnrollment) {
+								showAlert('warning', 'Global 2FA is enabled. Redirecting to Google Authenticator setup...');
+								window.setTimeout(function () {
+									window.location.href = String(settingsData.security.twoFactorSetupUrl || '{{ route('admin.2fa.setup') }}');
+								}, 350);
+								return;
+							}
+
+							showAlert('success', String((payload && payload.message) || 'Security settings saved successfully.'));
+						})
+						.catch(function (error) {
+							setButtonLoading(saveSecurityButton, false);
+							showAlert('danger', error.message || 'Unable to save security settings.');
+						});
 				});
 			});
 		}

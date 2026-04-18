@@ -476,18 +476,33 @@
 		</section>
 
 		<section class="card__right" aria-label="Login form">
+			@php
+				$setupModalPayload = is_array($twoFactorSetupModal ?? null) ? $twoFactorSetupModal : [];
+				$challengeModalPayload = is_array($twoFactorChallengeModal ?? null) ? $twoFactorChallengeModal : [];
+
+				$setupModalActive = (bool) ($setupModalPayload['required'] ?? false)
+					|| (is_array($setupModalPayload['recoveryCodes'] ?? null) && ($setupModalPayload['recoveryCodes'] ?? []) !== [])
+					|| $errors->has('otp');
+
+				$challengeModalActive = (bool) ($challengeModalPayload['show'] ?? false)
+					|| $errors->has('code')
+					|| $errors->has('recovery_code');
+
+				$suppressLoginAlerts = $setupModalActive || $challengeModalActive;
+			@endphp
+
 			<h1 class="form__heading">Welcome Back</h1>
 			<p class="form__subheading">Log in to continue to your admin account</p>
 
-			@if (session('error'))
+			@if (session('error') && !$suppressLoginAlerts)
 				<div class="form__alert form__alert--error">{{ session('error') }}</div>
 			@endif
 
-			@if (session('success'))
+			@if (session('success') && !$suppressLoginAlerts)
 				<div class="form__alert form__alert--success">{{ session('success') }}</div>
 			@endif
 
-			@if (isset($errors) && $errors->any())
+			@if (isset($errors) && $errors->any() && !$suppressLoginAlerts)
 				<div class="form__alert form__alert--error">{{ $errors->first() }}</div>
 			@endif
 
@@ -534,6 +549,11 @@
 		</section>
 	</div>
 </main>
+
+@include('admin._two_factor_setup_modal')
+@include('admin._two_factor_challenge_modal')
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+@stack('admin_scripts')
 </body>
 </html>
