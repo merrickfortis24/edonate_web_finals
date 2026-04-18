@@ -27,8 +27,8 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(Factory::class, function ($app) {
-            $serviceAccount = env('FIREBASE_CREDENTIALS');
-            $databaseUrl = env('FIREBASE_DATABASE_URL');
+            $serviceAccount = (string) config('services.firebase.credentials', '');
+            $databaseUrl = (string) config('services.firebase.database_url', '');
 
             $factory = new Factory();
             if (!empty($serviceAccount)) {
@@ -46,7 +46,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton('firebase.database', function ($app) {
-            $databaseUrl = env('FIREBASE_DATABASE_URL');
+            $databaseUrl = (string) config('services.firebase.database_url', '');
             if (empty($databaseUrl)) {
                 return null;
             }

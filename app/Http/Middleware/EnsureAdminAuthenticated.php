@@ -17,7 +17,15 @@ class EnsureAdminAuthenticated
         $role = strtolower((string) $request->session()->get('admin_role', ''));
 
         if (!is_numeric($adminId) || !in_array($role, ['admin', 'staff'], true)) {
-            $request->session()->forget(['admin_id', 'admin_username', 'admin_full_name', 'admin_role']);
+            $request->session()->forget([
+                'admin_id',
+                'admin_username',
+                'admin_full_name',
+                'admin_role',
+                'pending_admin_2fa',
+                'admin_2fa_setup_secret',
+                'two_factor_recovery_codes',
+            ]);
 
             return redirect()
                 ->route('admin.login')

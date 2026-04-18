@@ -24,7 +24,7 @@
 @endsection
 
 @section('admin_page_data')
-{!! json_encode([
+{!! json_encode($settingsPayload ?? [
 	'page' => 'settings',
 	'settings' => [
 		'general' => [
@@ -37,8 +37,9 @@
 			'sms' => false,
 		],
 		'security' => [
-			'twoFactor' => true,
+			'twoFactor' => false,
 			'sessionTimeout' => '10',
+			'twoFactorSetupUrl' => route('admin.2fa.setup'),
 		],
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
@@ -238,6 +239,11 @@
 											<input class="form-check-input" type="checkbox" role="switch" id="settingsTwoFactorToggle">
 										</div>
 									</div>
+
+									<p class="small text-muted mt-2 mb-0">
+										Manage enrollment, QR setup, and disable actions on
+										<a href="{{ route('admin.2fa.setup') }}">Google Authenticator setup page</a>.
+									</p>
 								</div>
 
 								<div class="row g-3 mt-1">
@@ -301,6 +307,7 @@
 			security: Object.assign({
 				twoFactor: false,
 				sessionTimeout: '10',
+				twoFactorSetupUrl: '{{ route('admin.2fa.setup') }}',
 			}, payload.security || {}),
 		};
 
@@ -557,13 +564,25 @@
 				openConfirmModal('Security Settings', function () {
 					setButtonLoading(saveSecurityButton, true);
 
-					window.setTimeout(function () {
-						settingsData.security.twoFactor = !!twoFactorToggle.checked;
-						settingsData.security.sessionTimeout = String(sessionTimeoutSelect.value);
+					var requestedTwoFactor = !!twoFactorToggle.checked;
+					var currentTwoFactor = !!settingsData.security.twoFactor;
+					settingsData.security.sessionTimeout = String(sessionTimeoutSelect.value);
 
+					if (requestedTwoFactor !== currentTwoFactor) {
+						setButtonLoading(saveSecurityButton, false);
+						showAlert('info', 'Redirecting to Google Authenticator setup...');
+
+						window.setTimeout(function () {
+							window.location.href = String(settingsData.security.twoFactorSetupUrl || '{{ route('admin.2fa.setup') }}');
+						}, 350);
+
+						return;
+					}
+
+					window.setTimeout(function () {
 						setButtonLoading(saveSecurityButton, false);
 						showAlert('success', 'Security settings saved successfully.');
-					}, 700);
+					}, 350);
 				});
 			});
 		}

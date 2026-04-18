@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'firebase' => [
+        'credentials' => env('FIREBASE_CREDENTIALS'),
+        'database_url' => env('FIREBASE_DATABASE_URL'),
+        'security_events_path' => env('FIREBASE_SECURITY_EVENTS_PATH', 'admin_security_events'),
+    ],
+
 ];

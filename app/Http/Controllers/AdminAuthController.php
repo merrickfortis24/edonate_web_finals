@@ -3,6 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Mail\AdminPasswordResetMail;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 use Carbon\Carbon;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\JsonResponse;
@@ -17,16 +21,25 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use PragmaRX\Google2FA\Google2FA;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
+use App\Http\Controllers\Controller as BaseController;
 
-class AdminAuthController extends Controller
+class AdminAuthController extends BaseController
 {
     private const REMEMBER_COOKIE_NAME = 'admin_remember';
     private const REMEMBER_DAYS = 30;
     private const RESET_TOKEN_TTL_MINUTES = 30;
     private const RESET_CACHE_PREFIX = 'admin_password_reset:';
     private const RESET_CACHE_STORE = 'file';
+    private const TWO_FACTOR_PENDING_SESSION_KEY = 'pending_admin_2fa';
+    private const TWO_FACTOR_SETUP_SECRET_SESSION_KEY = 'admin_2fa_setup_secret';
+    private const TWO_FACTOR_PENDING_TTL_MINUTES = 5;
+    private const TWO_FACTOR_MAX_ATTEMPTS = 5;
+    private const TWO_FACTOR_TOTP_WINDOW = 1;
+    private const TWO_FACTOR_RECOVERY_CODES_COUNT = 8;
+    private const FIREBASE_SECURITY_EVENTS_DEFAULT_PATH = 'admin_security_events';
 
     /**
      * Display admin login page.
@@ -37,6 +50,10 @@ class AdminAuthController extends Controller
             return redirect()->route(
                 $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''))
             );
+        }
+
+        if ($this->getPendingTwoFactorLogin($request) !== null) {
+            return redirect()->route('admin.2fa.challenge');
         }
 
         return view('admin.admin_login');
@@ -58,6 +75,11 @@ class AdminAuthController extends Controller
             ->first();
 
         if (!$admin || !Hash::check($validated['password'], $admin->password)) {
+            $this->pushFirebaseSecurityEvent('admin_login_password_failed', [
+                'email' => Str::lower(trim((string) $validated['email'])),
+                'ip' => $request->ip(),
+            ]);
+
             return back()
                 ->withInput($request->only('email', 'remember'))
                 ->withErrors(['email' => 'Invalid email or password.']);
@@ -70,6 +92,27 @@ class AdminAuthController extends Controller
                 ->withErrors(['email' => 'Your account role is not authorized to access this portal.']);
         }
 
+        if ($this->isTwoFactorEnabledForAdmin($admin)) {
+            $this->stagePendingTwoFactorLogin(
+                $request,
+                $admin,
+                $role,
+                $request->boolean('remember')
+            );
+
+            $this->pushFirebaseSecurityEvent('admin_login_password_passed', [
+                'admin_id' => (int) ($admin->admin_id ?? 0),
+                'email' => Str::lower(trim((string) ($admin->email ?? ''))),
+                'ip' => $request->ip(),
+            ]);
+
+            return redirect()
+                ->route('admin.2fa.challenge')
+                ->with('success', 'Enter your Google Authenticator code to continue.');
+        }
+
+        $this->clearPendingTwoFactorLogin($request);
+
         $this->setAdminSession($request, $admin, $role);
 
         if ($request->boolean('remember')) {
@@ -79,6 +122,147 @@ class AdminAuthController extends Controller
         }
 
         return redirect()->route($this->dashboardRouteForRole($role));
+    }
+
+    /**
+     * Display 2FA challenge page for pending admin login attempts.
+     */
+    public function showTwoFactorChallenge(Request $request)
+    {
+        if ($this->hasActiveAdminSession($request)) {
+            return redirect()->route(
+                $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''))
+            );
+        }
+
+        $pending = $this->getPendingTwoFactorLogin($request);
+        if ($pending === null) {
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Your login verification session has expired. Please log in again.');
+        }
+
+        return view('admin.admin_2fa_challenge', [
+            'maskedEmail' => $this->maskEmail((string) ($pending['email'] ?? '')),
+            'remainingSeconds' => max(0, (int) ($pending['expires_at'] ?? 0) - now()->timestamp),
+        ]);
+    }
+
+    /**
+     * Verify admin Google Authenticator (or recovery) code and complete login.
+     */
+    public function verifyTwoFactorChallenge(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'code' => ['nullable', 'digits:6', 'required_without:recovery_code'],
+            'recovery_code' => ['nullable', 'string', 'max:64', 'required_without:code'],
+        ]);
+
+        $pending = $this->getPendingTwoFactorLogin($request);
+        if ($pending === null) {
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Your login verification session has expired. Please log in again.');
+        }
+
+        $attempts = (int) ($pending['attempts'] ?? 0);
+        if ($attempts >= self::TWO_FACTOR_MAX_ATTEMPTS) {
+            $this->clearPendingTwoFactorLogin($request);
+
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Too many invalid 2FA attempts. Please log in again.');
+        }
+
+        $adminId = (int) ($pending['admin_id'] ?? 0);
+        $admin = DB::table('admins')
+            ->where('admin_id', $adminId)
+            ->first();
+
+        if (!$admin || !$this->isSupportedRole((string) ($admin->role ?? ''))) {
+            $this->clearPendingTwoFactorLogin($request);
+
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Your account is no longer available for this login attempt.');
+        }
+
+        if (!$this->isTwoFactorEnabledForAdmin($admin)) {
+            $this->clearPendingTwoFactorLogin($request);
+
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Two-factor authentication is not configured for this account. Please log in again.');
+        }
+
+        $code = trim((string) ($validated['code'] ?? ''));
+        $recoveryCode = trim((string) ($validated['recovery_code'] ?? ''));
+
+        $isValid = false;
+        $usedRecoveryCode = false;
+
+        if ($code !== '') {
+            $decryptedSecret = $this->decryptTwoFactorSecret((string) ($admin->two_factor_secret ?? ''));
+            $isValid = $decryptedSecret !== null
+                && $this->verifyTotpCode($decryptedSecret, $code);
+        } elseif ($recoveryCode !== '') {
+            $isValid = $this->consumeRecoveryCode($admin, $recoveryCode);
+            $usedRecoveryCode = $isValid;
+        }
+
+        if (!$isValid) {
+            $pending['attempts'] = $attempts + 1;
+            $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, $pending);
+
+            $this->pushFirebaseSecurityEvent('admin_2fa_failed', [
+                'admin_id' => (int) ($admin->admin_id ?? 0),
+                'ip' => $request->ip(),
+                'attempt' => (int) $pending['attempts'],
+            ]);
+
+            return back()->withErrors([
+                'code' => 'Invalid authentication code. Please try again.',
+            ]);
+        }
+
+        $this->clearPendingTwoFactorLogin($request);
+
+        $role = $this->normalizeRole((string) ($pending['role'] ?? ($admin->role ?? '')));
+        $this->setAdminSession($request, $admin, $role);
+
+        if ($this->supportsTwoFactorStorage()) {
+            DB::table('admins')
+                ->where('admin_id', (int) $admin->admin_id)
+                ->update([
+                    'two_factor_last_verified_at' => now(),
+                ]);
+        }
+
+        if (!empty($pending['remember'])) {
+            $this->issueRememberMeToken((int) $admin->admin_id);
+        } else {
+            $this->clearRememberMeToken((int) $admin->admin_id);
+        }
+
+        $this->logRbacAdminAudit(
+            $request,
+            'login',
+            'Completed admin login with two-factor authentication.',
+            (int) $admin->admin_id,
+            [
+                'two_factor_method' => $usedRecoveryCode ? 'recovery_code' : 'totp',
+            ]
+        );
+
+        $this->pushFirebaseSecurityEvent('admin_2fa_success', [
+            'admin_id' => (int) ($admin->admin_id ?? 0),
+            'method' => $usedRecoveryCode ? 'recovery_code' : 'totp',
+            'ip' => $request->ip(),
+        ]);
+
+        return redirect()
+            ->route($this->dashboardRouteForRole($role))
+            ->with('success', 'Two-factor authentication successful.');
     }
 
     /**
@@ -838,7 +1022,235 @@ class AdminAuthController extends Controller
      */
     public function settings(Request $request)
     {
-        return view('admin.settings');
+        $adminId = (int) $request->session()->get('admin_id', 0);
+        $columns = ['admin_id'];
+
+        if ($this->supportsTwoFactorStorage()) {
+            $columns = array_merge($columns, [
+                'two_factor_enabled',
+                'two_factor_confirmed_at',
+                'two_factor_secret',
+            ]);
+        }
+
+        $admin = DB::table('admins')
+            ->select($columns)
+            ->where('admin_id', $adminId)
+            ->first();
+
+        $twoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
+
+        return view('admin.settings', [
+            'settingsPayload' => [
+                'page' => 'settings',
+                'settings' => [
+                    'general' => [
+                        'systemName' => 'eDonate',
+                        'systemEmail' => 'admin@edonate.local',
+                        'contactNumber' => '+63 917 123 4567',
+                    ],
+                    'notifications' => [
+                        'email' => true,
+                        'sms' => false,
+                    ],
+                    'security' => [
+                        'twoFactor' => $twoFactorEnabled,
+                        'sessionTimeout' => '10',
+                        'twoFactorSetupUrl' => route('admin.2fa.setup'),
+                    ],
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Display Google Authenticator setup and management page.
+     */
+    public function setupTwoFactor(Request $request)
+    {
+        $admin = $this->getCurrentAdminForTwoFactor($request);
+        if ($admin === null) {
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Please log in to continue.');
+        }
+
+        if (!$this->supportsTwoFactorStorage()) {
+            return redirect()
+                ->route('admin.settings')
+                ->with('error', 'Two-factor columns are not available yet. Please run migrations first.');
+        }
+
+        $twoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
+        $secret = null;
+        $qrSvg = null;
+        $provisioningUri = null;
+
+        if (!$twoFactorEnabled) {
+            $secret = trim((string) $request->session()->get(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY, ''));
+            if ($secret === '') {
+                $secret = $this->google2fa()->generateSecretKey();
+                $request->session()->put(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY, $secret);
+            }
+
+            $issuer = (string) config('app.name', 'eDonate');
+            $email = trim((string) ($admin->email ?? ''));
+            $provisioningUri = $this->google2fa()->getQRCodeUrl($issuer, $email, $secret);
+            $qrSvg = $this->generateSvgQrCode($provisioningUri);
+        }
+
+        return view('admin.admin_2fa_setup', [
+            'twoFactorEnabled' => $twoFactorEnabled,
+            'maskedEmail' => $this->maskEmail((string) ($admin->email ?? '')),
+            'secret' => $secret,
+            'provisioningUri' => $provisioningUri,
+            'qrSvg' => $qrSvg,
+            'confirmedAt' => !empty($admin->two_factor_confirmed_at)
+                ? Carbon::parse((string) $admin->two_factor_confirmed_at)
+                : null,
+            'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
+        ]);
+    }
+
+    /**
+     * Confirm 2FA setup by validating first Google Authenticator code.
+     */
+    public function enableTwoFactor(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'otp' => ['required', 'digits:6'],
+        ]);
+
+        $admin = $this->getCurrentAdminForTwoFactor($request);
+        if ($admin === null) {
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Please log in to continue.');
+        }
+
+        if (!$this->supportsTwoFactorStorage()) {
+            return redirect()
+                ->route('admin.settings')
+                ->with('error', 'Two-factor columns are not available yet. Please run migrations first.');
+        }
+
+        $secret = trim((string) $request->session()->get(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY, ''));
+        if ($secret === '') {
+            return redirect()
+                ->route('admin.2fa.setup')
+                ->with('error', '2FA setup session expired. Please scan the QR code again.');
+        }
+
+        if (!$this->verifyTotpCode($secret, (string) $validated['otp'])) {
+            return back()->withErrors([
+                'otp' => 'Invalid authenticator code. Please try again.',
+            ]);
+        }
+
+        $recoveryCodes = $this->generateRecoveryCodes();
+        $hashedRecoveryCodes = collect($recoveryCodes)
+            ->map(fn (string $value): string => Hash::make($value))
+            ->values()
+            ->all();
+
+        DB::table('admins')
+            ->where('admin_id', (int) $admin->admin_id)
+            ->update([
+                'two_factor_enabled' => true,
+                'two_factor_secret' => Crypt::encryptString($secret),
+                'two_factor_confirmed_at' => now(),
+                'two_factor_recovery_codes' => json_encode($hashedRecoveryCodes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+
+        $request->session()->forget(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY);
+        $request->session()->flash('two_factor_recovery_codes', $recoveryCodes);
+
+        $this->logRbacAdminAudit(
+            $request,
+            'update',
+            'Enabled Google Authenticator two-factor authentication.',
+            (int) $admin->admin_id,
+            [
+                'security_event' => 'two_factor_enabled',
+            ]
+        );
+
+        $this->pushFirebaseSecurityEvent('admin_2fa_enabled', [
+            'admin_id' => (int) ($admin->admin_id ?? 0),
+            'ip' => $request->ip(),
+        ]);
+
+        return redirect()
+            ->route('admin.2fa.setup')
+            ->with('success', 'Google Authenticator has been enabled. Save your recovery codes below.');
+    }
+
+    /**
+     * Disable Google Authenticator 2FA for the current admin account.
+     */
+    public function disableTwoFactor(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+            'otp' => ['required', 'digits:6'],
+        ]);
+
+        $admin = $this->getCurrentAdminForTwoFactor($request, true);
+        if ($admin === null) {
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Please log in to continue.');
+        }
+
+        if (!$this->isTwoFactorEnabledForAdmin($admin)) {
+            return redirect()
+                ->route('admin.2fa.setup')
+                ->with('error', 'Two-factor authentication is already disabled.');
+        }
+
+        if (!Hash::check((string) $validated['current_password'], (string) ($admin->password ?? ''))) {
+            return back()->withErrors([
+                'current_password' => 'Current password does not match.',
+            ]);
+        }
+
+        $secret = $this->decryptTwoFactorSecret((string) ($admin->two_factor_secret ?? ''));
+        if ($secret === null || !$this->verifyTotpCode($secret, (string) $validated['otp'])) {
+            return back()->withErrors([
+                'otp' => 'Invalid authenticator code.',
+            ]);
+        }
+
+        DB::table('admins')
+            ->where('admin_id', (int) $admin->admin_id)
+            ->update([
+                'two_factor_enabled' => false,
+                'two_factor_secret' => null,
+                'two_factor_confirmed_at' => null,
+                'two_factor_recovery_codes' => null,
+                'two_factor_last_verified_at' => null,
+            ]);
+
+        $request->session()->forget(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY);
+
+        $this->logRbacAdminAudit(
+            $request,
+            'update',
+            'Disabled Google Authenticator two-factor authentication.',
+            (int) $admin->admin_id,
+            [
+                'security_event' => 'two_factor_disabled',
+            ]
+        );
+
+        $this->pushFirebaseSecurityEvent('admin_2fa_disabled', [
+            'admin_id' => (int) ($admin->admin_id ?? 0),
+            'ip' => $request->ip(),
+        ]);
+
+        return redirect()
+            ->route('admin.2fa.setup')
+            ->with('success', 'Two-factor authentication has been disabled.');
     }
 
     /**
@@ -862,7 +1274,14 @@ class AdminAuthController extends Controller
                 return true;
             }
 
-            $request->session()->forget(['admin_id', 'admin_username', 'admin_full_name', 'admin_role']);
+            $request->session()->forget([
+                'admin_id',
+                'admin_username',
+                'admin_full_name',
+                'admin_role',
+                self::TWO_FACTOR_PENDING_SESSION_KEY,
+                self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY,
+            ]);
         }
 
         return $this->attemptRememberedLogin($request);
@@ -927,6 +1346,18 @@ class AdminAuthController extends Controller
             return false;
         }
 
+        // Require explicit password + TOTP flow for 2FA-enabled accounts.
+        if ($this->isTwoFactorEnabledForAdmin($admin)) {
+            $this->clearRememberMeToken((int) $admin->admin_id);
+
+            $this->pushFirebaseSecurityEvent('admin_remember_login_blocked_by_2fa', [
+                'admin_id' => (int) ($admin->admin_id ?? 0),
+                'ip' => $request->ip(),
+            ]);
+
+            return false;
+        }
+
         $this->setAdminSession($request, $admin, $role);
         $this->issueRememberMeToken((int) $admin->admin_id);
 
@@ -965,6 +1396,303 @@ class AdminAuthController extends Controller
     private function normalizeRole(string $role): string
     {
         return Str::lower(trim($role));
+    }
+
+    /**
+     * Resolve current admin record for 2FA actions.
+     */
+    private function getCurrentAdminForTwoFactor(Request $request, bool $includePassword = false): ?object
+    {
+        $adminId = (int) $request->session()->get('admin_id', 0);
+        if ($adminId <= 0) {
+            return null;
+        }
+
+        $columns = ['admin_id', 'email', 'username', 'full_name', 'role'];
+
+        if ($this->supportsTwoFactorStorage()) {
+            $columns = array_merge($columns, [
+                'two_factor_enabled',
+                'two_factor_secret',
+                'two_factor_confirmed_at',
+                'two_factor_recovery_codes',
+            ]);
+        }
+
+        if ($includePassword) {
+            $columns[] = 'password';
+        }
+
+        return DB::table('admins')
+            ->select($columns)
+            ->where('admin_id', $adminId)
+            ->first();
+    }
+
+    /**
+     * Detect if admins table has required columns for 2FA.
+     */
+    private function supportsTwoFactorStorage(): bool
+    {
+        if (!Schema::hasTable('admins')) {
+            return false;
+        }
+
+        return Schema::hasColumn('admins', 'two_factor_enabled')
+            && Schema::hasColumn('admins', 'two_factor_secret')
+            && Schema::hasColumn('admins', 'two_factor_confirmed_at')
+            && Schema::hasColumn('admins', 'two_factor_recovery_codes')
+            && Schema::hasColumn('admins', 'two_factor_last_verified_at');
+    }
+
+    /**
+     * Determine if admin account currently enforces Google Authenticator.
+     */
+    private function isTwoFactorEnabledForAdmin(?object $admin): bool
+    {
+        if (!$this->supportsTwoFactorStorage() || !$admin) {
+            return false;
+        }
+
+        return (bool) ($admin->two_factor_enabled ?? false)
+            && trim((string) ($admin->two_factor_secret ?? '')) !== '';
+    }
+
+    /**
+     * Stage pending 2FA challenge data in session after password validation.
+     */
+    private function stagePendingTwoFactorLogin(Request $request, object $admin, string $role, bool $rememberRequested): void
+    {
+        $request->session()->regenerate();
+        $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, [
+            'admin_id' => (int) ($admin->admin_id ?? 0),
+            'email' => Str::lower(trim((string) ($admin->email ?? ''))),
+            'role' => $this->normalizeRole($role),
+            'remember' => $rememberRequested,
+            'attempts' => 0,
+            'expires_at' => now()->addMinutes(self::TWO_FACTOR_PENDING_TTL_MINUTES)->timestamp,
+        ]);
+    }
+
+    /**
+     * Read and validate pending 2FA login state.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function getPendingTwoFactorLogin(Request $request): ?array
+    {
+        $pending = $request->session()->get(self::TWO_FACTOR_PENDING_SESSION_KEY);
+
+        if (!is_array($pending) || !is_numeric($pending['admin_id'] ?? null)) {
+            return null;
+        }
+
+        $expiresAt = (int) ($pending['expires_at'] ?? 0);
+        if ($expiresAt <= 0 || now()->timestamp > $expiresAt) {
+            $this->clearPendingTwoFactorLogin($request);
+            return null;
+        }
+
+        return $pending;
+    }
+
+    /**
+     * Clear pending 2FA challenge state.
+     */
+    private function clearPendingTwoFactorLogin(Request $request): void
+    {
+        $request->session()->forget(self::TWO_FACTOR_PENDING_SESSION_KEY);
+    }
+
+    /**
+     * Verify TOTP code against decrypted secret.
+     */
+    private function verifyTotpCode(string $secret, string $code): bool
+    {
+        $normalizedCode = preg_replace('/\s+/', '', trim($code)) ?? '';
+        if (!preg_match('/^\d{6}$/', $normalizedCode)) {
+            return false;
+        }
+
+        return $this->google2fa()->verifyKey($secret, $normalizedCode, self::TWO_FACTOR_TOTP_WINDOW);
+    }
+
+    /**
+     * Decrypt persisted 2FA secret safely.
+     */
+    private function decryptTwoFactorSecret(string $encryptedSecret): ?string
+    {
+        if (trim($encryptedSecret) === '') {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($encryptedSecret);
+        } catch (DecryptException $exception) {
+            return null;
+        }
+    }
+
+    /**
+     * Generate one-time backup recovery codes for 2FA lockout scenarios.
+     *
+     * @return array<int, string>
+     */
+    private function generateRecoveryCodes(): array
+    {
+        $codes = [];
+
+        for ($index = 0; $index < self::TWO_FACTOR_RECOVERY_CODES_COUNT; $index++) {
+            $codes[] = Str::upper(Str::random(5)).'-'.Str::upper(Str::random(5));
+        }
+
+        return $codes;
+    }
+
+    /**
+     * Parse stored hashed recovery code payload from admins table.
+     *
+     * @return array<int, string>
+     */
+    private function parseRecoveryCodeHashes(object $admin): array
+    {
+        $raw = $admin->two_factor_recovery_codes ?? null;
+        $decoded = null;
+
+        if (is_string($raw) && trim($raw) !== '') {
+            $decoded = json_decode($raw, true);
+        } elseif (is_array($raw)) {
+            $decoded = $raw;
+        }
+
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return array_values(array_filter(array_map(
+            static fn (mixed $value): string => is_string($value) ? $value : '',
+            $decoded
+        )));
+    }
+
+    /**
+     * Validate and consume a single recovery code.
+     */
+    private function consumeRecoveryCode(object $admin, string $recoveryCode): bool
+    {
+        if (!$this->supportsTwoFactorStorage()) {
+            return false;
+        }
+
+        $normalizedInput = Str::upper(trim($recoveryCode));
+        if ($normalizedInput === '') {
+            return false;
+        }
+
+        $hashes = $this->parseRecoveryCodeHashes($admin);
+        if ($hashes === []) {
+            return false;
+        }
+
+        foreach ($hashes as $index => $hash) {
+            if (!Hash::check($normalizedInput, $hash)) {
+                continue;
+            }
+
+            unset($hashes[$index]);
+
+            DB::table('admins')
+                ->where('admin_id', (int) ($admin->admin_id ?? 0))
+                ->update([
+                    'two_factor_recovery_codes' => json_encode(array_values($hashes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Render provisioning URI as an inline SVG QR code.
+     */
+    private function generateSvgQrCode(string $contents): string
+    {
+        try {
+            $renderer = new ImageRenderer(
+                new RendererStyle(220),
+                new SvgImageBackEnd()
+            );
+
+            return (new Writer($renderer))->writeString($contents);
+        } catch (Throwable $exception) {
+            logger()->warning('Unable to generate 2FA QR code SVG.', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            return '';
+        }
+    }
+
+    /**
+     * Mask email before displaying it on authentication screens.
+     */
+    private function maskEmail(string $email): string
+    {
+        $email = trim($email);
+        if ($email === '' || !Str::contains($email, '@')) {
+            return 'your account';
+        }
+
+        [$localPart, $domain] = explode('@', $email, 2);
+        $localPart = trim($localPart);
+
+        if (Str::length($localPart) <= 2) {
+            $maskedLocalPart = Str::substr($localPart, 0, 1).'*';
+        } else {
+            $maskedLocalPart = Str::substr($localPart, 0, 2)
+                .str_repeat('*', max(1, Str::length($localPart) - 2));
+        }
+
+        return $maskedLocalPart.'@'.$domain;
+    }
+
+    /**
+     * Instantiate Google2FA service.
+     */
+    private function google2fa(): Google2FA
+    {
+        return new Google2FA();
+    }
+
+    /**
+     * Push security-related admin auth events into Firebase Realtime Database.
+     */
+    private function pushFirebaseSecurityEvent(string $eventType, array $payload = []): void
+    {
+        try {
+            $database = app('firebase.database');
+            if ($database === null) {
+                return;
+            }
+
+            $path = trim((string) config('services.firebase.security_events_path', self::FIREBASE_SECURITY_EVENTS_DEFAULT_PATH), '/');
+            if ($path === '') {
+                $path = self::FIREBASE_SECURITY_EVENTS_DEFAULT_PATH;
+            }
+
+            $database->getReference($path)->push([
+                'event_type' => $eventType,
+                'app' => (string) config('app.name', 'eDonate'),
+                'payload' => $payload,
+                'created_at' => now()->toIso8601String(),
+            ]);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to push admin security event to Firebase.', [
+                'event_type' => $eventType,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -1325,7 +2053,15 @@ class AdminAuthController extends Controller
             $this->clearRememberMeToken();
         }
 
-        $request->session()->forget(['admin_id', 'admin_username', 'admin_full_name', 'admin_role']);
+        $request->session()->forget([
+            'admin_id',
+            'admin_username',
+            'admin_full_name',
+            'admin_role',
+            self::TWO_FACTOR_PENDING_SESSION_KEY,
+            self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY,
+            'two_factor_recovery_codes',
+        ]);
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 

@@ -35,6 +35,8 @@ Route::view('/privacy-policy', 'donor.privacy')->name('privacy');
 
 Route::get('/admin/login', [AdminAuthController::class, 'create'])->name('admin.login');
 Route::post('/admin/login', [AdminAuthController::class, 'store'])->name('admin.login.store');
+Route::get('/admin/2fa/challenge', [AdminAuthController::class, 'showTwoFactorChallenge'])->name('admin.2fa.challenge');
+Route::post('/admin/2fa/challenge', [AdminAuthController::class, 'verifyTwoFactorChallenge'])->name('admin.2fa.verify');
 Route::get('/admin/forgot-password', [AdminAuthController::class, 'forgotPassword'])->name('admin.password.request');
 Route::post('/admin/forgot-password', [AdminAuthController::class, 'sendPasswordResetLink'])->name('admin.password.email');
 Route::get('/admin/reset-password', [AdminAuthController::class, 'showResetPasswordForm'])->name('admin.password.reset.form');
@@ -43,6 +45,9 @@ Route::post('/admin/reset-password', [AdminAuthController::class, 'resetPassword
 Route::middleware('admin.auth')->group(function () {
     Route::get('/admin/unauthorized', [AdminAuthController::class, 'unauthorized'])->name('admin.unauthorized');
     Route::post('/admin/logout', [AdminAuthController::class, 'destroy'])->name('admin.logout');
+    Route::get('/admin/settings/2fa', [AdminAuthController::class, 'setupTwoFactor'])->name('admin.2fa.setup');
+    Route::post('/admin/settings/2fa', [AdminAuthController::class, 'enableTwoFactor'])->name('admin.2fa.enable');
+    Route::post('/admin/settings/2fa/disable', [AdminAuthController::class, 'disableTwoFactor'])->name('admin.2fa.disable');
 
     Route::middleware('admin.role:admin,staff')->group(function () {
         Route::get('/staff/dashboard', [AdminAuthController::class, 'staffDashboard'])->name('staff.dashboard');
