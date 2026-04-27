@@ -442,7 +442,99 @@ class AdminAuthController extends BaseController
      */
     public function users(Request $request)
     {
-        return view('admin.user_management');
+        return view('admin.user_management', [
+            'userManagementPayload' => [
+                'api' => [
+                    'listUrl' => route('admin.users.data'),
+                ],
+                'filters' => [
+                    'bloodTypes' => $this->userManagementBloodTypeOptions(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Return paginated donor records for admin user management page.
+     */
+    public function listUsersData(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'search' => ['nullable', 'string', 'max:150'],
+            'blood_type' => ['nullable', 'string', 'max:10'],
+            'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible'])],
+        ]);
+
+        $page = (int) ($validated['page'] ?? 1);
+        $perPage = (int) ($validated['per_page'] ?? 10);
+        $searchTerm = trim((string) ($validated['search'] ?? ''));
+        $bloodType = Str::upper(trim((string) ($validated['blood_type'] ?? '')));
+        $status = Str::lower(trim((string) ($validated['status'] ?? '')));
+
+        $statusExpression = $this->userManagementStatusExpression();
+        $query = $this->userManagementDonorQuery();
+
+        if ($searchTerm !== '') {
+            $likeTerm = '%'.$searchTerm.'%';
+
+            $query->where(function ($builder) use ($searchTerm, $likeTerm): void {
+                $builder->whereRaw("CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, '')) like ?", [$likeTerm])
+                    ->orWhere('da.email', 'like', $likeTerm)
+                    ->orWhere('d.contact_number', 'like', $likeTerm);
+
+                if (is_numeric($searchTerm)) {
+                    $builder->orWhere('d.donor_id', (int) $searchTerm);
+                }
+            });
+        }
+
+        if ($bloodType !== '') {
+            $query->whereRaw("UPPER(COALESCE(bt.blood_type, '')) = ?", [$bloodType]);
+        }
+
+        if ($status !== '') {
+            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
+        }
+
+        $paginator = $query
+            ->orderByDesc('d.donor_id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $statusCounts = DB::query()
+            ->fromSub($this->userManagementDonorQuery(), 'donor_directory')
+            ->select('derived_status', DB::raw('COUNT(*) as total'))
+            ->groupBy('derived_status')
+            ->pluck('total', 'derived_status');
+
+        return response()->json([
+            'data' => $paginator->getCollection()
+                ->map(fn (object $donor): array => $this->transformUserManagementDonor($donor))
+                ->values()
+                ->all(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'stats' => [
+                'total_donors' => (int) DB::table('donors')->count(),
+                'eligible_donors' => (int) ($statusCounts['eligible'] ?? 0),
+                'not_eligible_donors' => (int) ($statusCounts['not_eligible'] ?? 0),
+                'total_donations' => (int) DB::table('donation_records')->count(),
+            ],
+            'filters' => [
+                'blood_types' => $this->userManagementBloodTypeOptions(),
+                'statuses' => [
+                    ['value' => 'eligible', 'label' => 'Eligible'],
+                    ['value' => 'not_eligible', 'label' => 'Not Eligible'],
+                ],
+            ],
+        ]);
     }
 
     /**
@@ -450,7 +542,105 @@ class AdminAuthController extends BaseController
      */
     public function appointments(Request $request)
     {
-        return view('admin.appointment_management');
+        return view('admin.appointment_management', [
+            'appointmentManagementPayload' => [
+                'api' => [
+                    'listUrl' => route('admin.appointments.data'),
+                ],
+                'filters' => [
+                    'centers' => $this->appointmentManagementCenterOptions(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Return paginated appointment list for admin appointment management page.
+     */
+    public function listAppointmentsData(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'search' => ['nullable', 'string', 'max:150'],
+            'center' => ['nullable', 'string', 'max:150'],
+            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'pending', 'cancelled', 'rescheduled'])],
+        ]);
+
+        $page = (int) ($validated['page'] ?? 1);
+        $perPage = (int) ($validated['per_page'] ?? 10);
+        $searchTerm = trim((string) ($validated['search'] ?? ''));
+        $center = trim((string) ($validated['center'] ?? ''));
+        $status = Str::lower(trim((string) ($validated['status'] ?? '')));
+
+        $statusExpression = $this->appointmentStatusExpression();
+        $centerExpression = $this->appointmentCenterExpression();
+
+        $query = $this->appointmentManagementBaseQuery();
+
+        if ($searchTerm !== '') {
+            $likeTerm = '%'.$searchTerm.'%';
+            $numericSearch = null;
+
+            if (preg_match('/(\d+)/', $searchTerm, $matches) === 1) {
+                $numericSearch = (int) ($matches[1] ?? 0);
+            }
+
+            $query->where(function ($builder) use ($likeTerm, $numericSearch): void {
+                $builder->whereRaw("CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, '')) like ?", [$likeTerm])
+                    ->orWhere('da.email', 'like', $likeTerm)
+                    ->orWhere('ap.status', 'like', $likeTerm);
+
+                if ($numericSearch !== null && $numericSearch > 0) {
+                    $builder->orWhere('ap.appointment_id', $numericSearch)
+                        ->orWhere('ap.donor_id', $numericSearch);
+                }
+            });
+        }
+
+        if ($center !== '') {
+            $query->whereRaw('LOWER('.$centerExpression.') = ?', [Str::lower($center)]);
+        }
+
+        if ($status !== '') {
+            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
+        }
+
+        $paginator = $query
+            ->orderByDesc('ap.appointment_date')
+            ->orderByDesc('ap.appointment_time')
+            ->orderByDesc('ap.appointment_id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $statusCounts = DB::query()
+            ->fromSub($this->appointmentManagementBaseQuery(), 'appointment_directory')
+            ->select('normalized_status', DB::raw('COUNT(*) as total'))
+            ->groupBy('normalized_status')
+            ->pluck('total', 'normalized_status');
+
+        return response()->json([
+            'data' => $paginator->getCollection()
+                ->map(fn (object $entry): array => $this->transformAppointmentManagementRow($entry))
+                ->values()
+                ->all(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'stats' => [
+                'confirmed' => (int) ($statusCounts['confirmed'] ?? 0),
+                'pending' => (int) ($statusCounts['pending'] ?? 0),
+                'cancelled' => (int) ($statusCounts['cancelled'] ?? 0),
+                'rescheduled' => (int) ($statusCounts['rescheduled'] ?? 0),
+            ],
+            'filters' => [
+                'centers' => $this->appointmentManagementCenterOptions(),
+            ],
+        ]);
     }
 
     /**
@@ -1948,6 +2138,249 @@ class AdminAuthController extends BaseController
                 'error' => $exception->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Build appointment listing query used by admin appointment management module.
+     */
+    private function appointmentManagementBaseQuery()
+    {
+        $statusExpression = $this->appointmentStatusExpression();
+        $centerExpression = $this->appointmentCenterExpression();
+
+        return DB::table('appointments as ap')
+            ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
+            ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
+                $join->on('da_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('donor_authentication as da', 'da.auth_id', '=', 'da_latest.latest_auth_id')
+            ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
+            ->select([
+                'ap.appointment_id',
+                'ap.donor_id',
+                'ap.appointment_date',
+                'ap.appointment_time',
+                'ap.status',
+                'ap.created_at',
+                'd.first_name',
+                'd.last_name',
+                'd.contact_number',
+                'da.email',
+                'bt.blood_type',
+            ])
+            ->selectRaw('('.$centerExpression.') as center_label')
+            ->selectRaw('('.$statusExpression.') as normalized_status');
+    }
+
+    /**
+     * Resolve latest donor authentication row per donor to avoid duplicate joins.
+     */
+    private function appointmentLatestDonorAuthQuery()
+    {
+        return DB::table('donor_authentication')
+            ->select([
+                'donor_id',
+                DB::raw('MAX(auth_id) as latest_auth_id'),
+            ])
+            ->groupBy('donor_id');
+    }
+
+    /**
+     * Build SQL expression for normalized appointment status buckets.
+     */
+    private function appointmentStatusExpression(string $appointmentsAlias = 'ap'): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('confirmed', 'approved', 'scheduled', 'complete', 'completed') THEN 'confirmed'
+            WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('pending', 'pending approval', 'for approval') THEN 'pending'
+            WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('cancelled', 'canceled', 'rejected', 'declined') THEN 'cancelled'
+            WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('rescheduled', 'reschedule requested') THEN 'rescheduled'
+            ELSE 'pending'
+        END";
+    }
+
+    /**
+     * Build SQL expression for readable center label from donor location.
+     */
+    private function appointmentCenterExpression(string $locationsAlias = 'l'): string
+    {
+        return "TRIM(COALESCE(NULLIF({$locationsAlias}.city, ''), NULLIF({$locationsAlias}.province, ''), NULLIF({$locationsAlias}.barangay_name, ''), NULLIF({$locationsAlias}.street_address, ''), 'N/A'))";
+    }
+
+    /**
+     * Resolve available center filter values for appointment management page.
+     *
+     * @return array<int, string>
+     */
+    private function appointmentManagementCenterOptions(): array
+    {
+        $centerExpression = $this->appointmentCenterExpression();
+
+        return DB::table('donors as d')
+            ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
+            ->whereNotNull('d.location_id')
+            ->selectRaw('('.$centerExpression.') as center_label')
+            ->distinct()
+            ->orderBy('center_label')
+            ->pluck('center_label')
+            ->map(fn ($value): string => trim((string) $value))
+            ->filter(fn (string $value): bool => $value !== '' && Str::lower($value) !== 'n/a')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Normalize appointment row payload for admin appointment front-end shape.
+     *
+     * @return array<string, mixed>
+     */
+    private function transformAppointmentManagementRow(object $entry): array
+    {
+        $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
+        if ($donorName === '') {
+            $donorName = 'Unknown Donor';
+        }
+
+        $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
+        if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled'], true)) {
+            $status = 'pending';
+        }
+
+        return [
+            'appointment_id' => (int) ($entry->appointment_id ?? 0),
+            'appointment_code' => 'AP'.str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_id' => (int) ($entry->donor_id ?? 0),
+            'donor_code' => 'D'.str_pad((string) ((int) ($entry->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_name' => $donorName,
+            'donor_email' => trim((string) ($entry->email ?? '')),
+            'blood_type' => trim((string) ($entry->blood_type ?? '')),
+            'appointment_date' => !empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
+            'appointment_time' => !empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
+            'center_label' => trim((string) ($entry->center_label ?? '')) !== ''
+                ? trim((string) $entry->center_label)
+                : 'N/A',
+            'status' => $status,
+        ];
+    }
+
+    /**
+     * Build the base donor directory query used by admin user management page.
+     */
+    private function userManagementDonorQuery()
+    {
+        $statusExpression = $this->userManagementStatusExpression();
+
+        return DB::table('donors as d')
+            ->leftJoin('donor_authentication as da', 'da.donor_id', '=', 'd.donor_id')
+            ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoinSub($this->userManagementDonationAggregateQuery(), 'drs', function ($join): void {
+                $join->on('drs.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoinSub($this->userManagementLatestEligibilityQuery(), 'es_latest', function ($join): void {
+                $join->on('es_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('eligibility_status as es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
+            ->select([
+                'd.donor_id',
+                'd.first_name',
+                'd.last_name',
+                'd.contact_number',
+                'da.email',
+                'bt.blood_type',
+                DB::raw('COALESCE(drs.total_donations, 0) as total_donations'),
+                DB::raw('drs.last_donation_date as last_donation_date'),
+            ])
+            ->selectRaw('('.$statusExpression.') as derived_status');
+    }
+
+    /**
+     * Aggregate donation totals and latest donation date per donor.
+     */
+    private function userManagementDonationAggregateQuery()
+    {
+        return DB::table('donation_records')
+            ->select([
+                'donor_id',
+                DB::raw('COUNT(*) as total_donations'),
+                DB::raw('MAX(donation_date) as last_donation_date'),
+            ])
+            ->groupBy('donor_id');
+    }
+
+    /**
+     * Resolve latest eligibility row per donor.
+     */
+    private function userManagementLatestEligibilityQuery()
+    {
+        return DB::table('eligibility_status')
+            ->select([
+                'donor_id',
+                DB::raw('MAX(eligibility_id) as latest_eligibility_id'),
+            ])
+            ->groupBy('donor_id');
+    }
+
+    /**
+     * Build SQL expression to derive donor eligibility label.
+     */
+    private function userManagementStatusExpression(): string
+    {
+        return "CASE
+            WHEN LOWER(COALESCE(es.status, '')) IN ('eligible', 'qualified', 'ready') THEN 'eligible'
+            WHEN LOWER(COALESCE(es.status, '')) IN ('not eligible', 'not_eligible', 'deferred', 'ineligible') THEN 'not_eligible'
+            WHEN drs.last_donation_date IS NULL THEN 'eligible'
+            WHEN drs.last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 56 DAY) THEN 'eligible'
+            ELSE 'not_eligible'
+        END";
+    }
+
+    /**
+     * Resolve distinct blood type filter values for admin users page.
+     *
+     * @return array<int, string>
+     */
+    private function userManagementBloodTypeOptions(): array
+    {
+        return DB::table('blood_types')
+            ->whereNotNull('blood_type')
+            ->where('blood_type', '!=', '')
+            ->orderBy('blood_type')
+            ->pluck('blood_type')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Normalize donor row payload for admin user management front-end.
+     *
+     * @return array<string, mixed>
+     */
+    private function transformUserManagementDonor(object $donor): array
+    {
+        $fullName = trim((string) ($donor->first_name ?? '').' '.(string) ($donor->last_name ?? ''));
+        if ($fullName === '') {
+            $fullName = 'Donor #'.(int) ($donor->donor_id ?? 0);
+        }
+
+        $status = Str::lower(trim((string) ($donor->derived_status ?? 'eligible')));
+        if (!in_array($status, ['eligible', 'not_eligible'], true)) {
+            $status = 'eligible';
+        }
+
+        return [
+            'donor_id' => (int) ($donor->donor_id ?? 0),
+            'donor_code' => 'D'.str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'full_name' => $fullName,
+            'email' => trim((string) ($donor->email ?? '')),
+            'blood_type' => trim((string) ($donor->blood_type ?? '')),
+            'contact_number' => trim((string) ($donor->contact_number ?? '')),
+            'last_donation_date' => !empty($donor->last_donation_date)
+                ? (string) $donor->last_donation_date
+                : null,
+            'eligibility_status' => $status,
+            'total_donations' => (int) ($donor->total_donations ?? 0),
+        ];
     }
 
     /**

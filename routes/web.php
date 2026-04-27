@@ -52,6 +52,7 @@ Route::middleware('admin.auth')->group(function () {
     Route::middleware('admin.role:admin,staff')->group(function () {
         Route::get('/staff/dashboard', [AdminAuthController::class, 'staffDashboard'])->name('staff.dashboard');
         Route::get('/admin/appointments', [AdminAuthController::class, 'appointments'])->name('admin.appointments');
+        Route::get('/admin/appointments/data', [AdminAuthController::class, 'listAppointmentsData'])->name('admin.appointments.data');
         Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
         Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
@@ -63,6 +64,7 @@ Route::middleware('admin.auth')->group(function () {
     Route::middleware('admin.role:admin')->group(function () {
         Route::get('/admin/dashboard', [AdminAuthController::class, 'dashboard'])->name('admin.dashboard');
         Route::get('/admin/users', [AdminAuthController::class, 'users'])->name('admin.users');
+        Route::get('/admin/users/data', [AdminAuthController::class, 'listUsersData'])->name('admin.users.data');
         Route::get('/admin/report-analytics', [AdminAuthController::class, 'reportAnalytics'])->name('admin.report-analytics');
         Route::get('/admin/rbac', [AdminAuthController::class, 'rbac'])->name('admin.rbac');
         Route::get('/admin/rbac/users', [AdminAuthController::class, 'listRbacUsers'])
