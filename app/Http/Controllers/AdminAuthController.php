@@ -644,11 +644,269 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Approve (confirm) a pending appointment.
+     */
+    public function approveAppointment(Request $request, int $appointment): JsonResponse
+    {
+        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
+        if (!$row) {
+            return response()->json(['message' => 'Appointment not found.'], 404);
+        }
+
+        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
+        if ($normalized !== 'pending') {
+            return response()->json(['message' => 'Only pending appointments can be approved.'], 422);
+        }
+
+        $actorAdminId = is_numeric($request->session()->get('admin_id'))
+            ? (int) $request->session()->get('admin_id')
+            : null;
+
+        DB::table('appointments')->where('appointment_id', $appointment)->update([
+            'status' => 'confirmed',
+            'admin_id' => $actorAdminId,
+        ]);
+
+        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+
+        $this->createDonorNotification($donorId, 'appointment_approved', "Your appointment {$appointmentCode} has been approved.");
+        $this->logAppointmentAudit($request, 'appointment_approved', "Approved appointment {$appointmentCode}.", $appointment, [
+            'appointment_id' => $appointment,
+            'donor_id' => $donorId,
+            'previous_status' => $row->status ?? null,
+            'new_status' => 'confirmed',
+        ]);
+
+        return response()->json(['message' => 'Appointment approved.']);
+    }
+
+    /**
+     * Reject (cancel) a pending appointment.
+     */
+    public function rejectAppointment(Request $request, int $appointment): JsonResponse
+    {
+        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
+        if (!$row) {
+            return response()->json(['message' => 'Appointment not found.'], 404);
+        }
+
+        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
+        if ($normalized !== 'pending') {
+            return response()->json(['message' => 'Only pending appointments can be rejected.'], 422);
+        }
+
+        $actorAdminId = is_numeric($request->session()->get('admin_id'))
+            ? (int) $request->session()->get('admin_id')
+            : null;
+
+        DB::table('appointments')->where('appointment_id', $appointment)->update([
+            'status' => 'cancelled',
+            'admin_id' => $actorAdminId,
+        ]);
+
+        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+
+        $this->createDonorNotification($donorId, 'appointment_rejected', "Your appointment {$appointmentCode} has been rejected.");
+        $this->logAppointmentAudit($request, 'appointment_rejected', "Rejected appointment {$appointmentCode}.", $appointment, [
+            'appointment_id' => $appointment,
+            'donor_id' => $donorId,
+            'previous_status' => $row->status ?? null,
+            'new_status' => 'cancelled',
+        ]);
+
+        return response()->json(['message' => 'Appointment rejected.']);
+    }
+
+    /**
+     * Reschedule a confirmed appointment to a new date/time.
+     */
+    public function rescheduleAppointment(Request $request, int $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'appointment_date' => ['required', 'date', 'after_or_equal:today'],
+            'appointment_time' => ['required', 'date_format:H:i'],
+        ]);
+
+        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
+        if (!$row) {
+            return response()->json(['message' => 'Appointment not found.'], 404);
+        }
+
+        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
+        if ($normalized !== 'confirmed') {
+            return response()->json(['message' => 'Only confirmed appointments can be rescheduled.'], 422);
+        }
+
+        $slotTaken = DB::table('appointments')
+            ->where('appointment_date', $validated['appointment_date'])
+            ->where('appointment_time', $validated['appointment_time'])
+            ->where('appointment_id', '!=', $appointment)
+            ->exists();
+
+        if ($slotTaken) {
+            return response()->json(['message' => 'That schedule is already taken.'], 422);
+        }
+
+        $actorAdminId = is_numeric($request->session()->get('admin_id'))
+            ? (int) $request->session()->get('admin_id')
+            : null;
+
+        DB::table('appointments')->where('appointment_id', $appointment)->update([
+            'appointment_date' => $validated['appointment_date'],
+            'appointment_time' => $validated['appointment_time'],
+            'status' => 'rescheduled',
+            'admin_id' => $actorAdminId,
+        ]);
+
+        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+
+        $this->createDonorNotification(
+            $donorId,
+            'appointment_rescheduled',
+            "Your appointment {$appointmentCode} was rescheduled to {$validated['appointment_date']} at {$validated['appointment_time']}."
+        );
+
+        $this->logAppointmentAudit($request, 'appointment_rescheduled', "Rescheduled appointment {$appointmentCode}.", $appointment, [
+            'appointment_id' => $appointment,
+            'donor_id' => $donorId,
+            'previous_date' => $row->appointment_date ?? null,
+            'previous_time' => $row->appointment_time ?? null,
+            'new_date' => $validated['appointment_date'],
+            'new_time' => $validated['appointment_time'],
+            'previous_status' => $row->status ?? null,
+            'new_status' => 'rescheduled',
+        ]);
+
+        return response()->json(['message' => 'Appointment rescheduled.']);
+    }
+
+    /**
      * Display donation records page.
      */
     public function donationRecords(Request $request)
     {
-        return view('admin.donor_records');
+        return view('admin.donor_records', [
+            'donationRecordsPayload' => [
+                'api' => [
+                    'listUrl' => route('admin.donation-records.data'),
+                ],
+                'filters' => [
+                    'bloodTypes' => $this->userManagementBloodTypeOptions(),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Return paginated donation record list for donation records page.
+     */
+    public function listDonationRecordsData(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'search' => ['nullable', 'string', 'max:150'],
+            'blood_type' => ['nullable', 'string', 'max:10'],
+            'status' => ['nullable', 'string', Rule::in(['', 'completed', 'pending', 'deferred'])],
+        ]);
+
+        $page = (int) ($validated['page'] ?? 1);
+        $perPage = (int) ($validated['per_page'] ?? 9);
+        $searchTerm = trim((string) ($validated['search'] ?? ''));
+        $bloodType = trim((string) ($validated['blood_type'] ?? ''));
+        $status = Str::lower(trim((string) ($validated['status'] ?? '')));
+
+        $query = $this->donationRecordsBaseQuery();
+
+        if ($searchTerm !== '') {
+            $likeTerm = '%'.$searchTerm.'%';
+            $numericSearch = null;
+
+            if (preg_match('/(\d+)/', $searchTerm, $matches) === 1) {
+                $numericSearch = (int) ($matches[1] ?? 0);
+            }
+
+            $query->where(function ($builder) use ($likeTerm, $numericSearch): void {
+                $builder->whereRaw("CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, '')) like ?", [$likeTerm])
+                    ->orWhere('da.email', 'like', $likeTerm)
+                    ->orWhere('dr.remarks', 'like', $likeTerm);
+
+                if ($numericSearch !== null && $numericSearch > 0) {
+                    $builder->orWhere('dr.donation_id', $numericSearch)
+                        ->orWhere('dr.donor_id', $numericSearch)
+                        ->orWhere('dr.appointment_id', $numericSearch);
+                }
+            });
+        }
+
+        if ($bloodType !== '') {
+            $query->whereRaw("LOWER(COALESCE(bt.blood_type, '')) = ?", [Str::lower($bloodType)]);
+        }
+
+        if ($status !== '') {
+            $statusExpression = $this->donationRecordStatusExpression();
+            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
+        }
+
+        $paginator = $query
+            ->orderByDesc('dr.donation_date')
+            ->orderByDesc('dr.donation_id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $statusCounts = DB::query()
+            ->fromSub($this->donationRecordsBaseQuery(), 'donation_directory')
+            ->select('derived_status', DB::raw('COUNT(*) as total'))
+            ->groupBy('derived_status')
+            ->pluck('total', 'derived_status');
+
+        $thisMonthCount = (int) DB::table('donation_records')
+            ->whereDate('donation_date', '>=', Carbon::now()->startOfMonth()->toDateString())
+            ->whereDate('donation_date', '<=', Carbon::now()->endOfMonth()->toDateString())
+            ->count();
+
+        $activeDonorsCount = (int) DB::table('donation_records')->distinct('donor_id')->count('donor_id');
+
+        $avgUnits = (float) DB::table('donation_records')
+            ->whereNotNull('blood_units')
+            ->avg('blood_units');
+        $avgVolumeMl = $avgUnits > 0 ? (int) round($avgUnits * 450) : 0;
+
+        return response()->json([
+            'data' => $paginator->getCollection()
+                ->map(fn (object $entry): array => $this->transformDonationRecordRow($entry))
+                ->values()
+                ->all(),
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+            ],
+            'stats' => [
+                'total_donations' => (int) DB::table('donation_records')->count(),
+                'this_month' => $thisMonthCount,
+                'active_donors' => $activeDonorsCount,
+                'average_volume_ml' => $avgVolumeMl,
+                'status_counts' => [
+                    'completed' => (int) ($statusCounts['completed'] ?? 0),
+                    'pending' => (int) ($statusCounts['pending'] ?? 0),
+                    'deferred' => (int) ($statusCounts['deferred'] ?? 0),
+                ],
+            ],
+            'filters' => [
+                'blood_types' => $this->userManagementBloodTypeOptions(),
+                'statuses' => [
+                    ['value' => 'completed', 'label' => 'Completed'],
+                    ['value' => 'pending', 'label' => 'Pending'],
+                    ['value' => 'deferred', 'label' => 'Deferred'],
+                ],
+            ],
+        ]);
     }
 
     /**
@@ -2201,6 +2459,29 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Normalize an appointment status string into one of: confirmed, pending, cancelled, rescheduled.
+     */
+    private function normalizeAppointmentStatusValue(string $status): string
+    {
+        $status = Str::lower(trim($status));
+
+        if (in_array($status, ['confirmed', 'approved', 'scheduled', 'complete', 'completed'], true)) {
+            return 'confirmed';
+        }
+        if (in_array($status, ['pending', 'pending approval', 'for approval'], true)) {
+            return 'pending';
+        }
+        if (in_array($status, ['cancelled', 'canceled', 'rejected', 'declined'], true)) {
+            return 'cancelled';
+        }
+        if (in_array($status, ['rescheduled', 'reschedule requested'], true)) {
+            return 'rescheduled';
+        }
+
+        return 'pending';
+    }
+
+    /**
      * Build SQL expression for readable center label from donor location.
      */
     private function appointmentCenterExpression(string $locationsAlias = 'l'): string
@@ -2261,6 +2542,92 @@ class AdminAuthController extends BaseController
                 ? trim((string) $entry->center_label)
                 : 'N/A',
             'status' => $status,
+        ];
+    }
+
+    /**
+     * Build the base donation records query used by donation records page.
+     */
+    private function donationRecordsBaseQuery()
+    {
+        $centerExpression = $this->appointmentCenterExpression();
+        $statusExpression = $this->donationRecordStatusExpression();
+
+        return DB::table('donation_records as dr')
+            ->leftJoin('donors as d', 'd.donor_id', '=', 'dr.donor_id')
+            ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
+                $join->on('da_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('donor_authentication as da', 'da.auth_id', '=', 'da_latest.latest_auth_id')
+            ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
+            ->leftJoinSub($this->userManagementLatestEligibilityQuery(), 'es_latest', function ($join): void {
+                $join->on('es_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('eligibility_status as es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
+            ->select([
+                'dr.donation_id',
+                'dr.donor_id',
+                'dr.appointment_id',
+                'dr.donation_date',
+                'dr.blood_units',
+                'dr.remarks',
+                'd.first_name',
+                'd.last_name',
+                'da.email',
+                'bt.blood_type',
+                'es.next_eligible_date',
+            ])
+            ->selectRaw('('.$centerExpression.') as center_label')
+            ->selectRaw('('.$statusExpression.') as derived_status');
+    }
+
+    /**
+     * Build SQL expression for normalized donation record status buckets.
+     */
+    private function donationRecordStatusExpression(string $donationsAlias = 'dr'): string
+    {
+        return "CASE
+            WHEN {$donationsAlias}.donation_date IS NOT NULL THEN 'completed'
+            WHEN LOWER(COALESCE({$donationsAlias}.remarks, '')) LIKE '%defer%' THEN 'deferred'
+            ELSE 'pending'
+        END";
+    }
+
+    /**
+     * Normalize donation record row payload for donation records front-end.
+     *
+     * @return array<string, mixed>
+     */
+    private function transformDonationRecordRow(object $entry): array
+    {
+        $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
+        if ($donorName === '') {
+            $donorName = 'Unknown Donor';
+        }
+
+        $status = Str::lower(trim((string) ($entry->derived_status ?? 'pending')));
+        if (!in_array($status, ['completed', 'pending', 'deferred'], true)) {
+            $status = 'pending';
+        }
+
+        $unitsRaw = $entry->blood_units ?? null;
+        $units = is_numeric($unitsRaw) ? (int) $unitsRaw : null;
+        $volumeMl = $units !== null ? $units * 450 : null;
+
+        return [
+            'donation_id' => (int) ($entry->donation_id ?? 0),
+            'record_code' => 'DR'.str_pad((string) ((int) ($entry->donation_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_id' => (int) ($entry->donor_id ?? 0),
+            'donor_name' => $donorName,
+            'blood_type' => trim((string) ($entry->blood_type ?? '')),
+            'donation_date' => !empty($entry->donation_date) ? (string) $entry->donation_date : null,
+            'center_label' => trim((string) ($entry->center_label ?? '')) !== ''
+                ? trim((string) $entry->center_label)
+                : 'N/A',
+            'volume_ml' => $volumeMl,
+            'status' => $status,
+            'next_eligible_date' => !empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
         ];
     }
 
@@ -2459,6 +2826,85 @@ class AdminAuthController extends BaseController
         }
 
         return $displayName;
+    }
+
+    /**
+     * Create a donor-facing notification when notifications table is available.
+     */
+    private function createDonorNotification(?int $donorId, string $type, string $message): void
+    {
+        if ($donorId === null || $donorId <= 0) {
+            return;
+        }
+
+        if (!Schema::hasTable('notifications')) {
+            return;
+        }
+
+        try {
+            DB::table('notifications')->insert([
+                'donor_id' => $donorId,
+                'message' => $message,
+                'notification_type' => $type,
+                'is_read' => 0,
+                'created_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to create donor notification.', [
+                'donor_id' => $donorId,
+                'type' => $type,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Persist appointment actions to audit logs table when available.
+     */
+    private function logAppointmentAudit(
+        Request $request,
+        string $actionType,
+        string $description,
+        ?int $appointmentId = null,
+        array $metadata = [],
+        string $result = 'success'
+    ): void {
+        try {
+            $actorName = trim((string) ($request->session()->get('admin_full_name') ?: $request->session()->get('admin_username') ?: 'Admin'));
+            $actorRole = ucfirst($this->normalizeRole((string) $request->session()->get('admin_role', 'admin')));
+
+            if (!Schema::hasTable('audit_logs')) {
+                logger()->info('Appointment audit event', [
+                    'action_type' => $actionType,
+                    'description' => $description,
+                    'appointment_id' => $appointmentId,
+                    'metadata' => $metadata,
+                ]);
+
+                return;
+            }
+
+            DB::table('audit_logs')->insert([
+                'actor_admin_id' => is_numeric($request->session()->get('admin_id')) ? (int) $request->session()->get('admin_id') : null,
+                'actor_name' => $actorName,
+                'actor_role' => $actorRole,
+                'action_type' => $actionType,
+                'module_type' => 'appointments',
+                'target_table' => 'appointments',
+                'target_id' => $appointmentId,
+                'description' => $description,
+                'ip_address' => $request->ip(),
+                'result' => $result,
+                'metadata' => $metadata === [] ? null : json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to persist appointment audit event.', [
+                'action_type' => $actionType,
+                'appointment_id' => $appointmentId,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**

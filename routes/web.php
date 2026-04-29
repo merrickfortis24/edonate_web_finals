@@ -53,7 +53,17 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/staff/dashboard', [AdminAuthController::class, 'staffDashboard'])->name('staff.dashboard');
         Route::get('/admin/appointments', [AdminAuthController::class, 'appointments'])->name('admin.appointments');
         Route::get('/admin/appointments/data', [AdminAuthController::class, 'listAppointmentsData'])->name('admin.appointments.data');
+        Route::patch('/admin/appointments/{appointment}/approve', [AdminAuthController::class, 'approveAppointment'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.approve');
+        Route::patch('/admin/appointments/{appointment}/reject', [AdminAuthController::class, 'rejectAppointment'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.reject');
+        Route::patch('/admin/appointments/{appointment}/reschedule', [AdminAuthController::class, 'rescheduleAppointment'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.reschedule');
         Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
+        Route::get('/admin/donation-records/data', [AdminAuthController::class, 'listDonationRecordsData'])->name('admin.donation-records.data');
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
         Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
         Route::get('/admin/audit-logs', [AdminAuthController::class, 'auditLogs'])->name('admin.audit-logs');

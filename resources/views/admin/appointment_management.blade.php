@@ -167,6 +167,7 @@
             : {};
 
         var listUrl = payload.api && payload.api.listUrl ? payload.api.listUrl : '';
+        var csrfToken = @json(csrf_token());
         var searchInput = document.getElementById('appointmentSearchInput');
         var centerFilter = document.getElementById('appointmentCenterFilter');
         var statusFilter = document.getElementById('appointmentStatusFilter');
@@ -321,7 +322,7 @@
                 var actions = renderActionButtons(item.status);
 
                 return ''
-                    + '<div class="appointment-row" role="row">'
+                    + '<div class="appointment-row" role="row" data-appointment-id="' + escapeHtml(item.appointment_id || '') + '" data-appointment-date="' + escapeHtml(item.appointment_date || '') + '" data-appointment-time="' + escapeHtml(item.appointment_time || '') + '">'
                     + '<div class="appointment-cell"><span class="appointment-id">' + appointmentCode + '</span></div>'
                     + '<div class="appointment-cell"><span class="appointment-donor__name">' + donorName + '</span><span class="appointment-donor__meta">' + donorMeta + '</span></div>'
                     + '<div class="appointment-cell">'
@@ -565,6 +566,57 @@
             });
         }
 
+        function resolveAppointmentActionsBaseUrl() {
+            if (!listUrl) {
+                return '';
+            }
+
+            try {
+                var parsed = new URL(String(listUrl), window.location.origin);
+                parsed.search = '';
+                parsed.hash = '';
+                return parsed.toString().replace(/\/data\/?$/, '');
+            } catch (error) {
+                return String(listUrl || '').replace(/\/data\/?$/, '');
+            }
+        }
+
+        function performAppointmentAction(appointmentId, action, requestBody) {
+            var baseUrl = resolveAppointmentActionsBaseUrl();
+            if (!baseUrl) {
+                return Promise.reject(new Error('Appointment action URL is unavailable.'));
+            }
+
+            var url = baseUrl.replace(/\/$/, '') + '/' + appointmentId + '/' + action;
+            var options = {
+                method: 'PATCH',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrfToken
+                }
+            };
+
+            if (requestBody && typeof requestBody === 'object') {
+                options.headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(requestBody);
+            }
+
+            return fetch(url, options)
+                .then(function (response) {
+                    return response.json()
+                        .catch(function () {
+                            return {};
+                        })
+                        .then(function (payload) {
+                            if (!response.ok) {
+                                throw new Error(String(payload && payload.message ? payload.message : 'Action failed.'));
+                            }
+                            return payload;
+                        });
+                });
+        }
+
         if (tableBody) {
             tableBody.addEventListener('click', function (event) {
                 var target = event.target;
@@ -572,12 +624,71 @@
                     return;
                 }
 
-                var actionButton = target.closest('.appointment-btn');
+                var actionButton = target.closest('button.appointment-btn[data-action]');
                 if (!actionButton) {
                     return;
                 }
 
                 event.preventDefault();
+
+                var row = actionButton.closest('.appointment-row');
+                var appointmentId = row ? Number(row.getAttribute('data-appointment-id') || '0') : 0;
+                if (!appointmentId) {
+                    return;
+                }
+
+                var action = String(actionButton.dataset.action || '').trim();
+                if (action === '') {
+                    return;
+                }
+
+                var requestBody = null;
+
+                if (action === 'reject') {
+                    if (!window.confirm('Reject this appointment?')) {
+                        return;
+                    }
+                }
+
+                if (action === 'reschedule') {
+                    var currentDate = row ? String(row.getAttribute('data-appointment-date') || '') : '';
+                    var currentTime = row ? String(row.getAttribute('data-appointment-time') || '') : '';
+
+                    var nextDate = window.prompt('New date (YYYY-MM-DD):', currentDate);
+                    if (!nextDate) {
+                        return;
+                    }
+                    nextDate = String(nextDate).trim();
+
+                    var nextTime = window.prompt('New time (HH:MM):', currentTime);
+                    if (!nextTime) {
+                        return;
+                    }
+                    nextTime = String(nextTime).trim();
+
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate) || !/^\d{2}:\d{2}$/.test(nextTime)) {
+                        alert('Invalid date/time format.');
+                        return;
+                    }
+
+                    requestBody = {
+                        appointment_date: nextDate,
+                        appointment_time: nextTime
+                    };
+                }
+
+                actionButton.disabled = true;
+
+                performAppointmentAction(appointmentId, action, requestBody)
+                    .then(function () {
+                        loadAppointments();
+                    })
+                    .catch(function (error) {
+                        alert(error && error.message ? error.message : 'Action failed.');
+                    })
+                    .then(function () {
+                        actionButton.disabled = false;
+                    });
             });
         }
 
