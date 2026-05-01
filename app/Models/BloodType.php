@@ -18,4 +18,9 @@ class BloodType extends Model
     protected $fillable = [
         'blood_type',
     ];
+
+    public function donors()
+    {
+        return $this->hasMany(Donor::class, 'blood_type_id', 'blood_type_id');
+    }
 }

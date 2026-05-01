@@ -918,6 +918,183 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * GET /admin/map/donors
+     * Returns JSON array of donors with coordinates for Leaflet circle markers.
+     * Supports ?blood_type=O%2B and ?barangay=Marawoy filters.
+     */
+    public function mapDonors(Request $request): JsonResponse
+    {
+        $query = DB::table('donors')
+            ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+            ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
+            ->whereNotNull('locations.latitude')
+            ->whereNotNull('locations.longitude')
+            ->select(
+                'donors.donor_id',
+                'donors.first_name',
+                'donors.last_name',
+                'blood_types.blood_type',
+                'locations.barangay_name',
+                'locations.city',
+                'locations.province',
+                'locations.latitude',
+                'locations.longitude'
+            );
+
+        if ($bloodType = $request->query('blood_type')) {
+            $query->where('blood_types.blood_type', $bloodType);
+        }
+
+        if ($barangay = $request->query('barangay')) {
+            $query->where('locations.barangay_name', $barangay);
+        }
+
+        $donors = $query->get()->map(fn ($row) => [
+            'donor_id'      => $row->donor_id,
+            'name'          => trim("{$row->first_name} {$row->last_name}"),
+            'blood_type'    => $row->blood_type,
+            'barangay'      => $row->barangay_name,
+            'city'          => $row->city,
+            'lat'           => (float) $row->latitude,
+            'lng'           => (float) $row->longitude,
+        ]);
+
+        return response()->json($donors);
+    }
+
+    /**
+     * GET /admin/map/barangays
+     * Returns per-barangay aggregates: donor count, centroid, availability level,
+     * dominant blood type, and list of blood types present.
+     */
+    public function mapBarangays(Request $request): JsonResponse
+    {
+        $rows = DB::table('donors')
+            ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+            ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
+            ->whereNotNull('locations.latitude')
+            ->whereNotNull('locations.longitude')
+            ->select(
+                'locations.barangay_name',
+                DB::raw('AVG(locations.latitude)  AS centroid_lat'),
+                DB::raw('AVG(locations.longitude) AS centroid_lng'),
+                DB::raw('COUNT(DISTINCT donors.donor_id) AS donor_count'),
+                DB::raw('GROUP_CONCAT(DISTINCT blood_types.blood_type ORDER BY blood_types.blood_type SEPARATOR \',\') AS types_present')
+            )
+            ->groupBy('locations.barangay_name')
+            ->get();
+
+        // Per-barangay dominant blood type (separate query for accuracy)
+        $dominantRows = DB::table('donors')
+            ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+            ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
+            ->whereNotNull('locations.latitude')
+            ->whereNotNull('locations.longitude')
+            ->select(
+                'locations.barangay_name',
+                'blood_types.blood_type',
+                DB::raw('COUNT(*) AS type_count')
+            )
+            ->groupBy('locations.barangay_name', 'blood_types.blood_type')
+            ->orderByDesc('type_count')
+            ->get()
+            ->groupBy('barangay_name')
+            ->map(fn ($group) => $group->first());
+
+        $barangays = $rows->map(function ($row) use ($dominantRows) {
+            $count   = (int) $row->donor_count;
+            $dominant = $dominantRows->get($row->barangay_name);
+            $dominantType  = $dominant?->blood_type ?? null;
+            $dominantCount = $dominant?->type_count  ?? 0;
+            $isSurplus     = $count > 0 && ($dominantCount / $count) > 0.60;
+
+            return [
+                'barangay'           => $row->barangay_name,
+                'centroid_lat'       => (float) $row->centroid_lat,
+                'centroid_lng'       => (float) $row->centroid_lng,
+                'donor_count'        => $count,
+                'availability_level' => $this->classifyAvailability($count),
+                'types_present'      => $row->types_present ? explode(',', $row->types_present) : [],
+                'dominant_type'      => $dominantType,
+                'is_surplus'         => $isSurplus,
+            ];
+        });
+
+        return response()->json($barangays->values());
+    }
+
+    /**
+     * GET /admin/map/summary
+     * Returns totals, per-blood-type breakdown, critical barangays, and
+     * barangays missing a specific blood type (pass ?blood_type=O- to check).
+     */
+    public function mapSummary(Request $request): JsonResponse
+    {
+        $allBloodTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+        $bloodTypeBreakdown = DB::table('donors')
+            ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
+            ->select('blood_types.blood_type', DB::raw('COUNT(*) AS count'))
+            ->groupBy('blood_types.blood_type')
+            ->orderByDesc('count')
+            ->pluck('count', 'blood_type');
+
+        // Fill missing types with zero
+        $breakdown = collect($allBloodTypes)->map(fn ($bt) => [
+            'blood_type' => $bt,
+            'count'      => (int) ($bloodTypeBreakdown[$bt] ?? 0),
+        ]);
+
+        // Barangays with fewer than 2 donors = critical zones
+        $criticalBarangays = DB::table('donors')
+            ->join('locations', 'donors.location_id', '=', 'locations.location_id')
+            ->select('locations.barangay_name', DB::raw('COUNT(*) AS donor_count'))
+            ->groupBy('locations.barangay_name')
+            ->having('donor_count', '<', 2)
+            ->get();
+
+        // Barangays missing the requested blood type (shortage detection)
+        $shortageBarangays = collect();
+        if ($filterType = $request->query('blood_type')) {
+            $allBarangays = DB::table('locations')->distinct()->pluck('barangay_name');
+            $coveredBarangays = DB::table('donors')
+                ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+                ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
+                ->where('blood_types.blood_type', $filterType)
+                ->distinct()
+                ->pluck('locations.barangay_name');
+            $shortageBarangays = $allBarangays->diff($coveredBarangays)->values();
+        }
+
+        $totalLocations = DB::table('locations')
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->count();
+
+        return response()->json([
+            'total_donors'        => DB::table('donors')->count(),
+            'total_locations'     => $totalLocations,
+            'blood_type_breakdown'=> $breakdown,
+            'critical_barangays'  => $criticalBarangays,
+            'shortage_barangays'  => $shortageBarangays,
+            'last_updated'        => now()->format('M d, Y h:i A'),
+        ]);
+    }
+
+    /**
+     * Classify a donor count into an availability level string.
+     */
+    private function classifyAvailability(int $count): string
+    {
+        return match (true) {
+            $count >= 10 => 'high',
+            $count >= 5  => 'medium',
+            $count >= 2  => 'low',
+            default      => 'critical',
+        };
+    }
+
+    /**
      * Display notification center page.
      */
     public function notificationCenter(Request $request)

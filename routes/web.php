@@ -65,6 +65,9 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
         Route::get('/admin/donation-records/data', [AdminAuthController::class, 'listDonationRecordsData'])->name('admin.donation-records.data');
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
+        Route::get('/admin/map/donors',    [AdminAuthController::class, 'mapDonors'])->name('admin.map.donors');
+        Route::get('/admin/map/barangays', [AdminAuthController::class, 'mapBarangays'])->name('admin.map.barangays');
+        Route::get('/admin/map/summary',   [AdminAuthController::class, 'mapSummary'])->name('admin.map.summary');
         Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
         Route::get('/admin/audit-logs', [AdminAuthController::class, 'auditLogs'])->name('admin.audit-logs');
         Route::get('/admin/audit-logs/data', [AdminAuthController::class, 'listAuditLogs'])->name('admin.audit-logs.data');

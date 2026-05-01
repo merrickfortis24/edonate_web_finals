@@ -25,4 +25,14 @@ class Donor extends Model
         'location_id',
         'date_registered',
     ];
+
+    public function bloodType()
+    {
+        return $this->belongsTo(BloodType::class, 'blood_type_id', 'blood_type_id');
+    }
+
+    public function location()
+    {
+        return $this->belongsTo(Location::class, 'location_id', 'location_id');
+    }
 }

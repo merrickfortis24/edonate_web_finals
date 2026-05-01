@@ -27,229 +27,545 @@
 
 @section('admin_page_data')
 {!! json_encode([
-	'page' => 'blood-availability-mapping',
+	'page'            => 'blood-availability-mapping',
+	'donorsUrl'       => route('admin.map.donors'),
+	'barangaysUrl'    => route('admin.map.barangays'),
+	'summaryUrl'      => route('admin.map.summary'),
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
+@push('admin_head')
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
+@endpush
+
 @section('main_content')
 <main class="main container-fluid px-0">
+
+	{{-- ── Top row: Filter panel + Map panel ── --}}
 	<section class="panels-row" aria-label="Filters and Location Map">
-		<div class="filter-panel">
+
+		{{-- ── Filter / Legend panel ── --}}
+		<aside class="filter-panel" aria-label="Map filters">
 			<div class="filter-panel__header">
-				<svg class="filter-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+				<svg class="filter-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 					<path d="M4 6H20M7 12H17M10 18H14" stroke="#b60c0c" stroke-width="2" stroke-linecap="round"/>
 				</svg>
 				<span class="filter-panel__title">Filters</span>
 			</div>
 
+			{{-- Blood type filter --}}
 			<p class="filter-panel__label">Blood Type</p>
 			<div class="filter-panel__select-wrap">
-				<select class="filter-panel__select form-select" aria-label="Filter by blood type">
-					<option value="A+">A+</option>
-					<option value="A-">A-</option>
-					<option value="B+">B+</option>
-					<option value="B-">B-</option>
-					<option value="AB+">AB+</option>
-					<option value="AB-">AB-</option>
-					<option value="O+">O+</option>
-					<option value="O-">O-</option>
+				<select id="filterBloodType" class="filter-panel__select form-select" aria-label="Filter by blood type">
+					<option value="">All Blood Types</option>
+					<option>A+</option><option>A-</option>
+					<option>B+</option><option>B-</option>
+					<option>AB+</option><option>AB-</option>
+					<option>O+</option><option>O-</option>
 				</select>
 				<span class="filter-panel__select-icon" aria-hidden="true">
-					<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-						<path d="M6 9l6 6 6-6" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
+					<svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 				</span>
 			</div>
 
+			{{-- Barangay filter --}}
 			<p class="filter-panel__label">Barangay</p>
 			<div class="filter-panel__select-wrap">
-				<select class="filter-panel__select form-select" aria-label="Filter by barangay">
-					<option value="Balintawak">Balintawak</option>
-					<option value="Marawoy">Marawoy</option>
-					<option value="Sabang">Sabang</option>
+				<select id="filterBarangay" class="filter-panel__select form-select" aria-label="Filter by barangay">
+					<option value="">All Barangays</option>
+					{{-- populated dynamically from /admin/map/barangays --}}
 				</select>
 				<span class="filter-panel__select-icon" aria-hidden="true">
-					<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-						<path d="M6 9l6 6 6-6" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
+					<svg viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 				</span>
 			</div>
 
-			<button class="filter-panel__clear-btn btn btn-outline-secondary" type="button">Clear Filters</button>
+			<button id="clearFiltersBtn" class="filter-panel__clear-btn btn btn-outline-secondary" type="button">
+				Clear Filters
+			</button>
 
-			<hr class="filter-panel__divider" />
+			<hr class="filter-panel__divider"/>
 
+			{{-- Active filter chips --}}
 			<p class="filter-panel__section-label">Active Filters</p>
-			<div class="filter-chips">
-				<span class="filter-chip filter-chip--type">A+</span>
-				<span class="filter-chip filter-chip--barangay">Balintawak</span>
+			<div class="filter-chips" id="activeFilterChips">
+				<span class="filter-chip" style="color:#888;font-size:12px;">None</span>
 			</div>
 
-			<hr class="filter-panel__divider" />
+			<hr class="filter-panel__divider"/>
 
-			<p class="filter-panel__section-label">Quick Stats:</p>
-			<div class="quick-stats__row">
-				<span class="quick-stats__key">Total Locations:</span>
-				<span class="quick-stats__val">1</span>
+			{{-- Quick stats --}}
+			<p class="filter-panel__section-label">Quick Stats</p>
+			<div class="quick-stats__grid">
+				<div class="quick-stats__row">
+					<span class="quick-stats__key">Total Donors:</span>
+					<span class="quick-stats__val" id="statTotalDonors">—</span>
+				</div>
+				<div class="quick-stats__row">
+					<span class="quick-stats__key">Mapped Locations:</span>
+					<span class="quick-stats__val" id="statTotalLocations">—</span>
+				</div>
+				<div class="quick-stats__row">
+					<span class="quick-stats__key">Visible Pins:</span>
+					<span class="quick-stats__val" id="statVisiblePins">—</span>
+				</div>
 			</div>
-		</div>
 
+			<hr class="filter-panel__divider"/>
+
+			{{-- Blood type colour legend --}}
+			<p class="filter-panel__section-label">Blood Type Colours</p>
+			<div class="bt-legend" id="btLegend">
+				{{-- built by JS --}}
+			</div>
+		</aside>
+
+		{{-- ── Map panel ── --}}
 		<div class="map-panel">
 			<p class="map-panel__title">Location Map</p>
-			<p class="map-panel__subtitle">Click on a location marker to view blood availability details</p>
+			<p class="map-panel__subtitle">Click a marker to see detailed blood availability for that area</p>
+
+			{{-- Layer toggles --}}
+			<div class="map-toolbar" role="group" aria-label="Map layer toggles">
+				<button class="map-toolbar__btn is-active" id="btnMarkers" type="button">
+					<span class="map-toolbar__dot" style="background:#e53e3e;"></span> Donor Pins
+				</button>
+				<button class="map-toolbar__btn" id="btnHeatmap" type="button">
+					<span class="map-toolbar__dot" style="background:#fd8d3c;"></span> Heatmap
+				</button>
+				<button class="map-toolbar__btn" id="btnBarangay" type="button">
+					<span class="map-toolbar__dot" style="background:#3182ce;"></span> Barangay View
+				</button>
+			</div>
+
+			{{-- Map container --}}
 			<div class="map-panel__map-wrap">
-				<img
-					class="map-panel__map-img"
-					src="https://www.figma.com/api/mcp/asset/1f6c4f5a-0665-4907-a627-86a7236d9a50"
-					alt="Map of Lipa City, Batangas, Philippines showing blood availability locations"
-				/>
-				<div class="map-legend" aria-label="Map legend">
+				{{-- Leaflet renders here --}}
+				<div id="blood-map" role="application" aria-label="Interactive blood donor map"></div>
+
+				{{-- Loading overlay --}}
+				<div class="map-loading" id="mapLoading" aria-live="polite">
+					<div class="map-spinner"></div>
+					<span>Loading map data…</span>
+				</div>
+
+				{{-- Availability legend (bottom-right, overlaid on map) --}}
+				<div class="map-legend" aria-label="Availability level legend">
 					<p class="map-legend__title">Availability Level</p>
-					<div class="map-legend__row">
-						<span class="map-legend__dot map-legend__dot--high"></span>
-						<span class="map-legend__text">High (50+ units)</span>
-					</div>
-					<div class="map-legend__row">
-						<span class="map-legend__dot map-legend__dot--medium"></span>
-						<span class="map-legend__text">Medium (20-49 units)</span>
-					</div>
-					<div class="map-legend__row">
-						<span class="map-legend__dot map-legend__dot--low"></span>
-						<span class="map-legend__text">Low (10-19 units)</span>
-					</div>
-					<div class="map-legend__row">
-						<span class="map-legend__dot map-legend__dot--critical"></span>
-						<span class="map-legend__text">Critical (&lt;10 units)</span>
-					</div>
+					<div class="map-legend__row"><span class="map-legend__dot map-legend__dot--high"></span><span class="map-legend__text">High (≥10 donors)</span></div>
+					<div class="map-legend__row"><span class="map-legend__dot map-legend__dot--medium"></span><span class="map-legend__text">Medium (5–9)</span></div>
+					<div class="map-legend__row"><span class="map-legend__dot map-legend__dot--low"></span><span class="map-legend__text">Low (2–4)</span></div>
+					<div class="map-legend__row"><span class="map-legend__dot map-legend__dot--critical"></span><span class="map-legend__text">Critical (&lt;2)</span></div>
 				</div>
+			</div>
+
+			{{-- Summary bar below the map --}}
+			<div class="map-summary-bar" id="mapSummaryBar" aria-label="Map summary statistics">
+				{{-- built by JS --}}
 			</div>
 		</div>
 	</section>
 
-	<section class="location-panel" aria-label="Lipa Medix blood availability">
-		<div class="location-panel__header">
-			<h2 class="location-panel__name">Lipa Medix</h2>
-			<span class="location-panel__badge">Critical Shortage</span>
+	{{-- ── Bottom: Selected-location detail panel ── --}}
+	<section class="location-panel is-empty" id="locationPanel" aria-label="Selected location blood availability" aria-live="polite">
+		<div class="location-panel__empty-msg">
+			Click a barangay marker on the map to see detailed blood availability here.
 		</div>
-		<p class="location-panel__address">Marawoy, Lipa City, Batangas</p>
-
-		<div class="blood-grid">
-			<div class="blood-card blood-card--green">
-				<div class="blood-card__top">
-					<span class="blood-card__type">A+</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">45</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--high"></span>
-					<span class="blood-card__status-label">High</span>
-				</div>
-			</div>
-
-			<div class="blood-card blood-card--orange">
-				<div class="blood-card__top">
-					<span class="blood-card__type">A-</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">8</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--low"></span>
-					<span class="blood-card__status-label">Low</span>
-				</div>
-			</div>
-
-			<div class="blood-card blood-card--yellow">
-				<div class="blood-card__top">
-					<span class="blood-card__type">B+</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">32</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--medium"></span>
-					<span class="blood-card__status-label">Medium</span>
-				</div>
-			</div>
-
-			<div class="blood-card blood-card--red">
-				<div class="blood-card__top">
-					<span class="blood-card__type">B-</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">5</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--critical"></span>
-					<span class="blood-card__status-label">Critical</span>
-				</div>
-				<button class="blood-card__request-btn blood-card__request-btn--dark btn" type="button">Request Blood</button>
-			</div>
-
-			<div class="blood-card blood-card--red">
-				<div class="blood-card__top">
-					<span class="blood-card__type">AB+</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">3</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--critical"></span>
-					<span class="blood-card__status-label">Critical</span>
-				</div>
-				<button class="blood-card__request-btn btn" type="button">Request Blood</button>
-			</div>
-
-			<div class="blood-card blood-card--yellow">
-				<div class="blood-card__top">
-					<span class="blood-card__type">AB-</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">18</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--medium"></span>
-					<span class="blood-card__status-label">Medium</span>
-				</div>
-			</div>
-
-			<div class="blood-card blood-card--green">
-				<div class="blood-card__top">
-					<span class="blood-card__type">O+</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">67</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--high"></span>
-					<span class="blood-card__status-label">High</span>
-				</div>
-			</div>
-
-			<div class="blood-card blood-card--orange">
-				<div class="blood-card__top">
-					<span class="blood-card__type">O-</span>
-					<img class="blood-card__icon" src="https://www.figma.com/api/mcp/asset/f87d2b3b-cdcf-4001-9c9d-8a026fff7b7e" alt="Blood drop icon" />
-				</div>
-				<span class="blood-card__count">12</span>
-				<div class="blood-card__status-row">
-					<span class="blood-card__dot blood-card__dot--low"></span>
-					<span class="blood-card__status-label">Low</span>
-				</div>
-			</div>
-		</div>
-
-		<p class="location-panel__footer">Last updated: 2026-01-27 08:30 AM</p>
 	</section>
+
 </main>
 @endsection
 
 @push('admin_scripts')
+{{-- Leaflet JS --}}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WLmI=" crossorigin="anonymous"></script>
+
+{{-- Leaflet.heat --}}
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
 <script>
-	(function () {
-		var dateElement = document.getElementById('todayDate');
-		if (dateElement) {
-			var now = new Date();
-			dateElement.textContent = now.toLocaleDateString('en-US', {
-				year: 'numeric',
-				month: 'long',
-				day: 'numeric'
+(function () {
+	'use strict';
+
+	/* ── Constants ── */
+	const URLS = window.AdminPageData;
+
+	const BT_COLORS = {
+		'A+':  '#3182ce',
+		'A-':  '#00b5d8',
+		'B+':  '#38a169',
+		'B-':  '#276749',
+		'AB+': '#805ad5',
+		'AB-': '#d53f8c',
+		'O+':  '#e53e3e',
+		'O-':  '#dd6b20',
+	};
+
+	const LEVEL_COLORS = {
+		high:     '#10a44b',
+		medium:   '#ffb400',
+		low:      '#ff8f2a',
+		critical: '#df2020',
+	};
+
+	const LEVEL_LABELS = {
+		high:     'High',
+		medium:   'Medium',
+		low:      'Low',
+		critical: 'Critical',
+	};
+
+	/* ── State ── */
+	let allDonors    = [];
+	let allBarangays = [];
+	let activeLayer  = 'markers'; // 'markers' | 'heatmap' | 'barangay'
+
+	/* ── Leaflet layers ── */
+	let markerLayer   = null;
+	let heatLayer     = null;
+	let barangayLayer = null;
+
+	/* ── Map init ── */
+	const map = L.map('blood-map', { zoomControl: true }).setView([12.577, 122.269], 10);
+
+	L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+		attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+		maxZoom: 19,
+	}).addTo(map);
+
+	/* ── DOM refs ── */
+	const filterBT        = document.getElementById('filterBloodType');
+	const filterBarangay  = document.getElementById('filterBarangay');
+	const clearBtn        = document.getElementById('clearFiltersBtn');
+	const chipsWrap       = document.getElementById('activeFilterChips');
+	const mapLoading      = document.getElementById('mapLoading');
+	const locationPanel   = document.getElementById('locationPanel');
+	const statDonors      = document.getElementById('statTotalDonors');
+	const statLocations   = document.getElementById('statTotalLocations');
+	const statPins        = document.getElementById('statVisiblePins');
+	const summaryBar      = document.getElementById('mapSummaryBar');
+	const btLegend        = document.getElementById('btLegend');
+
+	const btnMarkers  = document.getElementById('btnMarkers');
+	const btnHeatmap  = document.getElementById('btnHeatmap');
+	const btnBarangay = document.getElementById('btnBarangay');
+
+	/* ── Build blood-type colour legend in sidebar ── */
+	function buildBtLegend() {
+		btLegend.innerHTML = Object.entries(BT_COLORS).map(([bt, color]) =>
+			`<div class="bt-legend__row">
+				<span class="bt-legend__swatch" style="background:${color};"></span>
+				<span>${bt}</span>
+			</div>`
+		).join('');
+	}
+
+	/* ── Helpers ── */
+	function showLoading()  { mapLoading.classList.remove('hidden'); }
+	function hideLoading()  { mapLoading.classList.add('hidden'); }
+
+	function getFilters() {
+		return {
+			blood_type: filterBT.value.trim(),
+			barangay:   filterBarangay.value.trim(),
+		};
+	}
+
+	function buildUrl(base, params) {
+		const url = new URL(base, window.location.origin);
+		Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
+		return url.toString();
+	}
+
+	function updateFilterChips(filters) {
+		const chips = [];
+		if (filters.blood_type) chips.push(`<span class="filter-chip filter-chip--type">${filters.blood_type}</span>`);
+		if (filters.barangay)   chips.push(`<span class="filter-chip filter-chip--barangay">${filters.barangay}</span>`);
+		chipsWrap.innerHTML = chips.length
+			? chips.join('')
+			: '<span style="color:#888;font-size:12px;">None</span>';
+	}
+
+	/* ── Remove all dynamic layers from map ── */
+	function clearLayers() {
+		if (markerLayer)   { map.removeLayer(markerLayer);   markerLayer   = null; }
+		if (heatLayer)     { map.removeLayer(heatLayer);     heatLayer     = null; }
+		if (barangayLayer) { map.removeLayer(barangayLayer); barangayLayer = null; }
+	}
+
+	/* ── Render circle-marker layer ── */
+	function renderMarkers(donors) {
+		markerLayer = L.layerGroup();
+
+		donors.forEach(function (d) {
+			const color = BT_COLORS[d.blood_type] ?? '#718096';
+
+			const circle = L.circleMarker([d.lat, d.lng], {
+				radius:      9,
+				fillColor:   color,
+				color:       '#fff',
+				weight:      2,
+				opacity:     1,
+				fillOpacity: 0.88,
 			});
+
+			circle.bindPopup(
+				`<div style="font-family:'Poppins',sans-serif;min-width:160px;">
+					<strong style="font-size:14px;">${d.name}</strong><br>
+					<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;"></span>
+					<b>${d.blood_type}</b><br>
+					<span style="font-size:12px;color:#555;">📍 ${d.barangay}, ${d.city}</span>
+				</div>`,
+				{ maxWidth: 240 }
+			);
+
+			markerLayer.addLayer(circle);
+		});
+
+		markerLayer.addTo(map);
+		statPins.textContent = donors.length;
+	}
+
+	/* ── Render heatmap layer ── */
+	function renderHeatmap(donors) {
+		const points = donors.map(d => [d.lat, d.lng, 1.0]);
+
+		heatLayer = L.heatLayer(points, {
+			radius:   32,
+			blur:     22,
+			maxZoom:  14,
+			gradient: { 0.2: '#ffffd4', 0.5: '#fd8d3c', 0.8: '#bd0026' },
+		});
+
+		heatLayer.addTo(map);
+		statPins.textContent = donors.length;
+	}
+
+	/* ── Render barangay-badge layer ── */
+	function renderBarangayLayer(barangays) {
+		barangayLayer = L.layerGroup();
+
+		barangays.forEach(function (b) {
+			if (!b.centroid_lat || !b.centroid_lng) return;
+
+			const levelColor = LEVEL_COLORS[b.availability_level] ?? '#718096';
+			const levelLabel = LEVEL_LABELS[b.availability_level] ?? b.availability_level;
+
+			const icon = L.divIcon({
+				html: `<div class="leaflet-barangay-badge level-${b.availability_level}">
+							${b.barangay}
+							<span class="badge-count">${b.donor_count}</span>
+						</div>`,
+				className: '',
+				iconAnchor: [0, 0],
+			});
+
+			const marker = L.marker([b.centroid_lat, b.centroid_lng], { icon });
+
+			marker.bindPopup(
+				`<div style="font-family:'Poppins',sans-serif;min-width:180px;">
+					<strong style="font-size:14px;">${b.barangay}</strong><br>
+					<span style="font-size:12px;color:#555;">
+						Donors: <b>${b.donor_count}</b><br>
+						Level: <b style="color:${levelColor};">${levelLabel}</b><br>
+						${b.dominant_type ? `Dominant: <b>${b.dominant_type}</b>${b.is_surplus ? ' ⚠ surplus' : ''}` : ''}
+						${b.types_present.length ? `<br>Types: ${b.types_present.join(', ')}` : ''}
+					</span>
+				</div>`,
+				{ maxWidth: 260 }
+			);
+
+			marker.on('click', function () {
+				renderLocationPanel(b);
+			});
+
+			barangayLayer.addLayer(marker);
+		});
+
+		barangayLayer.addTo(map);
+		statPins.textContent = barangays.length + ' barangays';
+	}
+
+	/* ── Populate the bottom location-detail panel ── */
+	function renderLocationPanel(b) {
+		const levelColor = LEVEL_COLORS[b.availability_level] ?? '#718096';
+		const levelLabel = LEVEL_LABELS[b.availability_level] ?? b.availability_level;
+
+		const typesPresent = new Set(b.types_present ?? []);
+		const allTypes = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+		const cards = allTypes.map(function (bt) {
+			const present   = typesPresent.has(bt);
+			const color     = BT_COLORS[bt] ?? '#718096';
+			const cardClass = present ? (bt === b.dominant_type ? 'blood-card--green' : 'blood-card--yellow') : 'blood-card--red';
+			const dotClass  = present ? (bt === b.dominant_type ? 'blood-card__dot--high' : 'blood-card__dot--medium') : 'blood-card__dot--critical';
+			const statusLbl = present ? (bt === b.dominant_type ? 'Dominant' : 'Present') : 'None';
+
+			return `<div class="blood-card ${cardClass}">
+				<div class="blood-card__top">
+					<span class="blood-card__type">${bt}</span>
+					<span style="width:18px;height:18px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>
+				</div>
+				<div class="blood-card__status-row" style="margin-top:auto;">
+					<span class="blood-card__dot ${dotClass}"></span>
+					<span class="blood-card__status-label">${statusLbl}</span>
+				</div>
+			</div>`;
+		}).join('');
+
+		locationPanel.classList.remove('is-empty');
+		locationPanel.innerHTML = `
+			<div class="location-panel__header">
+				<h2 class="location-panel__name">${b.barangay}</h2>
+				<span class="location-panel__badge" style="background:${levelColor}20;color:${levelColor};">
+					${levelLabel}${b.is_surplus ? ' — Surplus' : ''}
+				</span>
+			</div>
+			<p class="location-panel__address">${b.donor_count} registered donor(s) · ${b.types_present.length} blood type(s) present</p>
+			<div class="blood-grid">${cards}</div>
+			<p class="location-panel__footer">Last refreshed: ${new Date().toLocaleString()}</p>
+		`;
+
+		locationPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+
+	/* ── Populate summary bar ── */
+	function renderSummaryBar(summary) {
+		statDonors.textContent    = summary.total_donors    ?? '—';
+		statLocations.textContent = summary.total_locations ?? '—';
+
+		const btBreakdown = (summary.blood_type_breakdown ?? [])
+			.map(b => `<div class="summary-stat">
+				<span class="summary-stat__val" style="color:${BT_COLORS[b.blood_type] ?? '#b60c0c'};">${b.count}</span>
+				<span class="summary-stat__label">${b.blood_type}</span>
+			</div>`).join('');
+
+		summaryBar.innerHTML = `
+			<div class="summary-stat">
+				<span class="summary-stat__val">${summary.total_donors}</span>
+				<span class="summary-stat__label">Total Donors</span>
+			</div>
+			${btBreakdown}
+			<div class="summary-stat" style="margin-left:auto;">
+				<span style="font-size:10px;color:#999;">Updated ${summary.last_updated}</span>
+			</div>`;
+	}
+
+	/* ── Populate barangay dropdown from live data ── */
+	function populateBarangayDropdown(barangays) {
+		const existing = Array.from(filterBarangay.options).map(o => o.value);
+		barangays.forEach(function (b) {
+			if (!existing.includes(b.barangay)) {
+				const opt = document.createElement('option');
+				opt.value = b.barangay;
+				opt.textContent = b.barangay;
+				filterBarangay.appendChild(opt);
+			}
+		});
+	}
+
+	/* ── Set active toolbar button ── */
+	function setActiveLayerBtn(id) {
+		[btnMarkers, btnHeatmap, btnBarangay].forEach(function (btn) {
+			btn.classList.toggle('is-active', btn.id === id);
+		});
+	}
+
+	/* ── Main data-fetch + render cycle ── */
+	async function refresh() {
+		showLoading();
+		clearLayers();
+
+		const filters = getFilters();
+		updateFilterChips(filters);
+
+		try {
+			const [donorResp, barangayResp, summaryResp] = await Promise.all([
+				fetch(buildUrl(URLS.donorsUrl,    filters)),
+				fetch(buildUrl(URLS.barangaysUrl, {})),
+				fetch(buildUrl(URLS.summaryUrl,   { blood_type: filters.blood_type })),
+			]);
+
+			if (!donorResp.ok || !barangayResp.ok || !summaryResp.ok) {
+				throw new Error('One or more API calls failed.');
+			}
+
+			allDonors    = await donorResp.json();
+			allBarangays = await barangayResp.json();
+			const summary = await summaryResp.json();
+
+			populateBarangayDropdown(allBarangays);
+			renderSummaryBar(summary);
+			applyLayer();
+
+		} catch (err) {
+			console.error('Map refresh error:', err);
+			summaryBar.innerHTML = '<span style="color:#e53e3e;font-size:13px;">Could not load map data. Check your connection.</span>';
+		} finally {
+			hideLoading();
 		}
-	})();
+	}
+
+	/* ── Apply whichever layer is currently active ── */
+	function applyLayer() {
+		clearLayers();
+
+		if (activeLayer === 'markers') {
+			renderMarkers(allDonors);
+		} else if (activeLayer === 'heatmap') {
+			if (allDonors.length === 0) {
+				statPins.textContent = '0';
+			} else {
+				renderHeatmap(allDonors);
+			}
+		} else if (activeLayer === 'barangay') {
+			renderBarangayLayer(allBarangays);
+		}
+	}
+
+	/* ── Layer toggle handlers ── */
+	btnMarkers.addEventListener('click', function () {
+		activeLayer = 'markers';
+		setActiveLayerBtn('btnMarkers');
+		applyLayer();
+	});
+
+	btnHeatmap.addEventListener('click', function () {
+		activeLayer = 'heatmap';
+		setActiveLayerBtn('btnHeatmap');
+		applyLayer();
+	});
+
+	btnBarangay.addEventListener('click', function () {
+		activeLayer = 'barangay';
+		setActiveLayerBtn('btnBarangay');
+		applyLayer();
+	});
+
+	/* ── Filter change handlers ── */
+	filterBT.addEventListener('change', refresh);
+	filterBarangay.addEventListener('change', refresh);
+
+	clearBtn.addEventListener('click', function () {
+		filterBT.value       = '';
+		filterBarangay.value = '';
+		refresh();
+	});
+
+	/* ── Today's date ── */
+	const dateEl = document.getElementById('todayDate');
+	if (dateEl) {
+		dateEl.textContent = new Date().toLocaleDateString('en-US', {
+			year: 'numeric', month: 'long', day: 'numeric',
+		});
+	}
+
+	/* ── Bootstrap ── */
+	buildBtLegend();
+	refresh();
+
+})();
 </script>
 @endpush

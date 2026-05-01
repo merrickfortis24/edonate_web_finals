@@ -20,5 +20,17 @@ class Location extends Model
         'barangay_name',
         'city',
         'province',
+        'latitude',
+        'longitude',
     ];
+
+    protected $casts = [
+        'latitude'  => 'float',
+        'longitude' => 'float',
+    ];
+
+    public function donors()
+    {
+        return $this->hasMany(Donor::class, 'location_id', 'location_id');
+    }
 }
