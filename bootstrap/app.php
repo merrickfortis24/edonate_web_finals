@@ -15,6 +15,11 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.auth' => \App\Http\Middleware\EnsureAdminAuthenticated::class,
             'admin.role' => \App\Http\Middleware\EnsureAdminRole::class,
         ]);
+
+        // Exempt webhook routes from CSRF protection
+        $middleware->validateCsrfTokens(except: [
+            'webhook/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

@@ -62,7 +62,7 @@ class QuestionController extends Controller
         $from     = $total > 0 ? ($page - 1) * $perPage + 1 : 0;
         $to       = min($page * $perPage, $total);
 
-        $rows = $query->orderBy('sort_order')
+        $rows = $query->orderBy('question_order')
             ->forPage($page, $perPage)
             ->get();
 
@@ -90,17 +90,17 @@ class QuestionController extends Controller
     {
         $validated = $request->validate([
             'question_text'    => ['required', 'string', 'min:5', 'max:500'],
-            'question_type'    => ['required', Rule::in(['yes_no', 'text', 'date'])],
-            'is_disqualifying' => ['boolean'],
-            'sort_order'       => ['required', 'integer', 'min:0', 'max:999'],
+            'followup_prompt'  => ['nullable', 'string', 'max:500'],
+            'followup_trigger' => ['nullable', Rule::in(['yes', 'no', ''])],
+            'question_order'   => ['required', 'integer', 'min:0', 'max:999'],
         ]);
 
         try {
             $question = EligibilityQuestion::create([
                 'question_text'    => trim($validated['question_text']),
-                'question_type'    => $validated['question_type'],
-                'is_disqualifying' => $validated['is_disqualifying'] ?? false,
-                'sort_order'       => $validated['sort_order'],
+                'followup_prompt'  => trim((string) ($validated['followup_prompt'] ?? '')),
+                'followup_trigger' => trim((string) ($validated['followup_trigger'] ?? '')),
+                'question_order'   => $validated['question_order'],
                 'is_active'        => true,
             ]);
 
@@ -123,9 +123,9 @@ class QuestionController extends Controller
     {
         $validated = $request->validate([
             'question_text'    => ['required', 'string', 'min:5', 'max:500'],
-            'question_type'    => ['required', Rule::in(['yes_no', 'text', 'date'])],
-            'is_disqualifying' => ['boolean'],
-            'sort_order'       => ['required', 'integer', 'min:0', 'max:999'],
+            'followup_prompt'  => ['nullable', 'string', 'max:500'],
+            'followup_trigger' => ['nullable', Rule::in(['yes', 'no', ''])],
+            'question_order'   => ['required', 'integer', 'min:0', 'max:999'],
         ]);
 
         $question = EligibilityQuestion::find($id);
@@ -137,9 +137,9 @@ class QuestionController extends Controller
             $oldText = $question->question_text;
             $question->update([
                 'question_text'    => trim($validated['question_text']),
-                'question_type'    => $validated['question_type'],
-                'is_disqualifying' => $validated['is_disqualifying'] ?? false,
-                'sort_order'       => $validated['sort_order'],
+                'followup_prompt'  => trim((string) ($validated['followup_prompt'] ?? '')),
+                'followup_trigger' => trim((string) ($validated['followup_trigger'] ?? '')),
+                'question_order'   => $validated['question_order'],
             ]);
 
             $this->writeAudit($request, 'question_updated', "Updated question from: {$oldText}", $id);
@@ -188,11 +188,10 @@ class QuestionController extends Controller
         return [
             'question_id'      => $q->question_id,
             'question_text'    => $q->question_text,
-            'question_type'    => $q->question_type,
-            'is_disqualifying' => $q->is_disqualifying,
-            'sort_order'       => $q->sort_order,
+            'followup_prompt'  => $q->followup_prompt,
+            'followup_trigger' => $q->followup_trigger,
+            'question_order'   => $q->question_order,
             'is_active'        => $q->is_active,
-            'created_at'       => $q->created_at,
         ];
     }
 
@@ -221,7 +220,7 @@ class QuestionController extends Controller
                 'actor_role'   => $actorRole,
                 'action_type'  => $actionType,
                 'module_type'  => 'eligibility',
-                'target_table' => 'eligibility_questions',
+                'target_table' => 'screening_questions',
                 'target_id'    => $questionId,
                 'description'  => $description,
                 'ip_address'   => $request->ip(),

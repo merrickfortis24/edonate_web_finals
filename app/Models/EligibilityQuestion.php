@@ -6,26 +6,28 @@ use Illuminate\Database\Eloquent\Model;
 
 class EligibilityQuestion extends Model
 {
-    protected $table = 'eligibility_questions';
+    protected $table = 'screening_questions';
 
     protected $primaryKey = 'question_id';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'question_text',
-        'question_type',
-        'is_disqualifying',
-        'sort_order',
+        'followup_prompt',
+        'followup_trigger',
+        'question_order',
         'is_active',
+        'extra_data',
     ];
 
     protected $casts = [
-        'is_disqualifying' => 'boolean',
-        'is_active'        => 'boolean',
-        'sort_order'       => 'integer',
+        'is_active'      => 'boolean',
+        'question_order' => 'integer',
     ];
 
     public function answers()
     {
-        return $this->hasMany(EligibilityAnswer::class, 'question_id', 'question_id');
+        return $this->hasMany(DonorScreeningAnswer::class, 'question_id', 'question_id');
     }
 }

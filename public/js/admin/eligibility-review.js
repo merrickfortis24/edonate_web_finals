@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
         perPage: 10,
         totalRecords: 0,
         selectedId: null,
+        pendingAction: null, // 'approved' or 'declined'
         isLoading: false,
     };
 
@@ -18,20 +19,26 @@ document.addEventListener('DOMContentLoaded', function () {
         prevBtn: '#eligibilityPrevBtn',
         nextBtn: '#eligibilityNextBtn',
         modal: '#eligibilityReviewModal',
+        modalHeader: '#reviewModalHeader',
+        modalLabel: '#reviewModalLabel',
         modalContent: '#reviewModalContent',
-        approveBtn: '#reviewApproveBtn',
-        rejectBtn: '#reviewRejectBtn',
-        toastContainer: '#toastContainer',
+        actionBanner: '#reviewActionBanner',
+        actionText: '#reviewActionText',
+        notesWrapper: '#reviewNotesWrapper',
+        notesField: '#reviewNotesField',
+        confirmBtn: '#reviewConfirmBtn',
         statTotal: '#eligibilityStatTotal',
         statPending: '#eligibilityStatPending',
-        statEligible: '#eligibilityStatEligible',
-        statIneligible: '#eligibilityStatIneligible',
+        statApproved: '#eligibilityStatApproved',
+        statDeclined: '#eligibilityStatDeclined',
     };
 
     const apiUrls = () => {
         const payload = (window.AdminPageData && window.AdminPageData.eligibilityPayload) || {};
         return payload.api || {};
     };
+
+    // ── Utilities ────────────────────────────────────────────────────────────
 
     function showToast(message, type = 'info') {
         const Toast = Swal.mixin({
@@ -41,11 +48,10 @@ document.addEventListener('DOMContentLoaded', function () {
             timer: 3000,
             timerProgressBar: true,
             didOpen: (toast) => {
-                toast.addEventListener('mouseenter', Swal.stopTimer)
-                toast.addEventListener('mouseleave', Swal.resumeTimer)
+                toast.addEventListener('mouseenter', Swal.stopTimer);
+                toast.addEventListener('mouseleave', Swal.resumeTimer);
             }
         });
-
         Toast.fire({
             icon: type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info'),
             title: message
@@ -68,14 +74,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (nextBtn) nextBtn.disabled = loading;
     }
 
-    function updateStats(stats) {
-        if (!stats) return;
-        document.querySelector(selectors.statTotal).textContent = stats.total || 0;
-        document.querySelector(selectors.statPending).textContent = stats.pending || 0;
-        document.querySelector(selectors.statEligible).textContent = stats.eligible || 0;
-        document.querySelector(selectors.statIneligible).textContent = stats.not_eligible || 0;
-    }
-
     function formatDate(dateStr) {
         if (!dateStr) return '—';
         return new Date(dateStr).toLocaleDateString('en-US', {
@@ -85,18 +83,30 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function getStatusBadgeClass(status) {
+    function getStatusBadge(status) {
         switch (status) {
             case 'pending':
-                return 'bg-warning text-dark';
-            case 'eligible':
-                return 'bg-success text-white';
-            case 'not_eligible':
-                return 'bg-danger text-white';
+                return '<span class="badge bg-warning text-dark">Pending</span>';
+            case 'approved':
+                return '<span class="badge bg-success text-white">Approved</span>';
+            case 'declined':
+                return '<span class="badge bg-danger text-white">Declined</span>';
             default:
-                return 'bg-secondary text-white';
+                return '<span class="badge bg-secondary text-white">' + escapeHtml(status) + '</span>';
         }
     }
+
+    // ── Stats ────────────────────────────────────────────────────────────────
+
+    function updateStats(stats) {
+        if (!stats) return;
+        document.querySelector(selectors.statTotal).textContent = stats.total || 0;
+        document.querySelector(selectors.statPending).textContent = stats.pending || 0;
+        document.querySelector(selectors.statApproved).textContent = stats.approved || 0;
+        document.querySelector(selectors.statDeclined).textContent = stats.declined || 0;
+    }
+
+    // ── Data loading ─────────────────────────────────────────────────────────
 
     async function loadSubmissions() {
         if (config.isLoading) return;
@@ -140,6 +150,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // ── Table rendering ──────────────────────────────────────────────────────
+
     function renderTable(rows) {
         const tbody = document.querySelector(selectors.tableBody);
         if (!tbody) return;
@@ -149,38 +161,48 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        tbody.innerHTML = rows.map(row => `
-            <tr role="row">
-                <td>${escapeHtml(row.donor_name)}</td>
-                <td>${escapeHtml(row.blood_type)}</td>
-                <td>
-                    <span class="badge ${getStatusBadgeClass(row.status)}">
-                        ${row.status.charAt(0).toUpperCase() + row.status.slice(1)}
-                    </span>
-                </td>
-                <td>${formatDate(row.reviewed_at)}</td>
-                <td>${escapeHtml(row.reviewed_by || '—')}</td>
-                <td>
-                    <button type="button" class="btn btn-sm btn-primary view-btn" data-id="${row.eligibility_id}" aria-label="View submission">View</button>
-                    ${['eligible', 'not_eligible'].includes(row.status) ? '' : `
-                        <button type="button" class="btn btn-sm btn-warning review-btn" data-id="${row.eligibility_id}" aria-label="Review submission">Review</button>
-                    `}
-                </td>
-            </tr>
-        `).join('');
+        tbody.innerHTML = rows.map(row => {
+            const isPending = row.status === 'pending';
+            const actionButtons = isPending
+                ? `<button type="button" class="btn btn-sm btn-outline-primary view-btn me-1" data-id="${row.eligibility_id}">View</button>
+                   <button type="button" class="btn btn-sm btn-success approve-btn me-1" data-id="${row.eligibility_id}">Approve</button>
+                   <button type="button" class="btn btn-sm btn-danger decline-btn" data-id="${row.eligibility_id}">Decline</button>`
+                : `<button type="button" class="btn btn-sm btn-outline-primary view-btn" data-id="${row.eligibility_id}">View</button>`;
+
+            return `
+                <tr role="row">
+                    <td>
+                        <div class="fw-semibold">${escapeHtml(row.donor_name)}</div>
+                        <small class="text-muted">${escapeHtml(row.donor_code)}</small>
+                    </td>
+                    <td><span class="badge bg-light text-dark border">${escapeHtml(row.blood_type)}</span></td>
+                    <td>${getStatusBadge(row.status)}</td>
+                    <td>${formatDate(row.last_donation_date)}</td>
+                    <td>${formatDate(row.next_eligible_date)}</td>
+                    <td class="text-nowrap">${actionButtons}</td>
+                </tr>
+            `;
+        }).join('');
 
         // Attach event listeners
         tbody.querySelectorAll('.view-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                config.selectedId = parseInt(e.target.dataset.id);
-                openViewModal(config.selectedId);
+                const id = parseInt(e.currentTarget.dataset.id);
+                openViewModal(id);
             });
         });
 
-        tbody.querySelectorAll('.review-btn').forEach(btn => {
+        tbody.querySelectorAll('.approve-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
-                config.selectedId = parseInt(e.target.dataset.id);
-                openReviewModal(config.selectedId);
+                const id = parseInt(e.currentTarget.dataset.id);
+                openConfirmModal(id, 'approved');
+            });
+        });
+
+        tbody.querySelectorAll('.decline-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const id = parseInt(e.currentTarget.dataset.id);
+                openConfirmModal(id, 'declined');
             });
         });
     }
@@ -198,107 +220,139 @@ document.addEventListener('DOMContentLoaded', function () {
         if (nextBtn) nextBtn.disabled = config.currentPage >= (meta.last_page || 1);
     }
 
-    async function viewSubmission(id) {
+    // ── Detail fetching ──────────────────────────────────────────────────────
+
+    async function fetchDetail(id) {
         const urls = apiUrls();
         if (!urls.detailBaseUrl) {
             showToast('API configuration missing', 'error');
-            return;
+            return null;
         }
 
         try {
             const response = await fetch(`${urls.detailBaseUrl}/${id}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const submission = await response.json();
-            displaySubmissionDetail(submission);
+            return await response.json();
         } catch (error) {
             console.error('Failed to load submission:', error);
             showToast('Failed to load submission details', 'error');
+            return null;
         }
     }
 
-    function displaySubmissionDetail(submission) {
-        const html = `
-            <div class="submission-detail">
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <h6 class="text-muted">Donor Information</h6>
-                        <p><strong>${escapeHtml(submission.donor.name)}</strong></p>
-                        <p class="small text-muted">ID: ${escapeHtml(submission.donor.donor_code)}</p>
-                        <p class="small">Blood Type: <strong>${escapeHtml(submission.donor.blood_type)}</strong></p>
-                        <p class="small">Contact: ${escapeHtml(submission.donor.contact_number || '—')}</p>
-                    </div>
-                    <div class="col-md-6">
-                        <h6 class="text-muted">Status Information</h6>
-                        <p>Current: <span class="badge ${getStatusBadgeClass(submission.status)}">${submission.status}</span></p>
-                        <p class="small">Last Donation: ${formatDate(submission.donor.last_donation_date)}</p>
-                        <p class="small">Next Eligible: ${formatDate(submission.donor.next_eligible_date)}</p>
-                        <p class="small">Submitted: ${formatDate(submission.submitted_at)}</p>
-                    </div>
+    function renderDetailHtml(submission) {
+        return `
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-2">Donor Information</h6>
+                    <p class="mb-1"><strong>${escapeHtml(submission.donor.name)}</strong></p>
+                    <p class="small text-muted mb-1">ID: ${escapeHtml(submission.donor.donor_code)}</p>
+                    <p class="small mb-1">Blood Type: <strong>${escapeHtml(submission.donor.blood_type)}</strong></p>
+                    <p class="small mb-0">Contact: ${escapeHtml(submission.donor.contact_number || '—')}</p>
                 </div>
-
-                ${submission.answers && submission.answers.length > 0 ? `
-                    <hr>
-                    <h6 class="text-muted">Screening Answers</h6>
-                    <div class="answers-list">
-                        ${submission.answers.map(ans => `
-                            <div class="answer-item mb-2 p-2 bg-light rounded">
-                                <p class="small mb-1"><strong>${escapeHtml(ans.question)}</strong></p>
-                                <p class="small mb-0">
-                                    <span>Answer: ${escapeHtml(ans.answer)}</span>
-                                    ${ans.is_flag ? '<span class="badge bg-danger ms-2">⚠ Flag</span>' : ''}
-                                </p>
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
-
-                ${submission.review_notes ? `
-                    <hr>
-                    <h6 class="text-muted">Review Notes</h6>
-                    <p class="small">${escapeHtml(submission.review_notes)}</p>
-                ` : ''}
+                <div class="col-md-6">
+                    <h6 class="text-muted mb-2">Eligibility Information</h6>
+                    <p class="mb-1">Status: ${getStatusBadge(submission.status)}</p>
+                    <p class="small mb-1">Last Donation: <strong>${formatDate(submission.donor.last_donation_date)}</strong></p>
+                    <p class="small mb-0">Next Eligible: <strong>${formatDate(submission.donor.next_eligible_date)}</strong></p>
+                </div>
             </div>
+
+            ${submission.answers && submission.answers.length > 0 ? `
+                <hr>
+                <h6 class="text-muted mb-2">Screening Answers</h6>
+                <div class="answers-list" style="max-height: 300px; overflow-y: auto;">
+                    ${submission.answers.map((ans, idx) => `
+                        <div class="d-flex align-items-start gap-2 mb-2 p-2 rounded ${ans.is_flag ? 'bg-danger bg-opacity-10 border border-danger border-opacity-25' : 'bg-light'}">
+                            <span class="badge ${ans.answer === 'yes' ? 'bg-success' : 'bg-secondary'} mt-1">${escapeHtml(ans.answer).toUpperCase()}</span>
+                            <div class="flex-grow-1">
+                                <p class="small mb-0 fw-semibold">${escapeHtml(ans.question)}</p>
+                                ${ans.followup_answer ? `<p class="small text-muted mb-0 mt-1">↳ ${escapeHtml(ans.followup_answer)}</p>` : ''}
+                            </div>
+                            ${ans.is_flag ? '<span class="badge bg-danger ms-auto mt-1">⚠ Flag</span>' : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            ` : ''}
         `;
-
-        const modalContent = document.querySelector(selectors.modalContent);
-        if (modalContent) {
-            modalContent.innerHTML = html;
-        }
     }
 
-    async function openReviewModal(id) {
-        config.selectedId = id;
-        await viewSubmission(id);
-        const modal = document.querySelector(selectors.modal);
-        if (modal) {
-            // Show action buttons
-            const approveBtn = document.querySelector(selectors.approveBtn);
-            const rejectBtn = document.querySelector(selectors.rejectBtn);
-            if (approveBtn) approveBtn.style.display = '';
-            if (rejectBtn) rejectBtn.style.display = '';
-            
-            new bootstrap.Modal(modal).show();
-        }
-    }
+    // ── Modal modes ──────────────────────────────────────────────────────────
 
     async function openViewModal(id) {
         config.selectedId = id;
-        await viewSubmission(id);
-        const modal = document.querySelector(selectors.modal);
-        if (modal) {
-            // Hide action buttons
-            const approveBtn = document.querySelector(selectors.approveBtn);
-            const rejectBtn = document.querySelector(selectors.rejectBtn);
-            if (approveBtn) approveBtn.style.display = 'none';
-            if (rejectBtn) rejectBtn.style.display = 'none';
-            
-            new bootstrap.Modal(modal).show();
+        config.pendingAction = null;
+
+        const modalContent = document.querySelector(selectors.modalContent);
+        modalContent.innerHTML = '<div class="text-center text-muted py-4">Loading...</div>';
+
+        // Set modal to view-only mode
+        document.querySelector(selectors.modalLabel).textContent = 'Eligibility Details';
+        document.querySelector(selectors.actionBanner).classList.add('d-none');
+        document.querySelector(selectors.notesWrapper).classList.add('d-none');
+        document.querySelector(selectors.confirmBtn).classList.add('d-none');
+        document.querySelector(selectors.modalHeader).className = 'modal-header';
+
+        const modalEl = document.querySelector(selectors.modal);
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+
+        const data = await fetchDetail(id);
+        if (data) {
+            modalContent.innerHTML = renderDetailHtml(data);
+        } else {
+            modalContent.innerHTML = '<div class="text-center text-danger py-4">Failed to load details</div>';
         }
     }
 
-    async function submitDecision(status) {
-        if (!config.selectedId) return;
+    async function openConfirmModal(id, action) {
+        config.selectedId = id;
+        config.pendingAction = action;
+
+        const isApprove = action === 'approved';
+        const label = isApprove ? 'Approve' : 'Decline';
+        const colorClass = isApprove ? 'success' : 'danger';
+
+        const modalContent = document.querySelector(selectors.modalContent);
+        modalContent.innerHTML = '<div class="text-center text-muted py-4">Loading...</div>';
+
+        // Set modal to confirmation mode
+        document.querySelector(selectors.modalLabel).textContent = `${label} Donor Eligibility`;
+        document.querySelector(selectors.modalHeader).className = `modal-header bg-${colorClass} bg-opacity-10`;
+
+        const banner = document.querySelector(selectors.actionBanner);
+        banner.className = `alert alert-${colorClass} mb-3`;
+        banner.classList.remove('d-none');
+        document.querySelector(selectors.actionText).textContent =
+            isApprove
+                ? '✓ You are about to APPROVE this donor\'s eligibility.'
+                : '✗ You are about to DECLINE this donor\'s eligibility.';
+
+        document.querySelector(selectors.notesWrapper).classList.remove('d-none');
+        document.querySelector(selectors.notesField).value = '';
+
+        const confirmBtn = document.querySelector(selectors.confirmBtn);
+        confirmBtn.classList.remove('d-none', 'btn-success', 'btn-danger');
+        confirmBtn.classList.add(`btn-${colorClass}`);
+        confirmBtn.textContent = `Confirm ${label}`;
+        confirmBtn.disabled = false;
+
+        const modalEl = document.querySelector(selectors.modal);
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+
+        const data = await fetchDetail(id);
+        if (data) {
+            modalContent.innerHTML = renderDetailHtml(data);
+        } else {
+            modalContent.innerHTML = '<div class="text-center text-danger py-4">Failed to load details</div>';
+        }
+    }
+
+    // ── Submit decision ──────────────────────────────────────────────────────
+
+    async function submitDecision() {
+        if (!config.selectedId || !config.pendingAction) return;
 
         const urls = apiUrls();
         if (!urls.reviewBaseUrl) {
@@ -306,15 +360,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const { value: notes } = await Swal.fire({
-            title: 'Review Notes',
-            input: 'textarea',
-            inputLabel: 'Enter review notes (optional):',
-            inputPlaceholder: 'Type your notes here...',
-            showCancelButton: true
-        });
+        const confirmBtn = document.querySelector(selectors.confirmBtn);
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Processing...';
 
-        if (notes === undefined) return; // Cancelled
+        const notes = document.querySelector(selectors.notesField)?.value || '';
 
         try {
             const response = await fetch(`${urls.reviewBaseUrl}/${config.selectedId}/review`, {
@@ -324,7 +374,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                 },
                 body: JSON.stringify({
-                    status: status,
+                    status: config.pendingAction,
                     notes: notes || null,
                 }),
             });
@@ -334,21 +384,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 throw new Error(error.message || 'Failed to update');
             }
 
-            const modal = document.querySelector(selectors.modal);
-            if (modal) {
-                bootstrap.Modal.getInstance(modal)?.hide();
-            }
+            const modalEl = document.querySelector(selectors.modal);
+            bootstrap.Modal.getInstance(modalEl)?.hide();
 
-            showToast(`Submission marked as ${status}`, 'success');
-            config.currentPage = 1;
+            const label = config.pendingAction === 'approved' ? 'approved' : 'declined';
+            showToast(`Submission successfully ${label}`, 'success');
             loadSubmissions();
         } catch (error) {
             console.error('Failed to submit decision:', error);
             showToast(error.message || 'Failed to submit decision', 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = config.pendingAction === 'approved' ? 'Confirm Approve' : 'Confirm Decline';
         }
     }
 
-    // Event listeners
+    // ── Event listeners ──────────────────────────────────────────────────────
+
     document.querySelector(selectors.refreshBtn)?.addEventListener('click', () => {
         config.currentPage = 1;
         loadSubmissions();
@@ -386,14 +437,8 @@ document.addEventListener('DOMContentLoaded', function () {
         loadSubmissions();
     });
 
-    document.querySelector(selectors.approveBtn)?.addEventListener('click', () => {
-        submitDecision('eligible');
-    });
+    document.querySelector(selectors.confirmBtn)?.addEventListener('click', submitDecision);
 
-    document.querySelector(selectors.rejectBtn)?.addEventListener('click', () => {
-        submitDecision('not_eligible');
-    });
-
-    // Initial load
+    // ── Initial load ─────────────────────────────────────────────────────────
     loadSubmissions();
 });

@@ -9,6 +9,8 @@ use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\EligibilityController;
 use App\Http\Controllers\QuestionController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 Route::get('/', function () {
     return redirect()->route('admin.login');
@@ -67,9 +69,9 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
         Route::get('/admin/donation-records/data', [AdminAuthController::class, 'listDonationRecordsData'])->name('admin.donation-records.data');
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
-        Route::get('/admin/map/donors',    [AdminAuthController::class, 'mapDonors'])->name('admin.map.donors');
+        Route::get('/admin/map/donors', [AdminAuthController::class, 'mapDonors'])->name('admin.map.donors');
         Route::get('/admin/map/barangays', [AdminAuthController::class, 'mapBarangays'])->name('admin.map.barangays');
-        Route::get('/admin/map/summary',   [AdminAuthController::class, 'mapSummary'])->name('admin.map.summary');
+        Route::get('/admin/map/summary', [AdminAuthController::class, 'mapSummary'])->name('admin.map.summary');
         Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
         Route::get('/admin/audit-logs', [AdminAuthController::class, 'auditLogs'])->name('admin.audit-logs');
         Route::get('/admin/audit-logs/data', [AdminAuthController::class, 'listAuditLogs'])->name('admin.audit-logs.data');
@@ -121,3 +123,19 @@ Route::middleware('admin.auth')->group(function () {
     });
 });
 
+// Webhook for Auto-Deployment
+Route::post('/webhook/deploy', function (Request $request) {
+    // 🔐 Security: Check for secret key
+    if ($request->header('X-SECRET') !== 'mysecret123') {
+        Log::warning('Unauthorized deployment webhook attempt');
+        return response()->json(['error' => 'Unauthorized'], 403);
+    }
+
+    Log::info('Deployment webhook triggered', $request->all());
+
+    // Using base_path() automatically gets the correct path (Hostinger or Local)
+    $path = base_path();
+    exec("cd {$path} && git pull origin main");
+
+    return response()->json(['status' => 'updated']);
+});

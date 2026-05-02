@@ -12,9 +12,7 @@ use Throwable;
 
 class EligibilityController extends Controller
 {
-    private const REVIEWED_STATUSES   = ['eligible', 'not_eligible'];
-    private const ELIGIBLE_STATUSES   = ['eligible', 'qualified', 'ready'];
-    private const INELIGIBLE_STATUSES = ['not_eligible', 'not eligible', 'deferred', 'ineligible'];
+    private const VALID_STATUSES = ['pending', 'approved', 'declined'];
 
     // ── Pages ────────────────────────────────────────────────────────────────
 
@@ -39,7 +37,7 @@ class EligibilityController extends Controller
             'page'       => ['nullable', 'integer', 'min:1'],
             'per_page'   => ['nullable', 'integer', 'min:1', 'max:100'],
             'search'     => ['nullable', 'string', 'max:150'],
-            'status'     => ['nullable', 'string', Rule::in(['', 'pending', 'eligible', 'not_eligible'])],
+            'status'     => ['nullable', 'string', Rule::in(['', 'pending', 'approved', 'declined'])],
             'blood_type' => ['nullable', 'string'],
             'location'   => ['nullable', 'string'],
         ]);
@@ -54,8 +52,7 @@ class EligibilityController extends Controller
         $base = DB::table('eligibility_status as es')
             ->join('donors as d',      'd.donor_id',      '=', 'es.donor_id')
             ->join('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
-            ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
-            ->leftJoin('admins as adm', 'adm.admin_id',   '=', 'es.reviewed_by_admin_id');
+            ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id');
 
         if ($searchTerm !== '') {
             $like = '%'.$searchTerm.'%';
@@ -67,13 +64,7 @@ class EligibilityController extends Controller
         }
 
         if ($status !== '') {
-            if ($status === 'pending') {
-                $reviewed = array_merge(self::ELIGIBLE_STATUSES, self::INELIGIBLE_STATUSES);
-                $base->whereRaw('LOWER(COALESCE(es.status,\'\')) NOT IN ('.implode(',', array_fill(0, count($reviewed), '?')).')', $reviewed);
-            } else {
-                $matchList = $status === 'eligible' ? self::ELIGIBLE_STATUSES : self::INELIGIBLE_STATUSES;
-                $base->whereRaw('LOWER(COALESCE(es.status,\'\')) IN ('.implode(',', array_fill(0, count($matchList), '?')).')', $matchList);
-            }
+            $base->where('es.status', $status);
         }
 
         if ($bloodType !== '') {
@@ -85,12 +76,12 @@ class EligibilityController extends Controller
         }
 
         // Stats on full dataset (no filters)
-        $statsRow = DB::table('eligibility_status as es')
+        $statsRow = DB::table('eligibility_status')
             ->selectRaw('
                 COUNT(*) as total,
-                SUM(CASE WHEN LOWER(COALESCE(es.status,\'\')) IN (\'eligible\',\'qualified\',\'ready\') THEN 1 ELSE 0 END)                                                  AS eligible,
-                SUM(CASE WHEN LOWER(COALESCE(es.status,\'\')) IN (\'not_eligible\',\'not eligible\',\'deferred\',\'ineligible\') THEN 1 ELSE 0 END)                         AS not_eligible,
-                SUM(CASE WHEN LOWER(COALESCE(es.status,\'\')) NOT IN (\'eligible\',\'qualified\',\'ready\',\'not_eligible\',\'not eligible\',\'deferred\',\'ineligible\') THEN 1 ELSE 0 END) AS pending
+                SUM(CASE WHEN status = \'approved\' THEN 1 ELSE 0 END) AS approved,
+                SUM(CASE WHEN status = \'declined\' THEN 1 ELSE 0 END) AS declined,
+                SUM(CASE WHEN status = \'pending\' OR status IS NULL THEN 1 ELSE 0 END) AS pending
             ')
             ->first();
 
@@ -109,16 +100,9 @@ class EligibilityController extends Controller
                 'es.status',
                 'es.last_donation_date',
                 'es.next_eligible_date',
-                'es.reviewed_at',
-                DB::raw("COALESCE(adm.full_name, adm.username) AS reviewed_by_name"),
+                'd.contact_number',
             ])
-            ->orderByRaw("
-                CASE
-                    WHEN LOWER(COALESCE(es.status,'')) NOT IN
-                        ('eligible','qualified','ready','not_eligible','not eligible','deferred','ineligible')
-                    THEN 0 ELSE 1
-                END
-            ")
+            ->orderByRaw("CASE WHEN es.status = 'pending' OR es.status IS NULL THEN 0 ELSE 1 END")
             ->orderByDesc('es.eligibility_id')
             ->forPage($page, $perPage)
             ->get();
@@ -134,10 +118,10 @@ class EligibilityController extends Controller
                 'to'           => $to,
             ],
             'stats' => [
-                'total'       => (int) ($statsRow->total       ?? 0),
-                'pending'     => (int) ($statsRow->pending     ?? 0),
-                'eligible'    => (int) ($statsRow->eligible    ?? 0),
-                'not_eligible'=> (int) ($statsRow->not_eligible ?? 0),
+                'total'    => (int) ($statsRow->total    ?? 0),
+                'pending'  => (int) ($statsRow->pending  ?? 0),
+                'approved' => (int) ($statsRow->approved ?? 0),
+                'declined' => (int) ($statsRow->declined ?? 0),
             ],
         ]);
     }
@@ -149,7 +133,6 @@ class EligibilityController extends Controller
         $row = DB::table('eligibility_status as es')
             ->join('donors as d',       'd.donor_id',       '=', 'es.donor_id')
             ->join('blood_types as bt',  'bt.blood_type_id', '=', 'd.blood_type_id')
-            ->leftJoin('admins as adm',  'adm.admin_id',    '=', 'es.reviewed_by_admin_id')
             ->where('es.eligibility_id', $id)
             ->select([
                 'es.eligibility_id',
@@ -161,9 +144,6 @@ class EligibilityController extends Controller
                 'es.status',
                 'es.last_donation_date',
                 'es.next_eligible_date',
-                'es.reviewed_at',
-                'es.review_notes',
-                DB::raw("COALESCE(adm.full_name, adm.username) AS reviewed_by_name"),
             ])
             ->first();
 
@@ -171,39 +151,31 @@ class EligibilityController extends Controller
             return response()->json(['message' => 'Record not found.'], 404);
         }
 
-        // Latest submission + answers for this donor
-        $submission = DB::table('eligibility_submissions')
-            ->where('donor_id', $row->donor_id)
-            ->orderByDesc('submission_id')
-            ->first();
+        // Screening answers for this eligibility record
+        $answers = DB::table('donor_screening_answers as dsa')
+            ->join('screening_questions as sq', 'sq.question_id', '=', 'dsa.question_id')
+            ->where('dsa.eligibility_id', $id)
+            ->orderBy('sq.question_order')
+            ->select([
+                'sq.question_text',
+                'sq.followup_prompt',
+                'sq.followup_trigger',
+                'dsa.answer',
+                'dsa.followup_answer',
+            ])
+            ->get()
+            ->map(function (object $a) {
+                $isFlag = ($a->answer === 'yes' && $a->followup_trigger === 'yes')
+                       || ($a->answer === 'no'  && $a->followup_trigger === 'no');
 
-        $answers = [];
-        if ($submission) {
-            $answers = DB::table('eligibility_answers as ea')
-                ->join('eligibility_questions as eq', 'eq.question_id', '=', 'ea.question_id')
-                ->where('ea.submission_id', $submission->submission_id)
-                ->orderBy('eq.sort_order')
-                ->select([
-                    'eq.question_text',
-                    'eq.question_type',
-                    'eq.is_disqualifying',
-                    'ea.answer_value',
-                ])
-                ->get()
-                ->map(function (object $a) {
-                    $answerLower = Str::lower(trim((string) ($a->answer_value ?? '')));
-                    $isFlag = (bool) $a->is_disqualifying
-                        && in_array($answerLower, ['yes', '1', 'true'], true);
-
-                    return [
-                        'question'      => (string) $a->question_text,
-                        'question_type' => (string) $a->question_type,
-                        'answer'        => (string) ($a->answer_value ?? '—'),
-                        'is_flag'       => $isFlag,
-                    ];
-                })
-                ->all();
-        }
+                return [
+                    'question'        => (string) $a->question_text,
+                    'answer'          => (string) $a->answer,
+                    'followup_answer' => (string) ($a->followup_answer ?? ''),
+                    'is_flag'         => $isFlag,
+                ];
+            })
+            ->all();
 
         return response()->json([
             'eligibility_id' => (int) $row->eligibility_id,
@@ -216,12 +188,8 @@ class EligibilityController extends Controller
                 'last_donation_date'=> $row->last_donation_date,
                 'next_eligible_date'=> $row->next_eligible_date,
             ],
-            'status'       => $this->normalizeStatus((string) ($row->status ?? '')),
-            'reviewed_at'  => $row->reviewed_at,
-            'review_notes' => $row->review_notes,
-            'reviewed_by'  => $row->reviewed_by_name,
-            'submitted_at' => $submission?->submitted_at ?? null,
-            'answers'      => $answers,
+            'status'  => (string) ($row->status ?? 'pending'),
+            'answers' => $answers,
         ]);
     }
 
@@ -230,7 +198,7 @@ class EligibilityController extends Controller
     public function review(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'status' => ['required', 'string', Rule::in(self::REVIEWED_STATUSES)],
+            'status' => ['required', 'string', Rule::in(['approved', 'declined'])],
             'notes'  => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -239,24 +207,17 @@ class EligibilityController extends Controller
             return response()->json(['message' => 'Eligibility record not found.'], 404);
         }
 
-        if (in_array($this->normalizeStatus((string) ($row->status ?? '')), self::REVIEWED_STATUSES, true)) {
+        if (in_array($row->status, ['approved', 'declined'], true)) {
             return response()->json(['message' => 'This record has already been reviewed.'], 422);
         }
 
-        $actorAdminId = is_numeric($request->session()->get('admin_id'))
-            ? (int) $request->session()->get('admin_id')
-            : null;
-
         DB::table('eligibility_status')->where('eligibility_id', $id)->update([
-            'status'                => $validated['status'],
-            'reviewed_by_admin_id'  => $actorAdminId,
-            'reviewed_at'           => now(),
-            'review_notes'          => $validated['notes'] ?? null,
+            'status' => $validated['status'],
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
         $code    = 'EL'.str_pad((string) $id, 3, '0', STR_PAD_LEFT);
-        $label   = $validated['status'] === 'eligible' ? 'Eligible' : 'Not Eligible';
+        $label   = $validated['status'] === 'approved' ? 'Approved' : 'Declined';
 
         $this->notifyDonor(
             $donorId,
@@ -269,31 +230,17 @@ class EligibilityController extends Controller
             'donor_id'        => $donorId,
             'previous_status' => $row->status ?? null,
             'new_status'      => $validated['status'],
+            'notes'           => $validated['notes'] ?? null,
         ]);
 
         return response()->json([
             'message'        => 'Eligibility status updated.',
             'eligibility_id' => $id,
             'new_status'     => $validated['status'],
-            'reviewed_at'    => now()->toISOString(),
         ]);
     }
 
     // ── Private helpers ──────────────────────────────────────────────────────
-
-    private function normalizeStatus(string $value): string
-    {
-        $lower = Str::lower(trim($value));
-
-        if (in_array($lower, self::ELIGIBLE_STATUSES, true)) {
-            return 'eligible';
-        }
-        if (in_array($lower, self::INELIGIBLE_STATUSES, true)) {
-            return 'not_eligible';
-        }
-
-        return 'pending';
-    }
 
     private function transformRow(object $row): array
     {
@@ -303,11 +250,10 @@ class EligibilityController extends Controller
             'donor_name'         => trim((string) $row->donor_name),
             'donor_code'         => (string) $row->donor_code,
             'blood_type'         => (string) $row->blood_type,
-            'status'             => $this->normalizeStatus((string) ($row->status ?? '')),
+            'status'             => (string) ($row->status ?? 'pending'),
             'last_donation_date' => $row->last_donation_date,
             'next_eligible_date' => $row->next_eligible_date,
-            'reviewed_at'        => $row->reviewed_at,
-            'reviewed_by'        => $row->reviewed_by_name,
+            'contact_number'     => (string) ($row->contact_number ?? ''),
         ];
     }
 
