@@ -95,6 +95,31 @@
                 </select>
             </div>
 
+            <div class="eligibility-filter__select-wrap col-12 col-md-6 col-xl-2">
+                <select id="eligibilityBloodTypeFilter" class="eligibility-filter__select form-select" aria-label="Filter by blood type" name="blood_type">
+                    <option value="">All Blood Types</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                </select>
+            </div>
+
+            <div class="eligibility-filter__select-wrap col-12 col-md-6 col-xl-2">
+                <select id="eligibilityLocationFilter" class="eligibility-filter__select form-select" aria-label="Filter by location" name="location">
+                    <option value="">All Locations</option>
+                    @foreach(\App\Models\Location::select('city')->distinct()->get() as $loc)
+                        @if($loc->city)
+                            <option value="{{ $loc->city }}">{{ $loc->city }}</option>
+                        @endif
+                    @endforeach
+                </select>
+            </div>
+
             <button type="button" class="btn btn-primary" id="eligibilityRefreshBtn" aria-label="Refresh submissions">
                 <span aria-hidden="true">↻</span> Refresh
             </button>

@@ -36,20 +36,25 @@ class EligibilityController extends Controller
     public function data(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'page'     => ['nullable', 'integer', 'min:1'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-            'search'   => ['nullable', 'string', 'max:150'],
-            'status'   => ['nullable', 'string', Rule::in(['', 'pending', 'eligible', 'not_eligible'])],
+            'page'       => ['nullable', 'integer', 'min:1'],
+            'per_page'   => ['nullable', 'integer', 'min:1', 'max:100'],
+            'search'     => ['nullable', 'string', 'max:150'],
+            'status'     => ['nullable', 'string', Rule::in(['', 'pending', 'eligible', 'not_eligible'])],
+            'blood_type' => ['nullable', 'string'],
+            'location'   => ['nullable', 'string'],
         ]);
 
         $page       = (int) ($validated['page']     ?? 1);
         $perPage    = (int) ($validated['per_page'] ?? 10);
         $searchTerm = trim((string) ($validated['search'] ?? ''));
         $status     = Str::lower(trim((string) ($validated['status'] ?? '')));
+        $bloodType  = trim((string) ($validated['blood_type'] ?? ''));
+        $location   = trim((string) ($validated['location'] ?? ''));
 
         $base = DB::table('eligibility_status as es')
             ->join('donors as d',      'd.donor_id',      '=', 'es.donor_id')
             ->join('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
             ->leftJoin('admins as adm', 'adm.admin_id',   '=', 'es.reviewed_by_admin_id');
 
         if ($searchTerm !== '') {
@@ -69,6 +74,14 @@ class EligibilityController extends Controller
                 $matchList = $status === 'eligible' ? self::ELIGIBLE_STATUSES : self::INELIGIBLE_STATUSES;
                 $base->whereRaw('LOWER(COALESCE(es.status,\'\')) IN ('.implode(',', array_fill(0, count($matchList), '?')).')', $matchList);
             }
+        }
+
+        if ($bloodType !== '') {
+            $base->where('bt.blood_type', $bloodType);
+        }
+
+        if ($location !== '') {
+            $base->where('l.city', 'like', '%' . $location . '%');
         }
 
         // Stats on full dataset (no filters)

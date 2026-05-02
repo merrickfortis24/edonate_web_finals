@@ -10,6 +10,8 @@ document.addEventListener('DOMContentLoaded', function () {
     const selectors = {
         searchInput: '#eligibilitySearchInput',
         statusFilter: '#eligibilityStatusFilter',
+        bloodTypeFilter: '#eligibilityBloodTypeFilter',
+        locationFilter: '#eligibilityLocationFilter',
         refreshBtn: '#eligibilityRefreshBtn',
         tableBody: '#eligibilityTableBody',
         paginationInfo: '#eligibilityPaginationInfo',
@@ -32,25 +34,22 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     function showToast(message, type = 'info') {
-        const toastHtml = `
-            <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="toast-header bg-${type} text-white">
-                    <strong class="me-auto">${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
-                </div>
-                <div class="toast-body">
-                    ${escapeHtml(message)}
-                </div>
-            </div>
-        `;
-        const container = document.querySelector(selectors.toastContainer);
-        if (container) {
-            container.insertAdjacentHTML('beforeend', toastHtml);
-            const toastEl = container.lastElementChild;
-            const bsToast = new bootstrap.Toast(toastEl);
-            bsToast.show();
-            toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
-        }
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'bottom-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer)
+                toast.addEventListener('mouseleave', Swal.resumeTimer)
+            }
+        });
+
+        Toast.fire({
+            icon: type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info'),
+            title: message
+        });
     }
 
     function escapeHtml(text) {
@@ -113,12 +112,16 @@ document.addEventListener('DOMContentLoaded', function () {
         try {
             const searchTerm = document.querySelector(selectors.searchInput)?.value || '';
             const status = document.querySelector(selectors.statusFilter)?.value || '';
+            const bloodType = document.querySelector(selectors.bloodTypeFilter)?.value || '';
+            const location = document.querySelector(selectors.locationFilter)?.value || '';
 
             const params = new URLSearchParams({
                 page: config.currentPage,
                 per_page: config.perPage,
                 search: searchTerm,
                 status: status,
+                blood_type: bloodType,
+                location: location,
             });
 
             const response = await fetch(`${urls.listUrl}?${params}`);
@@ -168,7 +171,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Attach event listeners
         tbody.querySelectorAll('.view-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => viewSubmission(parseInt(e.target.dataset.id)));
+            btn.addEventListener('click', (e) => {
+                config.selectedId = parseInt(e.target.dataset.id);
+                openViewModal(config.selectedId);
+            });
         });
 
         tbody.querySelectorAll('.review-btn').forEach(btn => {
@@ -266,6 +272,27 @@ document.addEventListener('DOMContentLoaded', function () {
         await viewSubmission(id);
         const modal = document.querySelector(selectors.modal);
         if (modal) {
+            // Show action buttons
+            const approveBtn = document.querySelector(selectors.approveBtn);
+            const rejectBtn = document.querySelector(selectors.rejectBtn);
+            if (approveBtn) approveBtn.style.display = '';
+            if (rejectBtn) rejectBtn.style.display = '';
+            
+            new bootstrap.Modal(modal).show();
+        }
+    }
+
+    async function openViewModal(id) {
+        config.selectedId = id;
+        await viewSubmission(id);
+        const modal = document.querySelector(selectors.modal);
+        if (modal) {
+            // Hide action buttons
+            const approveBtn = document.querySelector(selectors.approveBtn);
+            const rejectBtn = document.querySelector(selectors.rejectBtn);
+            if (approveBtn) approveBtn.style.display = 'none';
+            if (rejectBtn) rejectBtn.style.display = 'none';
+            
             new bootstrap.Modal(modal).show();
         }
     }
@@ -279,8 +306,15 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const notes = prompt('Enter review notes (optional):', '');
-        if (notes === null) return;
+        const { value: notes } = await Swal.fire({
+            title: 'Review Notes',
+            input: 'textarea',
+            inputLabel: 'Enter review notes (optional):',
+            inputPlaceholder: 'Type your notes here...',
+            showCancelButton: true
+        });
+
+        if (notes === undefined) return; // Cancelled
 
         try {
             const response = await fetch(`${urls.reviewBaseUrl}/${config.selectedId}/review`, {
@@ -338,6 +372,16 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.querySelector(selectors.statusFilter)?.addEventListener('change', () => {
+        config.currentPage = 1;
+        loadSubmissions();
+    });
+
+    document.querySelector(selectors.bloodTypeFilter)?.addEventListener('change', () => {
+        config.currentPage = 1;
+        loadSubmissions();
+    });
+
+    document.querySelector(selectors.locationFilter)?.addEventListener('change', () => {
         config.currentPage = 1;
         loadSubmissions();
     });

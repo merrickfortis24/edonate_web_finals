@@ -37,25 +37,22 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     function showToast(message, type = 'info') {
-        const toastHtml = `
-            <div class="toast" role="alert" aria-live="assertive" aria-atomic="true">
-                <div class="toast-header bg-${type} text-white">
-                    <strong class="me-auto">${type.charAt(0).toUpperCase() + type.slice(1)}</strong>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
-                </div>
-                <div class="toast-body">
-                    ${escapeHtml(message)}
-                </div>
-            </div>
-        `;
-        const container = document.querySelector(selectors.toastContainer);
-        if (container) {
-            container.insertAdjacentHTML('beforeend', toastHtml);
-            const toastEl = container.lastElementChild;
-            const bsToast = new bootstrap.Toast(toastEl);
-            bsToast.show();
-            toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
-        }
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'bottom-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer)
+                toast.addEventListener('mouseleave', Swal.resumeTimer)
+            }
+        });
+
+        Toast.fire({
+            icon: type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info'),
+            title: message
+        });
     }
 
     function escapeHtml(text) {
@@ -175,8 +172,18 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         tbody.querySelectorAll('.delete-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                if (confirm('Are you sure you want to delete this question? This cannot be undone.')) {
+            btn.addEventListener('click', async (e) => {
+                const result = await Swal.fire({
+                    title: 'Are you sure?',
+                    text: 'You are about to delete this question. This cannot be undone.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#d33',
+                    cancelButtonColor: '#3085d6',
+                    confirmButtonText: 'Yes, delete it!'
+                });
+                
+                if (result.isConfirmed) {
                     deleteQuestion(parseInt(e.target.dataset.id));
                 }
             });

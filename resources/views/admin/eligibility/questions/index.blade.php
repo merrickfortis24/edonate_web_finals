@@ -159,7 +159,7 @@
                     <div class="mb-3">
                         <label for="questionTextField" class="form-label">Question Text *</label>
                         <textarea id="questionTextField" class="form-control" rows="3" placeholder="Enter the question..." required></textarea>
-                        <div class="invalid-feedback" id="questionTextError"></div>
+                        <div class="invalid-feedback" id="questionTextError">Please provide a valid question text.</div>
                     </div>
 
                     <div class="mb-3">
@@ -170,20 +170,20 @@
                             <option value="text">Text</option>
                             <option value="date">Date</option>
                         </select>
-                        <div class="invalid-feedback" id="questionTypeError"></div>
+                        <div class="invalid-feedback" id="questionTypeError">Please select a question type.</div>
                     </div>
 
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="sortOrderField" class="form-label">Sort Order *</label>
                             <input type="number" id="sortOrderField" class="form-control" min="0" max="999" value="0" required>
-                            <div class="invalid-feedback" id="sortOrderError"></div>
+                            <div class="invalid-feedback" id="sortOrderError">Please enter a valid sort order.</div>
                         </div>
-                        <div class="col-md-6 mb-3">
-                            <label for="disqualifyingField" class="form-label">
+                        <div class="col-md-6 mb-3 d-flex align-items-center mt-md-4">
+                            <div class="form-check">
                                 <input type="checkbox" id="disqualifyingField" class="form-check-input">
-                                Disqualifying Question
-                            </label>
+                                <label for="disqualifyingField" class="form-check-label">Disqualifying Question</label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -201,6 +201,6 @@
 
 @endsection
 
-@section('page_scripts')
+@push('admin_scripts')
 <script src="{{ asset('js/admin/questions-management.js') }}"></script>
-@endsection
+@endpush
