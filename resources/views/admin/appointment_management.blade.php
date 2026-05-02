@@ -157,6 +157,104 @@
         </section>
     </section>
 </main>
+
+{{-- ── Reschedule Modal ── --}}
+<div class="modal fade reschedule-modal"
+     id="rescheduleModal"
+     tabindex="-1"
+     role="dialog"
+     aria-labelledby="rescheduleModalTitle"
+     aria-modal="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title" id="rescheduleModalTitle">
+                    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path d="M4 10a6 6 0 1 1 1.76 4.24" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/>
+                        <polyline points="4 14 4 10 8 10" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Reschedule Appointment
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+
+                {{-- Current appointment summary (populated by JS) --}}
+                <div class="reschedule-current-info">
+                    <p class="reschedule-current-info__eyebrow">Currently scheduled</p>
+                    <p class="reschedule-current-info__code" id="rescheduleInfoCode">—</p>
+                    <p class="reschedule-current-info__datetime" id="rescheduleInfoDatetime">
+                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" stroke-width="1.6"/>
+                            <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.6"/>
+                            <line x1="8" y1="2" x2="8" y2="6"  stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                        </svg>
+                        <span id="rescheduleInfoDatetimeText">—</span>
+                    </p>
+                </div>
+
+                {{-- Date + Time pickers --}}
+                <div class="reschedule-fields-row">
+                    <div class="reschedule-field">
+                        <label class="reschedule-field__label" for="rescheduleDate">
+                            New Date<span class="reschedule-field__required" aria-hidden="true"> *</span>
+                        </label>
+                        <input
+                            type="date"
+                            id="rescheduleDate"
+                            class="reschedule-field__input"
+                            autocomplete="off"
+                            aria-required="true"
+                            aria-describedby="rescheduleDateHint"
+                        />
+                        <span class="reschedule-field__hint" id="rescheduleDateHint">Cannot be a past date</span>
+                    </div>
+
+                    <div class="reschedule-field">
+                        <label class="reschedule-field__label" for="rescheduleTime">
+                            New Time<span class="reschedule-field__required" aria-hidden="true"> *</span>
+                        </label>
+                        <input
+                            type="time"
+                            id="rescheduleTime"
+                            class="reschedule-field__input"
+                            autocomplete="off"
+                            aria-required="true"
+                        />
+                        <span class="reschedule-field__hint">Use 24-hour format</span>
+                    </div>
+                </div>
+
+                {{-- Inline error (hidden until needed) --}}
+                <div class="reschedule-error" id="rescheduleError" role="alert" aria-live="polite" style="display:none;">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>
+                        <line x1="12" y1="8"  x2="12" y2="13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                        <circle cx="12" cy="16" r="0.8" fill="currentColor"/>
+                    </svg>
+                    <span id="rescheduleErrorText"></span>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="reschedule-cancel-btn" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="reschedule-confirm-btn" id="rescheduleConfirmBtn" disabled>
+                    <span class="rs-spinner" aria-hidden="true"></span>
+                    <span class="rs-label">Confirm Reschedule</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+{{-- Toast container --}}
+<div class="rs-toast-wrap" id="rsToastWrap" aria-live="polite" aria-atomic="true"></div>
+
 @endsection
 
 @push('admin_scripts')
@@ -645,50 +743,36 @@
                 var requestBody = null;
 
                 if (action === 'reject') {
-                    if (!window.confirm('Reject this appointment?')) {
+                    if (!window.confirm('Reject this appointment? This cannot be undone.')) {
                         return;
                     }
+
+                    actionButton.disabled = true;
+                    performAppointmentAction(appointmentId, action, null)
+                        .then(function () { loadAppointments(); })
+                        .catch(function (error) { alert(error && error.message ? error.message : 'Action failed.'); })
+                        .then(function () { actionButton.disabled = false; });
+                    return;
+                }
+
+                if (action === 'approve') {
+                    actionButton.disabled = true;
+                    performAppointmentAction(appointmentId, action, null)
+                        .then(function () { loadAppointments(); })
+                        .catch(function (error) { alert(error && error.message ? error.message : 'Action failed.'); })
+                        .then(function () { actionButton.disabled = false; });
+                    return;
                 }
 
                 if (action === 'reschedule') {
-                    var currentDate = row ? String(row.getAttribute('data-appointment-date') || '') : '';
-                    var currentTime = row ? String(row.getAttribute('data-appointment-time') || '') : '';
-
-                    var nextDate = window.prompt('New date (YYYY-MM-DD):', currentDate);
-                    if (!nextDate) {
-                        return;
-                    }
-                    nextDate = String(nextDate).trim();
-
-                    var nextTime = window.prompt('New time (HH:MM):', currentTime);
-                    if (!nextTime) {
-                        return;
-                    }
-                    nextTime = String(nextTime).trim();
-
-                    if (!/^\d{4}-\d{2}-\d{2}$/.test(nextDate) || !/^\d{2}:\d{2}$/.test(nextTime)) {
-                        alert('Invalid date/time format.');
-                        return;
-                    }
-
-                    requestBody = {
-                        appointment_date: nextDate,
-                        appointment_time: nextTime
-                    };
+                    openRescheduleModal(
+                        appointmentId,
+                        row ? String(row.getAttribute('data-appointment-date') || '') : '',
+                        row ? String(row.getAttribute('data-appointment-time') || '') : '',
+                        row ? String(row.querySelector('.appointment-id') ? row.querySelector('.appointment-id').textContent : '') : ''
+                    );
+                    return;
                 }
-
-                actionButton.disabled = true;
-
-                performAppointmentAction(appointmentId, action, requestBody)
-                    .then(function () {
-                        loadAppointments();
-                    })
-                    .catch(function (error) {
-                        alert(error && error.message ? error.message : 'Action failed.');
-                    })
-                    .then(function () {
-                        actionButton.disabled = false;
-                    });
             });
         }
 
@@ -697,6 +781,203 @@
                 event.preventDefault();
             });
         });
+
+        /* ── Reschedule Modal Controller ── */
+        var rsModal          = null;  // bootstrap.Modal instance (lazy init)
+        var rsModalEl        = document.getElementById('rescheduleModal');
+        var rsDateInput      = document.getElementById('rescheduleDate');
+        var rsTimeInput      = document.getElementById('rescheduleTime');
+        var rsConfirmBtn     = document.getElementById('rescheduleConfirmBtn');
+        var rsErrorEl        = document.getElementById('rescheduleError');
+        var rsErrorText      = document.getElementById('rescheduleErrorText');
+        var rsInfoCode       = document.getElementById('rescheduleInfoCode');
+        var rsInfoDatetime   = document.getElementById('rescheduleInfoDatetimeText');
+        var rsPendingId      = 0;  // appointmentId stored when modal opens
+
+        function getTodayString() {
+            var d = new Date();
+            var mm = String(d.getMonth() + 1).padStart(2, '0');
+            var dd = String(d.getDate()).padStart(2, '0');
+            return d.getFullYear() + '-' + mm + '-' + dd;
+        }
+
+        function getBootstrapModal() {
+            if (!rsModal && rsModalEl && typeof bootstrap !== 'undefined') {
+                rsModal = new bootstrap.Modal(rsModalEl, { backdrop: 'static', keyboard: false });
+            }
+            return rsModal;
+        }
+
+        function rsShowError(message) {
+            if (!rsErrorEl || !rsErrorText) { return; }
+            rsErrorText.textContent = message;
+            rsErrorEl.style.display = 'flex';
+        }
+
+        function rsHideError() {
+            if (!rsErrorEl) { return; }
+            rsErrorEl.style.display = 'none';
+            rsErrorText.textContent = '';
+        }
+
+        function rsSetLoading(isLoading) {
+            if (!rsConfirmBtn) { return; }
+            rsConfirmBtn.disabled = isLoading;
+            rsConfirmBtn.classList.toggle('is-loading', isLoading);
+        }
+
+        function rsValidate() {
+            var dateVal = rsDateInput ? rsDateInput.value.trim() : '';
+            var timeVal = rsTimeInput ? rsTimeInput.value.trim() : '';
+
+            rsDateInput && rsDateInput.classList.remove('is-invalid');
+            rsTimeInput && rsTimeInput.classList.remove('is-invalid');
+            rsHideError();
+
+            if (!dateVal) {
+                rsDateInput && rsDateInput.classList.add('is-invalid');
+                rsShowError('Please select a new date.');
+                rsDateInput && rsDateInput.focus();
+                return null;
+            }
+
+            if (dateVal < getTodayString()) {
+                rsDateInput && rsDateInput.classList.add('is-invalid');
+                rsShowError('The selected date is in the past. Please choose today or a future date.');
+                rsDateInput && rsDateInput.focus();
+                return null;
+            }
+
+            if (!timeVal) {
+                rsTimeInput && rsTimeInput.classList.add('is-invalid');
+                rsShowError('Please select a new time.');
+                rsTimeInput && rsTimeInput.focus();
+                return null;
+            }
+
+            return { appointment_date: dateVal, appointment_time: timeVal };
+        }
+
+        function rsEnableConfirmWhenReady() {
+            if (!rsConfirmBtn || !rsDateInput || !rsTimeInput) { return; }
+            rsConfirmBtn.disabled = !(rsDateInput.value && rsTimeInput.value);
+        }
+
+        function openRescheduleModal(appointmentId, currentDate, currentTime, appointmentCode) {
+            var modal = getBootstrapModal();
+            if (!modal) { return; }
+
+            rsPendingId = appointmentId;
+            rsHideError();
+            rsSetLoading(false);
+
+            // Populate current-appointment info box
+            if (rsInfoCode) {
+                rsInfoCode.textContent = appointmentCode || ('Appointment #' + appointmentId);
+            }
+            if (rsInfoDatetime) {
+                var dateDisplay = currentDate ? formatDate(currentDate) : '—';
+                var timeDisplay = currentTime ? formatTime(currentTime) : '—';
+                rsInfoDatetime.textContent = dateDisplay + ' at ' + timeDisplay;
+            }
+
+            // Pre-fill inputs and enforce min date
+            var today = getTodayString();
+            if (rsDateInput) {
+                rsDateInput.min   = today;
+                rsDateInput.value = (currentDate && currentDate >= today) ? currentDate : today;
+                rsDateInput.classList.remove('is-invalid');
+            }
+            if (rsTimeInput) {
+                rsTimeInput.value = currentTime || '08:00';
+                rsTimeInput.classList.remove('is-invalid');
+            }
+
+            rsEnableConfirmWhenReady();
+            modal.show();
+        }
+
+        // Enable/disable confirm button as user types
+        if (rsDateInput) { rsDateInput.addEventListener('input', rsEnableConfirmWhenReady); }
+        if (rsTimeInput) { rsTimeInput.addEventListener('input', rsEnableConfirmWhenReady); }
+
+        // Clear invalid state when user corrects a field
+        if (rsDateInput) {
+            rsDateInput.addEventListener('change', function () {
+                rsDateInput.classList.remove('is-invalid');
+                rsHideError();
+            });
+        }
+        if (rsTimeInput) {
+            rsTimeInput.addEventListener('change', function () {
+                rsTimeInput.classList.remove('is-invalid');
+                rsHideError();
+            });
+        }
+
+        // Confirm button click
+        if (rsConfirmBtn) {
+            rsConfirmBtn.addEventListener('click', function () {
+                var body = rsValidate();
+                if (!body) { return; }
+
+                rsSetLoading(true);
+
+                performAppointmentAction(rsPendingId, 'reschedule', body)
+                    .then(function (response) {
+                        var modal = getBootstrapModal();
+                        if (modal) { modal.hide(); }
+                        loadAppointments();
+                        showRsToast(
+                            'Appointment Rescheduled',
+                            'New date: ' + formatDate(body.appointment_date) + ' at ' + formatTime(body.appointment_time)
+                        );
+                    })
+                    .catch(function (error) {
+                        rsSetLoading(false);
+                        rsShowError(error && error.message ? error.message : 'Could not reschedule. Please try again.');
+                    });
+            });
+        }
+
+        // Reset state when modal is fully hidden
+        if (rsModalEl) {
+            rsModalEl.addEventListener('hidden.bs.modal', function () {
+                rsHideError();
+                rsSetLoading(false);
+                rsPendingId = 0;
+                if (rsDateInput) { rsDateInput.classList.remove('is-invalid'); }
+                if (rsTimeInput) { rsTimeInput.classList.remove('is-invalid'); }
+            });
+        }
+
+        /* ── Success Toast ── */
+        var rsToastWrap = document.getElementById('rsToastWrap');
+
+        function showRsToast(title, subtitle) {
+            if (!rsToastWrap) { return; }
+
+            var toast = document.createElement('div');
+            toast.className = 'rs-toast';
+            toast.innerHTML = ''
+                + '<svg class="rs-toast__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+                + '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/>'
+                + '<path d="M8 12l3 3 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
+                + '</svg>'
+                + '<div class="rs-toast__body">'
+                + '<div class="rs-toast__title">' + escapeHtml(title) + '</div>'
+                + '<div class="rs-toast__sub">'   + escapeHtml(subtitle) + '</div>'
+                + '</div>';
+
+            rsToastWrap.appendChild(toast);
+
+            setTimeout(function () {
+                toast.classList.add('rs-toast--fade-out');
+                setTimeout(function () {
+                    if (toast.parentNode) { toast.parentNode.removeChild(toast); }
+                }, 300);
+            }, 3500);
+        }
 
         hydrateCenterFilter((payload.filters && payload.filters.centers) || []);
         loadAppointments();

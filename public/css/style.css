@@ -2043,6 +2043,327 @@ button {
 	}
 }
 
+/* ===== Reschedule Modal ===== */
+.reschedule-modal .modal-content {
+	border: none;
+	border-radius: 20px;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.20);
+	font-family: var(--font-base);
+	overflow: hidden;
+}
+
+.reschedule-modal .modal-header {
+	background: var(--c-blue);
+	padding: 18px 24px;
+	border-bottom: none;
+}
+
+.reschedule-modal .modal-title {
+	font-size: 18px;
+	font-weight: 700;
+	color: var(--c-white);
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.reschedule-modal .modal-title svg {
+	width: 20px;
+	height: 20px;
+	flex-shrink: 0;
+}
+
+.reschedule-modal .btn-close {
+	filter: brightness(0) invert(1);
+	opacity: 0.80;
+}
+
+.reschedule-modal .btn-close:hover {
+	opacity: 1;
+}
+
+.reschedule-modal .modal-body {
+	padding: 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.reschedule-current-info {
+	background: #f3f8ff;
+	border: 1px solid #cce0f5;
+	border-radius: 12px;
+	padding: 14px 16px;
+}
+
+.reschedule-current-info__eyebrow {
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.6px;
+	color: var(--c-blue);
+	margin-bottom: 6px;
+}
+
+.reschedule-current-info__code {
+	font-size: 15px;
+	font-weight: 700;
+	color: var(--c-text);
+}
+
+.reschedule-current-info__datetime {
+	font-size: 13px;
+	color: #555;
+	margin-top: 3px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.reschedule-current-info__datetime svg {
+	width: 13px;
+	height: 13px;
+	flex-shrink: 0;
+	opacity: 0.6;
+}
+
+.reschedule-fields-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 16px;
+}
+
+.reschedule-field {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+}
+
+.reschedule-field__label {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--c-text);
+}
+
+.reschedule-field__required {
+	color: var(--c-primary);
+	margin-left: 2px;
+}
+
+.reschedule-field__input {
+	height: 44px;
+	padding: 0 14px;
+	border: 1.5px solid var(--c-input-border);
+	border-radius: 10px;
+	background: var(--c-input-bg);
+	font-family: var(--font-base);
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--c-text);
+	outline: none;
+	transition: border-color 0.18s, background 0.18s;
+	width: 100%;
+	box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.reschedule-field__input:focus {
+	border-color: var(--c-blue);
+	background: #fff;
+	box-shadow: 0 0 0 3px rgba(0, 99, 170, 0.12);
+}
+
+.reschedule-field__input.is-invalid {
+	border-color: var(--c-primary);
+	background: #fff5f5;
+	box-shadow: 0 0 0 3px rgba(182, 12, 12, 0.10);
+}
+
+.reschedule-field__hint {
+	font-size: 11px;
+	color: #888;
+	margin-top: -2px;
+}
+
+.reschedule-error {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	background: #fff0f0;
+	border: 1px solid #ffc5c5;
+	border-radius: 10px;
+	padding: 13px 15px;
+	font-size: 13px;
+	color: #8b0000;
+	font-weight: 500;
+	line-height: 1.45;
+}
+
+.reschedule-error svg {
+	width: 17px;
+	height: 17px;
+	flex-shrink: 0;
+	margin-top: 1px;
+}
+
+.reschedule-modal .modal-footer {
+	padding: 16px 24px;
+	border-top: 1px solid rgba(0, 0, 0, 0.08);
+	gap: 10px;
+	justify-content: flex-end;
+}
+
+.reschedule-cancel-btn {
+	height: 42px;
+	padding: 0 22px;
+	border-radius: 10px;
+	border: 1.5px solid #ccc;
+	background: #fff;
+	font-family: var(--font-base);
+	font-size: 14px;
+	font-weight: 600;
+	color: #555;
+	cursor: pointer;
+	transition: border-color 0.18s, color 0.18s;
+}
+
+.reschedule-cancel-btn:hover {
+	border-color: #999;
+	color: #333;
+}
+
+.reschedule-confirm-btn {
+	height: 42px;
+	padding: 0 24px;
+	border-radius: 10px;
+	border: none;
+	background: var(--c-blue);
+	font-family: var(--font-base);
+	font-size: 14px;
+	font-weight: 600;
+	color: #fff;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	transition: opacity 0.18s;
+}
+
+.reschedule-confirm-btn:hover:not(:disabled) {
+	opacity: 0.88;
+}
+
+.reschedule-confirm-btn:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.reschedule-confirm-btn .rs-spinner {
+	width: 15px;
+	height: 15px;
+	border: 2px solid rgba(255, 255, 255, 0.35);
+	border-top-color: #fff;
+	border-radius: 50%;
+	animation: spin 0.65s linear infinite;
+	display: none;
+}
+
+.reschedule-confirm-btn.is-loading .rs-spinner {
+	display: block;
+}
+
+.reschedule-confirm-btn.is-loading .rs-label {
+	opacity: 0.75;
+}
+
+/* Success toast */
+.rs-toast-wrap {
+	position: fixed;
+	top: 24px;
+	right: 24px;
+	z-index: 10500;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	pointer-events: none;
+}
+
+.rs-toast {
+	background: #fff;
+	border-left: 4px solid var(--c-green);
+	border-radius: 12px;
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+	padding: 14px 18px 14px 16px;
+	font-family: var(--font-base);
+	min-width: 270px;
+	max-width: 340px;
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	animation: rs-slide-in 0.28s ease forwards;
+}
+
+.rs-toast.rs-toast--fade-out {
+	animation: rs-slide-out 0.28s ease forwards;
+}
+
+.rs-toast__icon {
+	width: 20px;
+	height: 20px;
+	flex-shrink: 0;
+	color: var(--c-green);
+	margin-top: 1px;
+}
+
+.rs-toast__body {
+	flex: 1;
+	min-width: 0;
+}
+
+.rs-toast__title {
+	font-size: 14px;
+	font-weight: 700;
+	color: var(--c-text);
+	line-height: 1.3;
+}
+
+.rs-toast__sub {
+	font-size: 12px;
+	color: #666;
+	margin-top: 2px;
+}
+
+@keyframes rs-slide-in {
+	from { opacity: 0; transform: translateX(20px); }
+	to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes rs-slide-out {
+	from { opacity: 1; transform: translateX(0); }
+	to   { opacity: 0; transform: translateX(20px); }
+}
+
+@media (max-width: 576px) {
+	.reschedule-fields-row {
+		grid-template-columns: 1fr;
+	}
+
+	.reschedule-modal .modal-dialog {
+		margin: 16px;
+	}
+
+	.rs-toast-wrap {
+		top: auto;
+		bottom: 20px;
+		right: 16px;
+		left: 16px;
+	}
+
+	.rs-toast {
+		min-width: 0;
+		max-width: 100%;
+	}
+}
+
 /* ===== Donation Records Page ===== */
 .admin-donor-records-page {
 	background: #f5f5f5;
