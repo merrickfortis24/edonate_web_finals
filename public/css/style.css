@@ -6474,16 +6474,16 @@ button {
 }
 
 /* ===== Question Management Page Layout ===== */
-.admin-question-page .layout {
+.admin-questions-page .layout {
     display: flex;
     min-height: 100vh;
 }
 
-.admin-question-page .overlay {
+.admin-questions-page .overlay {
     z-index: 120;
 }
 
-.admin-question-page .sidebar {
+.admin-questions-page .sidebar {
     min-height: 100vh;
     flex-shrink: 0;
     position: sticky;
@@ -6492,24 +6492,24 @@ button {
     z-index: 1000;
 }
 
-.admin-question-page .header {
+.admin-questions-page .header {
     position: sticky;
     top: 0;
     z-index: 800;
 }
 
-.admin-question-page .admin-layout-content {
+.admin-questions-page .admin-layout-content {
     flex: 1;
     min-width: 0;
     display: flex;
     flex-direction: column;
 }
 
-.admin-question-page .questions-main {
+.admin-questions-page .questions-main {
     flex: 1;
 }
 
-.admin-question-page .questions-content {
+.admin-questions-page .questions-content {
     padding: 28px var(--admin-content-pl);
 }
 
