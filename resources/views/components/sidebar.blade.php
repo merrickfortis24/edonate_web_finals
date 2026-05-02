@@ -24,6 +24,8 @@
         ['label' => 'Appointment Management', 'route' => 'admin.appointments', 'active' => ['admin.appointments*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Donation Records', 'route' => 'admin.donation-records', 'active' => ['admin.donation-records*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Blood Availability Mapping', 'route' => 'admin.blood-availability-mapping', 'active' => ['admin.blood-availability-mapping*'], 'roles' => ['admin', 'staff'], 'multiline' => true],
+        ['label' => 'Eligibility Review', 'route' => 'admin.eligibility.index', 'active' => ['admin.eligibility.index*'], 'roles' => ['admin', 'staff']],
+        ['label' => 'Question Management', 'route' => 'admin.eligibility.questions.index', 'active' => ['admin.eligibility.questions*'], 'roles' => ['admin']],
         ['label' => 'Notification Center', 'route' => 'admin.notification-center', 'active' => ['admin.notification-center*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Report & Analytics', 'route' => 'admin.report-analytics', 'active' => ['admin.report-analytics*'], 'roles' => ['admin']],
         ['label' => 'Audit Logs', 'route' => 'admin.audit-logs', 'active' => ['admin.audit-logs*'], 'roles' => ['admin', 'staff']],

@@ -6,6 +6,8 @@ use App\Http\Controllers\DonorDashboardController;
 use App\Http\Controllers\DonorPortalController;
 use App\Http\Controllers\DonorSignupController;
 use App\Http\Controllers\SocialAuthController;
+use App\Http\Controllers\EligibilityController;
+use App\Http\Controllers\QuestionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -99,6 +101,23 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/settings', [AdminAuthController::class, 'settings'])->name('admin.settings');
         Route::post('/admin/settings/security', [AdminAuthController::class, 'updateSecuritySettings'])
             ->name('admin.settings.security.update');
+
+        // Eligibility Management Routes
+        Route::prefix('admin/eligibility')->group(function () {
+            Route::get('/', [EligibilityController::class, 'index'])->name('admin.eligibility.index');
+            Route::get('/data', [EligibilityController::class, 'data'])->name('admin.eligibility.data');
+            Route::get('/{id}', [EligibilityController::class, 'show'])->whereNumber('id')->name('admin.eligibility.show');
+            Route::patch('/{id}/review', [EligibilityController::class, 'review'])->whereNumber('id')->name('admin.eligibility.review');
+
+            // Question Management Routes
+            Route::prefix('questions')->group(function () {
+                Route::get('/', [QuestionController::class, 'index'])->name('admin.eligibility.questions.index');
+                Route::get('/data', [QuestionController::class, 'data'])->name('admin.eligibility.questions.data');
+                Route::post('/', [QuestionController::class, 'store'])->name('admin.eligibility.questions.store');
+                Route::put('/{id}', [QuestionController::class, 'update'])->whereNumber('id')->name('admin.eligibility.questions.update');
+                Route::patch('/{id}/toggle', [QuestionController::class, 'toggle'])->whereNumber('id')->name('admin.eligibility.questions.toggle');
+            });
+        });
     });
 });
 

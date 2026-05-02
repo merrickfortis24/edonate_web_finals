@@ -20,5 +20,13 @@ class EligibilityStatus extends Model
         'last_donation_date',
         'next_eligible_date',
         'status',
+        'reviewed_by_admin_id',
+        'reviewed_at',
+        'review_notes',
     ];
+
+    public function donor()
+    {
+        return $this->belongsTo(Donor::class, 'donor_id', 'donor_id');
+    }
 }
