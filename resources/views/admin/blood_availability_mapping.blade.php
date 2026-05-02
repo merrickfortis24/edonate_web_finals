@@ -35,8 +35,7 @@
 @endsection
 
 @push('admin_head')
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
+<link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.min.css') }}"/>
 @endpush
 
 @section('main_content')
@@ -178,16 +177,18 @@
 @endsection
 
 @push('admin_scripts')
-{{-- Leaflet JS --}}
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WLmI=" crossorigin="anonymous"></script>
-
-{{-- Leaflet.heat --}}
-<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="{{ asset('vendor/leaflet/leaflet.min.js') }}"></script>
+<script src="{{ asset('vendor/leaflet/leaflet-heat.js') }}"></script>
 
 <script>
 (function () {
 	'use strict';
+
+	/*
+	 * Leaflet resolves marker-icon URLs relative to its JS file location.
+	 * When served locally the path would be wrong, so we set it explicitly.
+	 */
+	L.Icon.Default.imagePath = '{{ asset('vendor/leaflet/images') }}/';
 
 	/* ── Constants ── */
 	const URLS = window.AdminPageData;
