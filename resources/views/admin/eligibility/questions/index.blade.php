@@ -201,6 +201,6 @@
 
 @endsection
 
-@push('admin_scripts')
+@section('page_scripts')
 <script src="{{ asset('js/admin/questions-management.js') }}"></script>
-@endpush
+@endsection

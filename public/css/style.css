@@ -6432,3 +6432,120 @@ button {
 		font-size: 11px;
 	}
 }
+
+/* ===== Eligibility Review Page Layout ===== */
+.admin-eligibility-page .layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.admin-eligibility-page .overlay {
+    z-index: 120;
+}
+
+.admin-eligibility-page .sidebar {
+    min-height: 100vh;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    z-index: 1000;
+}
+
+.admin-eligibility-page .header {
+    position: sticky;
+    top: 0;
+    z-index: 800;
+}
+
+.admin-eligibility-page .admin-layout-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-eligibility-page .eligibility-main {
+    flex: 1;
+}
+
+.admin-eligibility-page .eligibility-content {
+    padding: 28px var(--admin-content-pl);
+}
+
+/* ===== Question Management Page Layout ===== */
+.admin-question-page .layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+.admin-question-page .overlay {
+    z-index: 120;
+}
+
+.admin-question-page .sidebar {
+    min-height: 100vh;
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    z-index: 1000;
+}
+
+.admin-question-page .header {
+    position: sticky;
+    top: 0;
+    z-index: 800;
+}
+
+.admin-question-page .admin-layout-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-question-page .questions-main {
+    flex: 1;
+}
+
+.admin-question-page .questions-content {
+    padding: 28px var(--admin-content-pl);
+}
+
+/* ===== Responsive for both ===== */
+@media (max-width: 1024px) {
+    .admin-eligibility-page .sidebar,
+    .admin-question-page .sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        overflow-y: auto;
+    }
+
+    .admin-eligibility-page .sidebar.is-open,
+    .admin-question-page .sidebar.is-open {
+        transform: translateX(0);
+    }
+
+    .admin-eligibility-page .header,
+    .admin-question-page .header {
+        padding: 16px 20px;
+        min-height: 80px;
+    }
+
+    .admin-eligibility-page .eligibility-content,
+    .admin-question-page .questions-content {
+        padding: 20px;
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-eligibility-page .eligibility-content,
+    .admin-question-page .questions-content {
+        padding: 14px;
+    }
+}

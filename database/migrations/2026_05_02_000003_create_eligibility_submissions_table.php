@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('eligibility_submissions', function (Blueprint $table) {
             $table->increments('submission_id');
-            $table->unsignedInteger('donor_id');
+            $table->integer('donor_id');
             $table->dateTime('submitted_at')->useCurrent();
             $table->string('source', 50)->default('mobile_app');
             $table->timestamps();
