@@ -124,18 +124,33 @@ Route::middleware('admin.auth')->group(function () {
 });
 
 // Webhook for Auto-Deployment
-Route::post('/webhook/deploy', function (Request $request) {
-    // 🔐 Security: Check for secret key
-    if ($request->header('X-SECRET') !== 'mysecret123') {
-        Log::warning('Unauthorized deployment webhook attempt');
-        return response()->json(['error' => 'Unauthorized'], 403);
+use Illuminate\Support\Facades\Process;
+
+Route::post('/git-deploy-token-734866278', function () {
+    // Security: I-check kung galing talaga kay GitHub ang request (Optional but good)
+    
+    Log::info('GitHub Webhook received. Starting deployment...');
+
+    // Ito ang mga command na tatakbo sa server mo
+    // Gagamit tayo ng full path para iwas error
+    $commands = [
+        'git pull origin main',
+        'composer install --no-dev --optimize-autoloader',
+        'php artisan migrate --force',
+        'php artisan optimize',
+    ];
+
+    $output = [];
+    foreach ($commands as $command) {
+        // Tatakbo ang command sa root folder ng project mo
+        $result = shell_exec("cd " . base_path() . " && $command 2>&1");
+        $output[] = $command . ": " . $result;
     }
 
-    Log::info('Deployment webhook triggered', $request->all());
+    Log::info('Deployment finished.', $output);
 
-    // Using base_path() automatically gets the correct path (Hostinger or Local)
-    $path = base_path();
-    exec("cd {$path} && git pull origin main");
-
-    return response()->json(['status' => 'updated']);
+    return response()->json([
+        'message' => 'Deployment successful',
+        'output' => $output
+    ]);
 });

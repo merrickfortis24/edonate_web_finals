@@ -18,7 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Exempt webhook routes from CSRF protection
         $middleware->validateCsrfTokens(except: [
-            'webhook/*',
+            'git-deploy-token-734866278',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
