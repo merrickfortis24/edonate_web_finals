@@ -9,10 +9,12 @@ use App\Models\Donor;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Models\Notification;
+use App\Services\AdminNotificationService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 
 class DonorPortalController extends Controller
 {
@@ -112,7 +114,7 @@ class DonorPortalController extends Controller
                 ->with('error', 'That schedule is already taken. Please select another time.');
         }
 
-        Appointment::query()->create([
+        $appointment = Appointment::query()->create([
             'donor_id' => $context['donor']->donor_id,
             'appointment_date' => $validated['donation_date'],
             'appointment_time' => $validated['time_slot'],
@@ -120,6 +122,15 @@ class DonorPortalController extends Controller
             'created_at' => Carbon::now(),
             'admin_id' => null,
         ]);
+
+        $donorName = trim((string) $context['donor']->first_name . ' ' . (string) $context['donor']->last_name);
+        app(AdminNotificationService::class)->createAdminEvent(
+            'appointment_booked',
+            'Appointment Booked',
+            "{$donorName} booked an appointment for {$validated['donation_date']} at {$validated['time_slot']}.",
+            'appointment',
+            (int) $appointment->appointment_id
+        );
 
         return redirect()
             ->route('donor.book-appointment')
@@ -177,8 +188,7 @@ class DonorPortalController extends Controller
             return $context;
         }
 
-        $alerts = Notification::query()
-            ->where('donor_id', $context['donor']->donor_id)
+        $alerts = $this->donorNotificationQuery((int) $context['donor']->donor_id)
             ->orderByDesc('created_at')
             ->orderByDesc('notification_id')
             ->limit(20)
@@ -212,8 +222,7 @@ class DonorPortalController extends Controller
             ->where('donor_id', $donor->donor_id)
             ->count();
 
-        $alertsCount = Notification::query()
-            ->where('donor_id', $donor->donor_id)
+        $alertsCount = $this->donorNotificationQuery((int) $donor->donor_id)
             ->where('is_read', 0)
             ->count();
 
@@ -272,5 +281,19 @@ class DonorPortalController extends Controller
         }
 
         return [$availableDates, $fullyBookedDates];
+    }
+
+    private function donorNotificationQuery(int $donorId)
+    {
+        $query = Notification::query()->where('donor_id', $donorId);
+
+        if (Schema::hasTable('notifications') && Schema::hasColumn('notifications', 'recipient_type')) {
+            $query->where(function ($builder): void {
+                $builder->whereNull('recipient_type')
+                    ->orWhereIn('recipient_type', ['donor', 'all_donors']);
+            });
+        }
+
+        return $query;
     }
 }

@@ -21,7 +21,7 @@
 @endsection
 
 @section('header_actions')
-	<button class="btn-send btn" type="button">
+	<button class="btn-send btn" type="button" id="notificationSendBtn">
 		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 			<path d="M22 2L11 13" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 			<path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -33,271 +33,183 @@
 @section('admin_page_data')
 {!! json_encode([
 	'page' => 'notification-center',
-	'summary' => [
-		'total' => 9,
-		'unread' => 6,
-		'read' => 3,
+	'notificationPayload' => $notificationPayload ?? [
+		'api' => [
+			'listUrl' => '',
+			'storeUrl' => '',
+			'detailBaseUrl' => '',
+			'markReadBaseUrl' => '',
+			'markAllReadUrl' => '',
+			'deleteBaseUrl' => '',
+			'clearAllUrl' => '',
+		],
+		'summary' => [
+			'total' => 0,
+			'unread' => 0,
+			'read' => 0,
+		],
+		'filters' => [],
+		'types' => [],
+		'channels' => [],
+		'recipients' => [],
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
-@section('content')
+@section('main_content')
+	@php
+		$summary = data_get($notificationPayload ?? [], 'summary', ['total' => 0, 'unread' => 0, 'read' => 0]);
+		$filters = data_get($notificationPayload ?? [], 'filters', []);
+		$types = data_get($notificationPayload ?? [], 'types', []);
+		$channels = data_get($notificationPayload ?? [], 'channels', []);
+		$recipients = data_get($notificationPayload ?? [], 'recipients', []);
+	@endphp
+
 	<main class="main container-fluid px-0">
-	<div class="page-body container-fluid py-3">
-		<section class="stats-row row g-3" role="region" aria-label="Notification statistics">
-			<div class="col-6 col-md-4">
-				<article class="stat-card stat-card--blue h-100">
-					<span class="stat-card__label">Total Notifications</span>
-					<span class="stat-card__value">9</span>
-				</article>
-			</div>
-			<div class="col-6 col-md-4">
-				<article class="stat-card stat-card--red h-100">
-					<span class="stat-card__label">Unread</span>
-					<span class="stat-card__value">6</span>
-				</article>
-			</div>
-			<div class="col-6 col-md-4">
-				<article class="stat-card stat-card--green h-100">
-					<span class="stat-card__label">Read</span>
-					<span class="stat-card__value">3</span>
-				</article>
-			</div>
-		</section>
+		<div class="page-body container-fluid py-3">
+			<section class="stats-row row g-3" role="region" aria-label="Notification statistics">
+				<div class="col-6 col-md-4">
+					<article class="stat-card stat-card--blue h-100">
+						<span class="stat-card__label">Total Notifications</span>
+						<span class="stat-card__value" id="notificationStatTotal">{{ (int) data_get($summary, 'total', 0) }}</span>
+					</article>
+				</div>
+				<div class="col-6 col-md-4">
+					<article class="stat-card stat-card--red h-100">
+						<span class="stat-card__label">Unread</span>
+						<span class="stat-card__value" id="notificationStatUnread">{{ (int) data_get($summary, 'unread', 0) }}</span>
+					</article>
+				</div>
+				<div class="col-6 col-md-4">
+					<article class="stat-card stat-card--green h-100">
+						<span class="stat-card__label">Read</span>
+						<span class="stat-card__value" id="notificationStatRead">{{ (int) data_get($summary, 'read', 0) }}</span>
+					</article>
+				</div>
+			</section>
 
-		<section class="toolbar d-flex align-items-center flex-wrap gap-2" role="toolbar" aria-label="Notification controls">
-			<div class="toolbar__filter">
-				<button class="toolbar__filter-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-label="Filter notifications">
-					<svg class="filter-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+			<section class="toolbar d-flex align-items-center flex-wrap gap-2" role="toolbar" aria-label="Notification controls">
+				<div class="toolbar__filter">
+					<label class="toolbar__filter-btn" for="notificationFilterSelect" aria-label="Filter notifications">
+						<svg class="filter-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+							<path d="M22 3H2L10 12.46V19L14 21V12.46L22 3Z" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+						<select id="notificationFilterSelect" class="toolbar__filter-select" aria-label="Filter notifications">
+							@forelse ($filters as $filter)
+								<option value="{{ data_get($filter, 'value') }}">{{ data_get($filter, 'label') }}</option>
+							@empty
+								<option value="all">All Notifications</option>
+							@endforelse
+						</select>
+						<svg class="toolbar__filter-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+							<path d="M6 9L12 15L18 9" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+						</svg>
+					</label>
+				</div>
+
+				<div class="toolbar__spacer"></div>
+
+				<button class="btn-mark-all btn" type="button" id="notificationMarkAllReadBtn">Mark All as Read</button>
+
+				<button class="btn-clear-all btn" type="button" id="notificationClearAllBtn">
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+						<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+						<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+						<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 					</svg>
-					<span class="toolbar__filter-label">All Notifications</span>
-					<svg class="toolbar__filter-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<path d="M6 9L12 15L18 9" stroke="#333" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
+					Clear All
 				</button>
+			</section>
+
+			<section class="notif-list" id="notificationList" aria-label="Notifications">
+				<div class="notification-state text-center text-muted py-4">Loading notifications...</div>
+			</section>
+		</div>
+	</main>
+
+	<div class="modal fade" id="notificationDetailModal" tabindex="-1" aria-labelledby="notificationDetailTitle" aria-hidden="true">
+		<div class="modal-dialog modal-lg modal-dialog-centered">
+			<div class="modal-content notification-modal">
+				<div class="modal-header">
+					<h5 class="modal-title" id="notificationDetailTitle">Notification Details</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body" id="notificationDetailBody">
+					<div class="text-center text-muted py-4">Loading details...</div>
+				</div>
+				<div class="modal-footer">
+					<a href="#" class="btn btn-outline-primary d-none" id="notificationRelatedLink">Open Related Record</a>
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+				</div>
 			</div>
-
-			<div class="toolbar__spacer"></div>
-
-			<button class="btn-mark-all btn" type="button">Mark All as Read</button>
-
-			<button class="btn-clear-all btn" type="button">
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-					<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-					<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-				Clear All
-			</button>
-		</section>
-
-		<section class="notif-list" aria-label="Notifications">
-			<article class="notif-item">
-				<div class="notif-item__icon notif-item__icon--green" aria-label="Donor registration icon">
-					<svg width="25" height="25" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<circle cx="12" cy="12" r="9" stroke="#129800" stroke-width="1.8"/>
-						<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#129800" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
-				</div>
-				<div class="notif-item__body">
-					<div class="notif-item__title-row">
-						<span class="notif-item__title">New Donor Registration</span>
-						<span class="badge-new" role="status" aria-label="New notification">New</span>
-					</div>
-					<p class="notif-item__desc">Alice Guo has successfully registered as a new donor.</p>
-					<div class="notif-item__actions">
-						<button class="btn-mark-read" type="button" aria-label="Mark New Donor Registration as read">
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<circle cx="12" cy="12" r="9" stroke="#0063aa" stroke-width="1.8"/>
-								<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#0063aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-							Mark as Read
-						</button>
-						<button class="btn-view-details" type="button" aria-label="View details for New Donor Registration">View Details</button>
-						<button class="btn-delete" type="button" aria-label="Delete New Donor Registration notification">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</div>
-				</div>
-				<time class="notif-item__time" datetime="">5 minutes ago</time>
-			</article>
-
-			<article class="notif-item">
-				<div class="notif-item__icon notif-item__icon--yellow" aria-label="Appointment cancellation icon">
-					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#b8960c" stroke-width="1.8"/>
-						<path d="M12 8V12" stroke="#b8960c" stroke-width="2" stroke-linecap="round"/>
-						<circle cx="12" cy="16" r="0.8" fill="#b8960c" stroke="#b8960c" stroke-width="0.5"/>
-					</svg>
-				</div>
-				<div class="notif-item__body">
-					<div class="notif-item__title-row">
-						<span class="notif-item__title">Appointment Cancellation</span>
-						<span class="badge-new" role="status" aria-label="New notification">New</span>
-					</div>
-					<p class="notif-item__desc">Mike Tyson cancelled his appointment scheduled for October 25.</p>
-					<div class="notif-item__actions">
-						<button class="btn-mark-read" type="button" aria-label="Mark Appointment Cancellation as read">
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<circle cx="12" cy="12" r="9" stroke="#0063aa" stroke-width="1.8"/>
-								<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#0063aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-							Mark as Read
-						</button>
-						<button class="btn-view-details" type="button" aria-label="View details for Appointment Cancellation">View Details</button>
-						<button class="btn-delete" type="button" aria-label="Delete Appointment Cancellation notification">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</div>
-				</div>
-				<time class="notif-item__time" datetime="">5 minutes ago</time>
-			</article>
-
-			<article class="notif-item">
-				<div class="notif-item__icon notif-item__icon--blue" aria-label="Appointment rescheduled icon">
-					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#0063aa" stroke-width="1.8"/>
-						<path d="M12 16V12" stroke="#0063aa" stroke-width="2" stroke-linecap="round"/>
-						<circle cx="12" cy="8.5" r="0.8" fill="#0063aa" stroke="#0063aa" stroke-width="0.5"/>
-					</svg>
-				</div>
-				<div class="notif-item__body">
-					<div class="notif-item__title-row">
-						<span class="notif-item__title">Appointment Rescheduled</span>
-						<span class="badge-new" role="status" aria-label="New notification">New</span>
-					</div>
-					<p class="notif-item__desc">Alice Guo has successfully registered as a new donor.</p>
-					<div class="notif-item__actions">
-						<button class="btn-mark-read" type="button" aria-label="Mark Appointment Rescheduled as read">
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<circle cx="12" cy="12" r="9" stroke="#0063aa" stroke-width="1.8"/>
-								<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#0063aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-							Mark as Read
-						</button>
-						<button class="btn-view-details" type="button" aria-label="View details for Appointment Rescheduled">View Details</button>
-						<button class="btn-delete" type="button" aria-label="Delete Appointment Rescheduled notification">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</div>
-				</div>
-				<time class="notif-item__time" datetime="">5 minutes ago</time>
-			</article>
-
-			<article class="notif-item">
-				<div class="notif-item__icon notif-item__icon--green" aria-label="Donation completed icon">
-					<svg width="25" height="25" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<circle cx="12" cy="12" r="9" stroke="#129800" stroke-width="1.8"/>
-						<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#129800" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-					</svg>
-				</div>
-				<div class="notif-item__body">
-					<div class="notif-item__title-row">
-						<span class="notif-item__title">Donation Completed</span>
-					</div>
-					<p class="notif-item__desc">Alice Guo has successfully registered as a new donor.</p>
-					<div class="notif-item__actions">
-						<button class="btn-mark-read" type="button" aria-label="Mark Donation Completed as read">
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<circle cx="12" cy="12" r="9" stroke="#0063aa" stroke-width="1.8"/>
-								<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#0063aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-							Mark as Read
-						</button>
-						<button class="btn-view-details" type="button" aria-label="View details for Donation Completed">View Details</button>
-						<button class="btn-delete" type="button" aria-label="Delete Donation Completed notification">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</div>
-				</div>
-				<time class="notif-item__time" datetime="">5 minutes ago</time>
-			</article>
-
-			<article class="notif-item">
-				<div class="notif-item__icon notif-item__icon--yellow" aria-label="Low blood stock alert icon">
-					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#b8960c" stroke-width="1.8"/>
-						<path d="M12 8V12" stroke="#b8960c" stroke-width="2" stroke-linecap="round"/>
-						<circle cx="12" cy="16" r="0.8" fill="#b8960c" stroke="#b8960c" stroke-width="0.5"/>
-					</svg>
-				</div>
-				<div class="notif-item__body">
-					<div class="notif-item__title-row">
-						<span class="notif-item__title">Low Blood Stock Alert</span>
-					</div>
-					<p class="notif-item__desc">Alice Guo has successfully registered as a new donor.</p>
-					<div class="notif-item__actions">
-						<button class="btn-mark-read" type="button" aria-label="Mark Low Blood Stock Alert as read">
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<circle cx="12" cy="12" r="9" stroke="#0063aa" stroke-width="1.8"/>
-								<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#0063aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-							Mark as Read
-						</button>
-						<button class="btn-view-details" type="button" aria-label="View details for Low Blood Stock Alert">View Details</button>
-						<button class="btn-delete" type="button" aria-label="Delete Low Blood Stock Alert notification">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</div>
-				</div>
-				<time class="notif-item__time" datetime="">5 minutes ago</time>
-			</article>
-
-			<article class="notif-item">
-				<div class="notif-item__icon notif-item__icon--blue" aria-label="Monthly report generated icon">
-					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-						<path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" stroke="#0063aa" stroke-width="1.8"/>
-						<path d="M12 16V12" stroke="#0063aa" stroke-width="2" stroke-linecap="round"/>
-						<circle cx="12" cy="8.5" r="0.8" fill="#0063aa" stroke="#0063aa" stroke-width="0.5"/>
-					</svg>
-				</div>
-				<div class="notif-item__body">
-					<div class="notif-item__title-row">
-						<span class="notif-item__title">Monthly Report Generated</span>
-					</div>
-					<p class="notif-item__desc">Alice Guo has successfully registered as a new donor.</p>
-					<div class="notif-item__actions">
-						<button class="btn-mark-read" type="button" aria-label="Mark Monthly Report Generated as read">
-							<svg width="17" height="17" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<circle cx="12" cy="12" r="9" stroke="#0063aa" stroke-width="1.8"/>
-								<path d="M8.5 12L11 14.5L15.5 9.5" stroke="#0063aa" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-							Mark as Read
-						</button>
-						<button class="btn-view-details" type="button" aria-label="View details for Monthly Report Generated">View Details</button>
-						<button class="btn-delete" type="button" aria-label="Delete Monthly Report Generated notification">
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-								<polyline points="3,6 5,6 21,6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M19 6L18.1 20.1C18 21.2 17.1 22 16 22H8C6.9 22 6 21.2 5.9 20.1L5 6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-								<path d="M9 6V4C9 3.4 9.4 3 10 3H14C14.6 3 15 3.4 15 4V6" stroke="#b60c0c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							</svg>
-						</button>
-					</div>
-				</div>
-				<time class="notif-item__time" datetime="">5 minutes ago</time>
-			</article>
-		</section>
+		</div>
 	</div>
-</main>
+
+	<div class="modal fade" id="notificationSendModal" tabindex="-1" aria-labelledby="notificationSendTitle" aria-hidden="true">
+		<div class="modal-dialog modal-lg modal-dialog-centered">
+			<form class="modal-content notification-modal" id="notificationSendForm" novalidate>
+				<div class="modal-header">
+					<h5 class="modal-title" id="notificationSendTitle">Send Notification</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<div class="row g-3">
+						<div class="col-12">
+							<label for="notificationTitleField" class="form-label">Title</label>
+							<input type="text" class="form-control" id="notificationTitleField" name="title" maxlength="150" required>
+							<div class="invalid-feedback" id="notificationTitleError"></div>
+						</div>
+						<div class="col-12">
+							<label for="notificationMessageField" class="form-label">Message</label>
+							<textarea class="form-control" id="notificationMessageField" name="message" rows="4" maxlength="1000" required></textarea>
+							<div class="invalid-feedback" id="notificationMessageError"></div>
+						</div>
+						<div class="col-12 col-md-4">
+							<label for="notificationTypeField" class="form-label">Type/category</label>
+							<select class="form-select" id="notificationTypeField" name="type" required>
+								@forelse ($types as $type)
+									<option value="{{ data_get($type, 'value') }}">{{ data_get($type, 'label') }}</option>
+								@empty
+									<option value="system">System</option>
+								@endforelse
+							</select>
+						</div>
+						<div class="col-12 col-md-4">
+							<label for="notificationChannelField" class="form-label">Channel</label>
+							<select class="form-select" id="notificationChannelField" name="channel" required>
+								@forelse ($channels as $channel)
+									<option value="{{ data_get($channel, 'value') }}">{{ data_get($channel, 'label') }}</option>
+								@empty
+									<option value="system">System</option>
+								@endforelse
+							</select>
+						</div>
+						<div class="col-12 col-md-4">
+							<label for="notificationRecipientField" class="form-label">Recipient</label>
+							<select class="form-select" id="notificationRecipientField" name="recipient_type" required>
+								@forelse ($recipients as $recipient)
+									<option value="{{ data_get($recipient, 'value') }}">{{ data_get($recipient, 'label') }}</option>
+								@empty
+									<option value="system">System-wide</option>
+								@endforelse
+							</select>
+						</div>
+						<div class="col-12 d-none" id="notificationRecipientIdWrapper">
+							<label for="notificationRecipientIdField" class="form-label">Donor ID</label>
+							<input type="number" min="1" step="1" class="form-control" id="notificationRecipientIdField" name="recipient_id" placeholder="Enter donor ID">
+							<div class="invalid-feedback" id="notificationRecipientIdError"></div>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+					<button type="submit" class="btn btn-primary" id="notificationSubmitBtn">Send Notification</button>
+				</div>
+			</form>
+		</div>
+	</div>
 @endsection
+
+@push('admin_scripts')
+	<script src="{{ asset('js/admin/notification-center.js') }}"></script>
+@endpush

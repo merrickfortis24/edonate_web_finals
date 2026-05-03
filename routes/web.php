@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorDashboardController;
 use App\Http\Controllers\DonorPortalController;
@@ -75,7 +76,20 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/map/donors', [AdminAuthController::class, 'mapDonors'])->name('admin.map.donors');
         Route::get('/admin/map/barangays', [AdminAuthController::class, 'mapBarangays'])->name('admin.map.barangays');
         Route::get('/admin/map/summary', [AdminAuthController::class, 'mapSummary'])->name('admin.map.summary');
-        Route::get('/admin/notification-center', [AdminAuthController::class, 'notificationCenter'])->name('admin.notification-center');
+        Route::get('/admin/notification-center', [AdminNotificationController::class, 'index'])->name('admin.notification-center');
+        Route::get('/admin/notifications/data', [AdminNotificationController::class, 'data'])->name('admin.notifications.data');
+        Route::post('/admin/notifications', [AdminNotificationController::class, 'store'])->name('admin.notifications.store');
+        Route::patch('/admin/notifications/read-all', [AdminNotificationController::class, 'markAllRead'])->name('admin.notifications.read-all');
+        Route::delete('/admin/notifications/clear-all', [AdminNotificationController::class, 'clearAll'])->name('admin.notifications.clear-all');
+        Route::get('/admin/notifications/{notification}', [AdminNotificationController::class, 'show'])
+            ->whereNumber('notification')
+            ->name('admin.notifications.show');
+        Route::patch('/admin/notifications/{notification}/read', [AdminNotificationController::class, 'markRead'])
+            ->whereNumber('notification')
+            ->name('admin.notifications.read');
+        Route::delete('/admin/notifications/{notification}', [AdminNotificationController::class, 'destroy'])
+            ->whereNumber('notification')
+            ->name('admin.notifications.destroy');
         Route::get('/admin/audit-logs', [AdminAuthController::class, 'auditLogs'])->name('admin.audit-logs');
         Route::get('/admin/audit-logs/data', [AdminAuthController::class, 'listAuditLogs'])->name('admin.audit-logs.data');
         Route::get('/admin/audit-logs/export', [AdminAuthController::class, 'exportAuditLogsCsv'])->name('admin.audit-logs.export');

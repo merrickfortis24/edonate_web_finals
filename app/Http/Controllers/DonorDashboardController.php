@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DonorDashboardController extends Controller
 {
@@ -60,6 +61,12 @@ class DonorDashboardController extends Controller
 
         $alertsCount = Notification::query()
             ->where('donor_id', $donor->donor_id)
+            ->when(Schema::hasTable('notifications') && Schema::hasColumn('notifications', 'recipient_type'), function ($query): void {
+                $query->where(function ($builder): void {
+                    $builder->whereNull('recipient_type')
+                        ->orWhereIn('recipient_type', ['donor', 'all_donors']);
+                });
+            })
             ->where('is_read', 0)
             ->count();
 

@@ -8,6 +8,7 @@ use App\Models\Donor;
 use App\Models\DonorAuthentication;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
+use App\Services\AdminNotificationService;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
@@ -921,6 +922,13 @@ class AdminAuthController extends BaseController
         $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification($donorId, 'appointment_approved', "Your appointment {$appointmentCode} has been approved.");
+        app(AdminNotificationService::class)->createAdminEvent(
+            'appointment_approved',
+            'Appointment Approved',
+            "Appointment {$appointmentCode} has been approved.",
+            'appointment',
+            $appointment
+        );
         $this->logAppointmentAudit($request, 'appointment_approved', "Approved appointment {$appointmentCode}.", $appointment, [
             'appointment_id' => $appointment,
             'donor_id' => $donorId,
@@ -959,6 +967,13 @@ class AdminAuthController extends BaseController
         $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification($donorId, 'appointment_rejected', "Your appointment {$appointmentCode} has been rejected.");
+        app(AdminNotificationService::class)->createAdminEvent(
+            'appointment_cancelled',
+            'Appointment Cancellation',
+            "Appointment {$appointmentCode} has been cancelled.",
+            'appointment',
+            $appointment
+        );
         $this->logAppointmentAudit($request, 'appointment_rejected', "Rejected appointment {$appointmentCode}.", $appointment, [
             'appointment_id' => $appointment,
             'donor_id' => $donorId,
@@ -1017,6 +1032,13 @@ class AdminAuthController extends BaseController
             $donorId,
             'appointment_rescheduled',
             "Your appointment {$appointmentCode} was rescheduled to {$validated['appointment_date']} at {$validated['appointment_time']}."
+        );
+        app(AdminNotificationService::class)->createAdminEvent(
+            'appointment_rescheduled',
+            'Appointment Rescheduled',
+            "Appointment {$appointmentCode} was rescheduled to {$validated['appointment_date']} at {$validated['appointment_time']}.",
+            'appointment',
+            $appointment
         );
 
         $this->logAppointmentAudit($request, 'appointment_rescheduled', "Rescheduled appointment {$appointmentCode}.", $appointment, [
@@ -1083,6 +1105,13 @@ class AdminAuthController extends BaseController
             $donorId,
             'appointment_completed',
             "Your appointment {$appointmentCode} has been marked as completed. Thank you for your donation!"
+        );
+        app(AdminNotificationService::class)->createAdminEvent(
+            'donation_completed',
+            'Donation Completed',
+            "Appointment {$appointmentCode} has been completed and a donation record was created.",
+            'appointment',
+            $appointment
         );
 
         $this->logAppointmentAudit($request, 'appointment_completed', "Completed appointment {$appointmentCode}.", $appointment, [
@@ -3389,9 +3418,13 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
             return 0;
         }
 
-        return (int) DB::table('notifications')
-            ->where('is_read', 0)
-            ->count();
+        $query = DB::table('notifications')->where('is_read', 0);
+
+        if ($this->dashboardTableHasColumns('notifications', ['deleted_at'])) {
+            $query->whereNull('deleted_at');
+        }
+
+        return (int) $query->count();
     }
 
     /**

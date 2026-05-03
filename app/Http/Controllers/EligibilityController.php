@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AdminNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -223,6 +224,13 @@ class EligibilityController extends Controller
             $donorId,
             'eligibility_reviewed',
             "Your eligibility submission {$code} has been reviewed. Status: {$label}."
+        );
+        app(AdminNotificationService::class)->createAdminEvent(
+            'eligibility_reviewed',
+            'Eligibility Review Updated',
+            "Eligibility submission {$code} was marked as {$validated['status']}.",
+            'eligibility',
+            $id
         );
 
         $this->writeAudit($request, 'eligibility_reviewed', "Marked {$code} as {$validated['status']}.", $id, [

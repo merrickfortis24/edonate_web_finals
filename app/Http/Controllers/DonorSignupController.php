@@ -8,6 +8,7 @@ use App\Models\BloodType;
 use App\Models\Donor;
 use App\Models\DonorAuthentication;
 use App\Models\Location;
+use App\Services\AdminNotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -258,6 +259,15 @@ class DonorSignupController extends Controller
             ]);
 
             DB::commit();
+
+            $donorName = trim($donor->first_name . ' ' . $donor->last_name);
+            app(AdminNotificationService::class)->createAdminEvent(
+                'donor_registration',
+                'New Donor Registration',
+                "{$donorName} has registered as a new donor.",
+                'donor',
+                (int) $donor->donor_id
+            );
 
             return $donor;
         } catch (Throwable $exception) {
