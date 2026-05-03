@@ -229,7 +229,7 @@
 	let barangayLayer = null;
 
 	/* ── Map init ── */
-	const map = L.map('blood-map', { zoomControl: true }).setView([12.577, 122.269], 10);
+	const map = L.map('blood-map', { zoomControl: true }).setView([13.9419, 121.1644], 12);
 
 	L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 		attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
