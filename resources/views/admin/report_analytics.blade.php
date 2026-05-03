@@ -8,7 +8,9 @@
 @section('sidebar_nav_aria_label', 'Main navigation')
 @section('render_default_hamburger', 'false')
 
-@section('header_title', 'Reports & Analytics')
+@section('header_title')
+    Reports {{ $header_title }} Analytics
+@endsection
 @section('header_subtitle', 'Visual charts summarizing donation trends and user activity')
 
 @section('header_slot')
