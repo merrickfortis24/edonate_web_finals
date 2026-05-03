@@ -394,6 +394,10 @@
                     + '</button>';
             }
 
+            if (normalizedStatus === 'completed') {
+                return '<span class="text-muted" style="font-size:13px;">—</span>';
+            }
+
             return '';
         }
 
