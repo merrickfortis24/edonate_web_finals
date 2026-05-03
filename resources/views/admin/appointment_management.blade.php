@@ -887,7 +887,7 @@
                 }
             });
         }
-        }
+        
 
         document.querySelectorAll('.appointment-view-btn').forEach(function (element) {
             element.addEventListener('click', function (event) {
