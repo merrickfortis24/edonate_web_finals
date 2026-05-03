@@ -18,4 +18,5 @@ jobs:
           port: 65002
           script: |
             cd /home/u734866278/domains/edonate.online/public_html
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
