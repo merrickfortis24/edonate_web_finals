@@ -16,7 +16,7 @@ class AdminNotificationService
 
     public function create(array $data): ?Notification
     {
-        if (! Schema::hasTable('notifications')) {
+        if (! $this->hasNotificationsTable()) {
             return null;
         }
 
@@ -49,6 +49,10 @@ class AdminNotificationService
             if ($this->hasColumn($column)) {
                 $insert[$column] = $value;
             }
+        }
+
+        if ($insert === []) {
+            return null;
         }
 
         try {
@@ -124,12 +128,28 @@ class AdminNotificationService
     {
         if (! isset($this->columnCache['notifications'])) {
             $this->columnCache['notifications'] = [];
-            foreach (Schema::getColumnListing('notifications') as $existingColumn) {
-                $this->columnCache['notifications'][$existingColumn] = true;
+
+            try {
+                foreach (Schema::getColumnListing('notifications') as $existingColumn) {
+                    $this->columnCache['notifications'][$existingColumn] = true;
+                }
+            } catch (Throwable $exception) {
+                report($exception);
             }
         }
 
         return isset($this->columnCache['notifications'][$column]);
+    }
+
+    private function hasNotificationsTable(): bool
+    {
+        try {
+            return Schema::hasTable('notifications');
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
     }
 
     private function nullableInteger(mixed $value): ?int
