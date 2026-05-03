@@ -113,6 +113,17 @@ button {
 	flex-direction: column;
 }
 
+.admin-page .app {
+	display: flex;
+	min-height: 100vh;
+	width: 100%;
+}
+
+.admin-page .app > .admin-layout-content {
+	flex: 1;
+	min-width: 0;
+}
+
 /* ===== Shared Admin Layout ===== */
 .sidebar {
 	width: var(--admin-sidebar-w);

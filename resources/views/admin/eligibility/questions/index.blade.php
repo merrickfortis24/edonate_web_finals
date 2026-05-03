@@ -40,8 +40,8 @@
 @endsection
 
 @section('main_content')
-<main class="questions-main container-fluid px-0">
-    <section class="questions-content container-fluid py-3" aria-label="Questions content">
+<main class="main questions-main container-fluid px-0">
+    <section class="content questions-content container-fluid py-3" aria-label="Questions content">
         <!-- Stats Cards -->
         <div class="questions-stats row g-3" aria-label="Questions summary">
             <div class="col-12 col-md-4">

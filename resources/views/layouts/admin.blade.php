@@ -39,6 +39,9 @@
     }
 
     $adminPageData = trim($__env->yieldContent('admin_page_data'));
+    $layoutWrapperClasses = $layoutWrapperClass === 'app'
+        ? 'app d-flex min-vh-100'
+        : $layoutWrapperClass;
 @endphp
 
 <!doctype html>
@@ -73,7 +76,7 @@
 @endif
 
 @if ($layoutWrapperClass !== '')
-<div class="{{ $layoutWrapperClass }}">
+<div class="{{ $layoutWrapperClasses }}">
 @endif
 
 <x-sidebar
@@ -146,6 +149,14 @@
         var btn = document.getElementById(@json($hamburgerId));
         var sidebar = document.getElementById(@json($sidebarId));
         var overlay = document.getElementById(@json($overlayId));
+
+        if (!btn) {
+            btn = document.querySelector('.hamburger[aria-controls]');
+        }
+
+        if (!sidebar && btn && btn.getAttribute('aria-controls')) {
+            sidebar = document.getElementById(btn.getAttribute('aria-controls'));
+        }
 
         if (!btn || !sidebar || !overlay) {
             return;

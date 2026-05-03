@@ -34,8 +34,8 @@
 @endsection
 
 @section('main_content')
-    <main class="eligibility-main container-fluid px-0">
-        <section class="eligibility-content container-fluid py-3" aria-label="Eligibility content">
+    <main class="main eligibility-main container-fluid px-0">
+        <section class="content eligibility-content container-fluid py-3" aria-label="Eligibility content">
             <!-- Stats Cards -->
             <div class="eligibility-stats row g-3" aria-label="Eligibility summary">
                 <div class="col-6 col-xl-3">
