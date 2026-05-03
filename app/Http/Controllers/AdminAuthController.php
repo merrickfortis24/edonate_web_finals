@@ -564,7 +564,7 @@ class AdminAuthController extends BaseController
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
             'center' => ['nullable', 'string', 'max:150'],
-            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'pending', 'cancelled', 'rescheduled'])],
+            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'completed'])],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
@@ -2693,7 +2693,10 @@ class AdminAuthController extends BaseController
     private function appointmentStatusExpression(string $appointmentsAlias = 'ap'): string
     {
         return "CASE
-            WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('confirmed', 'approved', 'scheduled', 'complete', 'completed') THEN 'confirmed'
+        WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) 
+IN ('confirmed', 'approved', 'scheduled') THEN 'confirmed'
+WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) 
+IN ('completed', 'complete', 'done') THEN 'completed'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('pending', 'pending approval', 'for approval') THEN 'pending'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('cancelled', 'canceled', 'rejected', 'declined') THEN 'cancelled'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('rescheduled', 'reschedule requested') THEN 'rescheduled'
@@ -2708,9 +2711,12 @@ class AdminAuthController extends BaseController
     {
         $status = Str::lower(trim($status));
 
-        if (in_array($status, ['confirmed', 'approved', 'scheduled', 'complete', 'completed'], true)) {
-            return 'confirmed';
-        }
+        if (in_array($status, ['confirmed', 'approved', 'scheduled'], true)) {
+    return 'confirmed';
+}
+if (in_array($status, ['completed', 'complete', 'done'], true)) {
+    return 'completed';
+}
         if (in_array($status, ['pending', 'pending approval', 'for approval'], true)) {
             return 'pending';
         }
@@ -2767,9 +2773,9 @@ class AdminAuthController extends BaseController
         }
 
         $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
-        if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled'], true)) {
-            $status = 'pending';
-        }
+if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'completed'], true)) {
+    $status = 'pending';
+}
 
         return [
             'appointment_id' => (int) ($entry->appointment_id ?? 0),
