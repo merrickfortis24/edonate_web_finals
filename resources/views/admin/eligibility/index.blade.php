@@ -2,24 +2,18 @@
 
 @section('title', 'eDonate - Eligibility Review')
 @section('admin_page_class', 'admin-eligibility-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_id', 'eligibilitySidebar')
-@section('sidebar_aria_label', 'Admin navigation')
-@section('sidebar_nav_aria_label', 'Primary navigation')
+@section('layout_wrapper_class', 'app')
+@section('sidebar_aria_label', 'Main navigation')
+@section('sidebar_nav_aria_label', 'Main navigation')
 @section('sidebar_link_mode', 'link')
-@section('sidebar_open_class', 'is-open')
-@section('overlay_id', 'eligibilityOverlay')
-@section('overlay_class', 'eligibility-overlay overlay')
-@section('overlay_open_class', 'is-visible')
-@section('hamburger_id', 'eligibilityHamburger')
 @section('render_default_hamburger', 'false')
 
 @section('header_title', 'Eligibility Review')
 @section('header_subtitle', 'Review and approve donor eligibility submissions')
 
 @section('header_slot')
-    <button class="hamburger" id="eligibilityHamburger" aria-label="Toggle navigation menu" aria-expanded="false"
-        aria-controls="eligibilitySidebar">
+    <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false"
+        aria-controls="sidebar">
         <span class="hamburger__bar"></span>
         <span class="hamburger__bar"></span>
         <span class="hamburger__bar"></span>
@@ -114,7 +108,7 @@
                     </select>
                 </div>
 
-                <button type="button" class="btn btn-primary" id="eligibilityRefreshBtn" aria-label="Refresh submissions">
+                <button type="button" class="btn btn-primary col-12 col-md-auto" id="eligibilityRefreshBtn" aria-label="Refresh submissions">
                     <span aria-hidden="true">↻</span> Refresh
                 </button>
             </form>

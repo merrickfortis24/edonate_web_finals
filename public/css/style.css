@@ -6445,55 +6445,18 @@ button {
 }
 
 /* ===== Eligibility Review Page Layout ===== */
-.admin-eligibility-page .layout {
+.admin-eligibility-page .app,
+.admin-questions-page .app {
     display: flex;
     min-height: 100vh;
 }
 
-.admin-eligibility-page .overlay {
-    z-index: 120;
-}
-
-.admin-eligibility-page .sidebar {
-    min-height: 100vh;
-    flex-shrink: 0;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    z-index: 1000;
-}
-
-.admin-eligibility-page .header {
-    position: sticky;
-    top: 0;
-    z-index: 800;
-}
-
-.admin-eligibility-page .admin-layout-content {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-}
-
-.admin-eligibility-page .eligibility-main {
-    flex: 1;
-}
-
-.admin-eligibility-page .eligibility-content {
-    padding: 28px var(--admin-content-pl);
-}
-
-/* ===== Question Management Page Layout ===== */
-.admin-questions-page .layout {
-    display: flex;
-    min-height: 100vh;
-}
-
+.admin-eligibility-page .overlay,
 .admin-questions-page .overlay {
-    z-index: 120;
+    z-index: 900;
 }
 
+.admin-eligibility-page .sidebar,
 .admin-questions-page .sidebar {
     min-height: 100vh;
     flex-shrink: 0;
@@ -6503,12 +6466,14 @@ button {
     z-index: 1000;
 }
 
+.admin-eligibility-page .header,
 .admin-questions-page .header {
     position: sticky;
     top: 0;
     z-index: 800;
 }
 
+.admin-eligibility-page .admin-layout-content,
 .admin-questions-page .admin-layout-content {
     flex: 1;
     min-width: 0;
@@ -6516,18 +6481,50 @@ button {
     flex-direction: column;
 }
 
+.admin-eligibility-page .eligibility-main,
 .admin-questions-page .questions-main {
     flex: 1;
 }
 
+.admin-eligibility-page .eligibility-content {
+    padding: 28px var(--admin-content-pl);
+}
+
+/* ===== Question Management Page Layout ===== */
 .admin-questions-page .questions-content {
     padding: 28px var(--admin-content-pl);
+}
+
+.admin-eligibility-page .eligibility-content,
+.admin-questions-page .questions-content {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.eligibility-table,
+.questions-table {
+    min-width: 760px;
+}
+
+.questions-table {
+    min-width: 980px;
+}
+
+.admin-eligibility-page .modal-dialog,
+.admin-questions-page .modal-dialog {
+    max-width: min(900px, calc(100vw - 32px));
+}
+
+.admin-eligibility-page .modal-body,
+.admin-questions-page .modal-body {
+    overflow-x: hidden;
 }
 
 /* ===== Responsive for both ===== */
 @media (max-width: 1024px) {
     .admin-eligibility-page .sidebar,
-    .admin-question-page .sidebar {
+    .admin-questions-page .sidebar {
         position: fixed;
         left: 0;
         top: 0;
@@ -6538,25 +6535,111 @@ button {
     }
 
     .admin-eligibility-page .sidebar.is-open,
-    .admin-question-page .sidebar.is-open {
+    .admin-questions-page .sidebar.is-open,
+    .admin-eligibility-page .sidebar.sidebar--open,
+    .admin-questions-page .sidebar.sidebar--open {
         transform: translateX(0);
     }
 
     .admin-eligibility-page .header,
-    .admin-question-page .header {
+    .admin-questions-page .header {
         padding: 16px 20px;
         min-height: 80px;
     }
 
     .admin-eligibility-page .eligibility-content,
-    .admin-question-page .questions-content {
+    .admin-questions-page .questions-content {
         padding: 20px;
+    }
+
+    .admin-eligibility-page .eligibility-stats,
+    .admin-questions-page .questions-stats,
+    .admin-eligibility-page .eligibility-filter,
+    .admin-questions-page .questions-filter {
+        --bs-gutter-x: 12px;
+        --bs-gutter-y: 12px;
+    }
+
+    .admin-eligibility-page .header__left-group,
+    .admin-questions-page .header__left-group {
+        min-width: 0;
+    }
+
+    .admin-questions-page .header__right {
+        margin-left: auto;
     }
 }
 
 @media (max-width: 768px) {
     .admin-eligibility-page .eligibility-content,
-    .admin-question-page .questions-content {
+    .admin-questions-page .questions-content {
         padding: 14px;
+    }
+
+    .admin-eligibility-page .header,
+    .admin-questions-page .header {
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .admin-questions-page .header {
+        flex-wrap: wrap;
+    }
+
+    .admin-questions-page .header__right {
+        width: 100%;
+    }
+
+    .admin-questions-page #addQuestionBtn {
+        width: 100%;
+    }
+
+    .eligibility-filter__search,
+    .questions-filter__search,
+    .eligibility-filter__select-wrap,
+    .questions-filter__select-wrap {
+        min-width: 0;
+    }
+
+    .eligibility-filter .btn,
+    .questions-filter .btn {
+        width: 100%;
+    }
+
+    .eligibility-pagination .row,
+    .questions-pagination .row {
+        gap: 12px;
+    }
+
+    .eligibility-pagination .col-auto,
+    .questions-pagination .col-auto {
+        width: 100%;
+    }
+
+    .eligibility-pagination .btn-group,
+    .questions-pagination .btn-group {
+        width: 100%;
+    }
+
+    .eligibility-pagination .btn,
+    .questions-pagination .btn {
+        flex: 1 1 0;
+    }
+
+    .admin-eligibility-page .modal-dialog,
+    .admin-questions-page .modal-dialog {
+        margin: 8px;
+        max-width: calc(100vw - 16px);
+    }
+
+    .admin-eligibility-page .modal-footer,
+    .admin-questions-page .modal-footer {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-eligibility-page .modal-footer .btn,
+    .admin-questions-page .modal-footer .btn {
+        width: 100%;
     }
 }

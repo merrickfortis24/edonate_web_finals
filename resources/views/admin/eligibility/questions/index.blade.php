@@ -2,23 +2,17 @@
 
 @section('title', 'eDonate - Question Management')
 @section('admin_page_class', 'admin-questions-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_id', 'questionsSidebar')
-@section('sidebar_aria_label', 'Admin navigation')
-@section('sidebar_nav_aria_label', 'Primary navigation')
+@section('layout_wrapper_class', 'app')
+@section('sidebar_aria_label', 'Main navigation')
+@section('sidebar_nav_aria_label', 'Main navigation')
 @section('sidebar_link_mode', 'link')
-@section('sidebar_open_class', 'is-open')
-@section('overlay_id', 'questionsOverlay')
-@section('overlay_class', 'questions-overlay overlay')
-@section('overlay_open_class', 'is-visible')
-@section('hamburger_id', 'questionsHamburger')
 @section('render_default_hamburger', 'false')
 
 @section('header_title', 'Question Management')
 @section('header_subtitle', 'Create and manage eligibility screening questions')
 
 @section('header_slot')
-    <button class="hamburger" id="questionsHamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="questionsSidebar">
+    <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
         <span class="hamburger__bar"></span>
         <span class="hamburger__bar"></span>
         <span class="hamburger__bar"></span>
@@ -95,7 +89,7 @@
                 </select>
             </div>
 
-            <button type="button" class="btn btn-primary" id="questionsRefreshBtn" aria-label="Refresh questions">
+            <button type="button" class="btn btn-primary col-12 col-md-auto" id="questionsRefreshBtn" aria-label="Refresh questions">
                 <span aria-hidden="true">↻</span> Refresh
             </button>
         </form>
@@ -140,7 +134,7 @@
 
 <!-- Add/Edit Question Modal -->
 <div class="modal fade" id="questionFormModal" tabindex="-1" aria-labelledby="questionFormLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="questionFormLabel">Add Question</h5>
