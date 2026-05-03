@@ -8,7 +8,7 @@
 @section('sidebar_nav_aria_label', 'Main navigation')
 @section('render_default_hamburger', 'false')
 
-@section('header_title', 'Admin Dashboard')
+@section('header_title', 'Admin Dashboard2424')
 @section('header_subtitle', 'Blood Donation Management System - Web Portal')
 
 @section('header_slot')
