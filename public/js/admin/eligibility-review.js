@@ -41,6 +41,12 @@ document.addEventListener('DOMContentLoaded', function () {
     // ── Utilities ────────────────────────────────────────────────────────────
 
     function showToast(message, type = 'info') {
+        if (typeof Swal === 'undefined') {
+            const log = type === 'error' ? console.error : console.log;
+            log(message);
+            return;
+        }
+
         const Toast = Swal.mixin({
             toast: true,
             position: 'bottom-end',
@@ -60,8 +66,27 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function escapeHtml(text) {
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = text == null || text === '' ? '-' : String(text);
         return div.innerHTML;
+    }
+
+    function setText(selector, value) {
+        const element = document.querySelector(selector);
+        if (element) element.textContent = value == null ? 0 : value;
+    }
+
+    function normalizeStatus(status) {
+        return String(status || '').trim().toLowerCase();
+    }
+
+    function formatStatusLabel(status) {
+        const value = String(status || '').trim();
+        if (!value) return '-';
+
+        return value
+            .replace(/[_-]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\b\w/g, letter => letter.toUpperCase());
     }
 
     function setLoading(loading) {
@@ -70,13 +95,19 @@ document.addEventListener('DOMContentLoaded', function () {
         if (btn) btn.disabled = loading;
         const prevBtn = document.querySelector(selectors.prevBtn);
         const nextBtn = document.querySelector(selectors.nextBtn);
-        if (prevBtn) prevBtn.disabled = loading;
-        if (nextBtn) nextBtn.disabled = loading;
+        if (loading) {
+            if (prevBtn) prevBtn.disabled = true;
+            if (nextBtn) nextBtn.disabled = true;
+        }
     }
 
     function formatDate(dateStr) {
+        if (!dateStr) return '-';
         if (!dateStr) return '—';
-        return new Date(dateStr).toLocaleDateString('en-US', {
+        const date = new Date(dateStr);
+        if (Number.isNaN(date.getTime())) return '-';
+
+        return date.toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'short',
             day: 'numeric',
@@ -84,26 +115,37 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function getStatusBadge(status) {
-        switch (status) {
+        const normalizedStatus = normalizeStatus(status);
+
+        switch (normalizedStatus) {
             case 'pending':
                 return '<span class="badge bg-warning text-dark">Pending</span>';
             case 'approved':
+            case 'eligible':
                 return '<span class="badge bg-success text-white">Approved</span>';
             case 'declined':
+            case 'not eligible':
                 return '<span class="badge bg-danger text-white">Declined</span>';
             default:
-                return '<span class="badge bg-secondary text-white">' + escapeHtml(status) + '</span>';
+                return '<span class="badge bg-secondary text-white">' + escapeHtml(formatStatusLabel(status)) + '</span>';
         }
+    }
+
+    function setTableState(message, className = 'text-muted') {
+        const tbody = document.querySelector(selectors.tableBody);
+        if (!tbody) return;
+
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center ${className} py-4">${escapeHtml(message)}</td></tr>`;
     }
 
     // ── Stats ────────────────────────────────────────────────────────────────
 
     function updateStats(stats) {
-        if (!stats) return;
-        document.querySelector(selectors.statTotal).textContent = stats.total || 0;
-        document.querySelector(selectors.statPending).textContent = stats.pending || 0;
-        document.querySelector(selectors.statApproved).textContent = stats.approved || 0;
-        document.querySelector(selectors.statDeclined).textContent = stats.declined || 0;
+        const safeStats = stats && typeof stats === 'object' ? stats : {};
+        setText(selectors.statTotal, safeStats.total || 0);
+        setText(selectors.statPending, safeStats.pending || 0);
+        setText(selectors.statApproved, safeStats.approved || 0);
+        setText(selectors.statDeclined, safeStats.declined || 0);
     }
 
     // ── Data loading ─────────────────────────────────────────────────────────
@@ -111,10 +153,14 @@ document.addEventListener('DOMContentLoaded', function () {
     async function loadSubmissions() {
         if (config.isLoading) return;
         setLoading(true);
+        setTableState('Loading submissions...');
+        updatePagination({ current_page: config.currentPage, last_page: 1, total: 0, from: 0, to: 0 });
 
         const urls = apiUrls();
         if (!urls.listUrl) {
             showToast('API configuration missing', 'error');
+            setTableState('Unable to load eligibility submissions. Please try again.', 'text-danger');
+            updateStats({});
             setLoading(false);
             return;
         }
@@ -134,17 +180,32 @@ document.addEventListener('DOMContentLoaded', function () {
                 location: location,
             });
 
-            const response = await fetch(`${urls.listUrl}?${params}`);
+            const response = await fetch(`${urls.listUrl}?${params}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-            const json = await response.json();
-            renderTable(json.data || []);
-            updatePagination(json.meta || {});
-            updateStats(json.stats || {});
+            const responsePayload = await response.json();
+            const json = responsePayload && typeof responsePayload === 'object' ? responsePayload : {};
+            // Temporary debug lines used while validating API wiring:
+            // console.log('Eligibility API response:', json);
+            // console.log('Eligibility rows:', json.data);
+
+            const rows = Array.isArray(json.data) ? json.data : [];
+            const meta = json.meta && typeof json.meta === 'object' ? json.meta : {};
+            const stats = json.stats && typeof json.stats === 'object' ? json.stats : {};
+
+            renderTable(rows);
+            updatePagination(meta);
+            updateStats(stats);
         } catch (error) {
             console.error('Failed to load submissions:', error);
-            showToast('Failed to load submissions', 'error');
-            renderTable([]);
+            showToast('Unable to load eligibility submissions. Please try again.', 'error');
+            setTableState('Unable to load eligibility submissions. Please try again.', 'text-danger');
+            updatePagination({ current_page: config.currentPage, last_page: 1, total: 0, from: 0, to: 0 });
         } finally {
             setLoading(false);
         }
@@ -156,29 +217,46 @@ document.addEventListener('DOMContentLoaded', function () {
         const tbody = document.querySelector(selectors.tableBody);
         if (!tbody) return;
 
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No submissions found</td></tr>';
+        if (!Array.isArray(rows) || rows.length === 0) {
+            setTableState('No eligibility submissions found.');
             return;
         }
 
         tbody.innerHTML = rows.map(row => {
-            const isPending = row.status === 'pending';
+            const submission = row || {};
+            const eligibilityId = submission.eligibility_id;
+            const donorId = submission.donor_id;
+            const donorName = submission.donor_name;
+            const donorCode = submission.donor_code;
+            const bloodType = submission.blood_type;
+            const status = submission.status;
+            const lastDonationDate = submission.last_donation_date;
+            const nextEligibleDate = submission.next_eligible_date;
+            const contactNumber = submission.contact_number;
+            const escapedEligibilityId = escapeHtml(eligibilityId);
+            const donorMeta = [
+                donorCode ? escapeHtml(donorCode) : null,
+                donorId ? `Donor #${escapeHtml(donorId)}` : null,
+            ].filter(Boolean).join(' | ');
+            const contactText = contactNumber ? `Contact: ${escapeHtml(contactNumber)}` : 'Contact: -';
+            const isPending = normalizeStatus(status) === 'pending';
             const actionButtons = isPending
-                ? `<button type="button" class="btn btn-sm btn-outline-primary view-btn me-1" data-id="${row.eligibility_id}">View</button>
-                   <button type="button" class="btn btn-sm btn-success approve-btn me-1" data-id="${row.eligibility_id}">Approve</button>
-                   <button type="button" class="btn btn-sm btn-danger decline-btn" data-id="${row.eligibility_id}">Decline</button>`
-                : `<button type="button" class="btn btn-sm btn-outline-primary view-btn" data-id="${row.eligibility_id}">View</button>`;
+                ? `<button type="button" class="btn btn-sm btn-outline-primary view-btn me-1" data-id="${escapedEligibilityId}">View</button>
+                   <button type="button" class="btn btn-sm btn-success approve-btn me-1" data-id="${escapedEligibilityId}">Approve</button>
+                   <button type="button" class="btn btn-sm btn-danger decline-btn" data-id="${escapedEligibilityId}">Decline</button>`
+                : `<button type="button" class="btn btn-sm btn-outline-primary view-btn" data-id="${escapedEligibilityId}">View</button>`;
 
             return `
                 <tr role="row">
                     <td>
-                        <div class="fw-semibold">${escapeHtml(row.donor_name)}</div>
-                        <small class="text-muted">${escapeHtml(row.donor_code)}</small>
+                        <div class="fw-semibold">${escapeHtml(donorName)}</div>
+                        <small class="text-muted d-block">${donorMeta || '-'}</small>
+                        <small class="text-muted d-block">${contactText}</small>
                     </td>
-                    <td><span class="badge bg-light text-dark border">${escapeHtml(row.blood_type)}</span></td>
-                    <td>${getStatusBadge(row.status)}</td>
-                    <td>${formatDate(row.last_donation_date)}</td>
-                    <td>${formatDate(row.next_eligible_date)}</td>
+                    <td><span class="badge bg-light text-dark border">${escapeHtml(bloodType)}</span></td>
+                    <td>${getStatusBadge(status)}</td>
+                    <td>${formatDate(lastDonationDate)}</td>
+                    <td>${formatDate(nextEligibleDate)}</td>
                     <td class="text-nowrap">${actionButtons}</td>
                 </tr>
             `;
@@ -208,16 +286,25 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updatePagination(meta) {
-        config.totalRecords = meta.total || 0;
+        const safeMeta = meta && typeof meta === 'object' ? meta : {};
+        const currentPage = Number(safeMeta.current_page) || config.currentPage || 1;
+        const lastPage = Number(safeMeta.last_page) || 1;
+        const total = Number(safeMeta.total) || 0;
+        const from = Number(safeMeta.from) || 0;
+        const to = Number(safeMeta.to) || 0;
+
+        config.currentPage = currentPage;
+        config.totalRecords = total;
+
         const info = document.querySelector(selectors.paginationInfo);
         if (info) {
-            info.textContent = `Showing ${meta.from || 0} to ${meta.to || 0} of ${meta.total || 0} submissions`;
+            info.textContent = `Showing ${from} to ${to} of ${total} submissions (Page ${currentPage} of ${lastPage})`;
         }
 
         const prevBtn = document.querySelector(selectors.prevBtn);
         const nextBtn = document.querySelector(selectors.nextBtn);
-        if (prevBtn) prevBtn.disabled = config.currentPage === 1;
-        if (nextBtn) nextBtn.disabled = config.currentPage >= (meta.last_page || 1);
+        if (prevBtn) prevBtn.disabled = currentPage <= 1;
+        if (nextBtn) nextBtn.disabled = currentPage >= lastPage;
     }
 
     // ── Detail fetching ──────────────────────────────────────────────────────
@@ -230,7 +317,12 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         try {
-            const response = await fetch(`${urls.detailBaseUrl}/${id}`);
+            const response = await fetch(`${urls.detailBaseUrl}/${id}`, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             return await response.json();
         } catch (error) {
@@ -241,20 +333,34 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function renderDetailHtml(submission) {
+        const safeSubmission = submission && typeof submission === 'object' ? submission : {};
+        const donor = safeSubmission.donor && typeof safeSubmission.donor === 'object' ? safeSubmission.donor : {};
+        const answers = Array.isArray(safeSubmission.answers) ? safeSubmission.answers : [];
+        const donorName = donor.name || safeSubmission.donor_name;
+        const donorCode = donor.donor_code || safeSubmission.donor_code || safeSubmission.donor_id;
+        const bloodType = donor.blood_type || safeSubmission.blood_type;
+        const contactNumber = donor.contact_number || safeSubmission.contact_number;
+        const lastDonationDate = donor.last_donation_date || safeSubmission.last_donation_date;
+        const nextEligibleDate = donor.next_eligible_date || safeSubmission.next_eligible_date;
+        donor.contact_number = contactNumber;
+        safeSubmission.donor = donor;
+        safeSubmission.answers = answers;
+        submission = safeSubmission;
+
         return `
             <div class="row mb-3">
                 <div class="col-md-6">
                     <h6 class="text-muted mb-2">Donor Information</h6>
-                    <p class="mb-1"><strong>${escapeHtml(submission.donor.name)}</strong></p>
-                    <p class="small text-muted mb-1">ID: ${escapeHtml(submission.donor.donor_code)}</p>
-                    <p class="small mb-1">Blood Type: <strong>${escapeHtml(submission.donor.blood_type)}</strong></p>
+                    <p class="mb-1"><strong>${escapeHtml(donorName)}</strong></p>
+                    <p class="small text-muted mb-1">ID: ${escapeHtml(donorCode)}</p>
+                    <p class="small mb-1">Blood Type: <strong>${escapeHtml(bloodType)}</strong></p>
                     <p class="small mb-0">Contact: ${escapeHtml(submission.donor.contact_number || '—')}</p>
                 </div>
                 <div class="col-md-6">
                     <h6 class="text-muted mb-2">Eligibility Information</h6>
-                    <p class="mb-1">Status: ${getStatusBadge(submission.status)}</p>
-                    <p class="small mb-1">Last Donation: <strong>${formatDate(submission.donor.last_donation_date)}</strong></p>
-                    <p class="small mb-0">Next Eligible: <strong>${formatDate(submission.donor.next_eligible_date)}</strong></p>
+                    <p class="mb-1">Status: ${getStatusBadge(safeSubmission.status)}</p>
+                    <p class="small mb-1">Last Donation: <strong>${formatDate(lastDonationDate)}</strong></p>
+                    <p class="small mb-0">Next Eligible: <strong>${formatDate(nextEligibleDate)}</strong></p>
                 </div>
             </div>
 
