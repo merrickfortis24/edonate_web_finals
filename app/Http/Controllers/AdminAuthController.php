@@ -784,6 +784,65 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Complete a confirmed appointment and create a donation record.
+     */
+    public function completeAppointment(Request $request, int $appointment): JsonResponse
+    {
+        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
+        if (!$row) {
+            return response()->json(['message' => 'Appointment not found.'], 404);
+        }
+
+        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
+        if ($normalized !== 'confirmed') {
+            return response()->json(['message' => 'Only confirmed appointments can be marked as completed.'], 422);
+        }
+
+        $actorAdminId = is_numeric($request->session()->get('admin_id'))
+            ? (int) $request->session()->get('admin_id')
+            : null;
+
+        DB::transaction(function () use ($row, $appointment, $actorAdminId) {
+            // Update appointment
+            DB::table('appointments')->where('appointment_id', $appointment)->update([
+                'status'       => 'completed',
+                'completed_at' => now(),
+                'admin_id'     => $actorAdminId,
+            ]);
+
+            // Create donation record
+            DB::table('donation_records')->insert([
+                'donor_id'        => $row->donor_id,
+                'appointment_id'  => $row->appointment_id,
+                'donation_date'   => $row->appointment_date,
+                // Default status for a completed appointment is usually completed or pending evaluation
+                // We'll set it to 'completed' per instructions, or let observers handle it if they exist
+                'status'          => 'completed',
+                'created_at'      => now(),
+                'updated_at'      => now(),
+            ]);
+        });
+
+        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+
+        $this->createDonorNotification(
+            $donorId,
+            'appointment_completed',
+            "Your appointment {$appointmentCode} has been marked as completed. Thank you for your donation!"
+        );
+
+        $this->logAppointmentAudit($request, 'appointment_completed', "Completed appointment {$appointmentCode}.", $appointment, [
+            'appointment_id' => $appointment,
+            'donor_id' => $donorId,
+            'previous_status' => $row->status ?? null,
+            'new_status' => 'completed',
+        ]);
+
+        return response()->json(['message' => 'Appointment completed and donation record created.']);
+    }
+
+    /**
      * Display donation records page.
      */
     public function donationRecords(Request $request)
@@ -1157,40 +1216,6 @@ class AdminAuthController extends BaseController
             ->orderByDesc('audit_log_id')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $actionOptions = DB::table('audit_logs')
-            ->select('action_type')
-            ->whereNotNull('action_type')
-            ->where('action_type', '!=', '')
-            ->distinct()
-            ->orderBy('action_type')
-            ->pluck('action_type')
-            ->map(fn (string $value): array => [
-                'value' => Str::lower(trim($value)),
-                'label' => $this->labelizeAuditValue($value),
-            ])
-            ->values()
-            ->all();
-
-        $roleValues = DB::table('audit_logs')
-            ->select('actor_role')
-            ->whereNotNull('actor_role')
-            ->where('actor_role', '!=', '')
-            ->distinct()
-            ->pluck('actor_role')
-            ->map(fn (string $value): string => $this->resolveAuditUserType($value))
-            ->unique()
-            ->values()
-            ->all();
-
-        $userOptions = collect($roleValues)
-            ->map(fn (string $value): array => [
-                'value' => $value,
-                'label' => Str::title($value),
-            ])
-            ->sortBy('label')
-            ->values()
-            ->all();
-
         return response()->json([
             'data' => $paginator->getCollection()
                 ->map(fn (object $entry) => $this->transformAuditLogEntry($entry))
@@ -1211,12 +1236,58 @@ class AdminAuthController extends BaseController
             'filters' => [
                 'actions' => array_merge([
                     ['value' => '', 'label' => 'All Actions'],
-                ], $actionOptions),
+                ], $this->getAuditLogActionOptions()),
                 'users' => array_merge([
                     ['value' => '', 'label' => 'All Users'],
-                ], $userOptions),
+                ], $this->getAuditLogUserOptions()),
             ],
         ]);
+    }
+
+    /**
+     * Get unique action options for audit log filters.
+     */
+    protected function getAuditLogActionOptions(): array
+    {
+        return DB::table('audit_logs')
+            ->select('action_type')
+            ->whereNotNull('action_type')
+            ->where('action_type', '!=', '')
+            ->distinct()
+            ->orderBy('action_type')
+            ->pluck('action_type')
+            ->map(fn (string $value): array => [
+                'value' => Str::lower(trim($value)),
+                'label' => $this->labelizeAuditValue($value),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Get unique user options for audit log filters.
+     */
+    protected function getAuditLogUserOptions(): array
+    {
+        $roleValues = DB::table('audit_logs')
+            ->select('actor_role')
+            ->whereNotNull('actor_role')
+            ->where('actor_role', '!=', '')
+            ->distinct()
+            ->pluck('actor_role')
+            ->map(fn (string $value): string => $this->resolveAuditUserType($value))
+            ->unique()
+            ->values()
+            ->all();
+
+        return collect($roleValues)
+            ->map(fn (string $value): array => [
+                'value' => $value,
+                'label' => Str::title($value),
+            ])
+            ->sortBy('label')
+            ->values()
+            ->all();
     }
 
     /**

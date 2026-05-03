@@ -120,6 +120,7 @@
                     <option value="pending">Pending</option>
                     <option value="cancelled">Cancelled</option>
                     <option value="rescheduled">Rescheduled</option>
+                    <option value="completed">Completed</option>
                 </select>
                 <span class="appointment-filter__chevron" aria-hidden="true">
                     <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -338,7 +339,7 @@
 
         function normalizeStatus(value) {
             var status = String(value || '').toLowerCase();
-            if (['confirmed', 'pending', 'cancelled', 'rescheduled'].indexOf(status) !== -1) {
+            if (['confirmed', 'pending', 'cancelled', 'rescheduled', 'completed'].indexOf(status) !== -1) {
                 return status;
             }
             return 'pending';
@@ -354,6 +355,9 @@
             }
             if (status === 'rescheduled') {
                 return 'Rescheduled';
+            }
+            if (status === 'completed') {
+                return 'Completed';
             }
             return 'Pending';
         }
@@ -379,6 +383,10 @@
 
             if (normalizedStatus === 'confirmed') {
                 return ''
+                    + '<button class="appointment-btn appointment-btn--complete" data-action="complete" type="button">'
+                    + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
+                    + 'Complete'
+                    + '</button>'
                     + '<button class="appointment-btn appointment-btn--reschedule" data-action="reschedule" type="button">'
                     + '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10a6 6 0 1 1 1.76 4.24" stroke="#0063aa" stroke-width="1.6" stroke-linecap="round"></path><polyline points="4 14 4 10 8 10" stroke="#0063aa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>'
                     + 'Reschedule'
@@ -771,6 +779,30 @@
                         row ? String(row.getAttribute('data-appointment-time') || '') : '',
                         row ? String(row.querySelector('.appointment-id') ? row.querySelector('.appointment-id').textContent : '') : ''
                     );
+                    return;
+                }
+
+                if (action === 'complete') {
+                    if (!window.confirm('Mark this appointment as completed? This will create a donation record.')) {
+                        return;
+                    }
+                    actionButton.disabled = true;
+                    performAppointmentAction(appointmentId, action, null)
+                        .then(function () {
+                            loadAppointments();
+                            // showRsToast logic expects global function, if available
+                            if (typeof showRsToast === 'function') {
+                                showRsToast('Donation Completed', 'Donation record has been created successfully.');
+                            } else {
+                                alert('Donation record has been created successfully.');
+                            }
+                        })
+                        .catch(function (error) {
+                            alert(error && error.message ? error.message : 'Action failed.');
+                        })
+                        .then(function () {
+                            actionButton.disabled = false;
+                        });
                     return;
                 }
             });

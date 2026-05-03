@@ -66,6 +66,9 @@ Route::middleware('admin.auth')->group(function () {
         Route::patch('/admin/appointments/{appointment}/reschedule', [AdminAuthController::class, 'rescheduleAppointment'])
             ->whereNumber('appointment')
             ->name('admin.appointments.reschedule');
+        Route::patch('/admin/appointments/{appointment}/complete', [AdminAuthController::class, 'completeAppointment'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.complete');
         Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
         Route::get('/admin/donation-records/data', [AdminAuthController::class, 'listDonationRecordsData'])->name('admin.donation-records.data');
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
