@@ -3,6 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Mail\AdminPasswordResetMail;
+use App\Models\BloodType;
+use App\Models\Donor;
+use App\Models\DonorAuthentication;
+use App\Models\EligibilityStatus;
+use App\Models\Location;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
@@ -446,6 +451,10 @@ class AdminAuthController extends BaseController
             'userManagementPayload' => [
                 'api' => [
                     'listUrl' => route('admin.users.data'),
+                    'showUrlTemplate' => route('admin.users.show', ['donor' => '__DONOR_ID__']),
+                    'updateUrlTemplate' => route('admin.users.update', ['donor' => '__DONOR_ID__']),
+                    'deleteUrlTemplate' => route('admin.users.delete', ['donor' => '__DONOR_ID__']),
+                    'csrfToken' => csrf_token(),
                 ],
                 'filters' => [
                     'bloodTypes' => $this->userManagementBloodTypeOptions(),
@@ -534,6 +543,239 @@ class AdminAuthController extends BaseController
                     ['value' => 'not_eligible', 'label' => 'Not Eligible'],
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * Return a single donor record for the admin user management page.
+     */
+    public function showUser(Request $request, int $donor): JsonResponse
+    {
+        $donorPayload = $this->getUserManagementDonorDetail($donor);
+        if ($donorPayload === null) {
+            return response()->json([
+                'message' => 'Donor not found.',
+            ], 404);
+        }
+
+        return response()->json([
+            'donor' => $donorPayload,
+            'options' => [
+                'blood_types' => $this->userManagementBloodTypeFormOptions(),
+                'statuses' => $this->userManagementStatusOptions(),
+            ],
+        ]);
+    }
+
+    /**
+     * Update a donor record from the admin user management page.
+     */
+    public function updateUser(Request $request, int $donor): JsonResponse
+    {
+        $targetDonor = Donor::query()->find($donor);
+        if (! $targetDonor) {
+            return response()->json([
+                'message' => 'Donor not found.',
+            ], 404);
+        }
+
+        $targetAuth = DonorAuthentication::query()
+            ->where('donor_id', $targetDonor->donor_id)
+            ->orderByDesc('auth_id')
+            ->first();
+
+        if (! $targetAuth) {
+            return response()->json([
+                'message' => 'This donor cannot be updated because the authentication record is missing.',
+            ], 422);
+        }
+
+        $validated = $request->validate([
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
+            'email' => ['required', 'string', 'email', 'max:150', Rule::unique('donor_authentication', 'email')->ignore($targetAuth->auth_id, 'auth_id')],
+            'contact_number' => ['nullable', 'regex:/^(\+63|0)\d{10}$/'],
+            'gender' => ['nullable', 'string', Rule::in(['Male', 'Female', 'Other', 'Prefer not to say'])],
+            'birthdate' => ['nullable', 'date', 'before_or_equal:today'],
+            'blood_type_id' => ['nullable', 'integer', Rule::exists('blood_types', 'blood_type_id')],
+            'street_address' => ['nullable', 'string', 'max:150'],
+            'barangay_name' => ['nullable', 'string', 'max:100'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'province' => ['nullable', 'string', 'max:100'],
+            'eligibility_status' => ['nullable', 'string', Rule::in(['eligible', 'not_eligible'])],
+        ]);
+
+        $before = $this->getUserManagementDonorDetail($targetDonor->donor_id) ?? [];
+        $currentLocation = $targetDonor->location_id
+            ? Location::query()->find($targetDonor->location_id)
+            : null;
+        $latestEligibility = EligibilityStatus::query()
+            ->where('donor_id', $targetDonor->donor_id)
+            ->orderByDesc('eligibility_id')
+            ->first();
+
+        DB::transaction(function () use ($validated, $targetDonor, $targetAuth, $currentLocation, $latestEligibility, $before): void {
+            $locationPayload = $this->userManagementLocationPayload($validated);
+            $hasLocationData = $this->userManagementLocationPayloadHasValue($locationPayload);
+            $locationIsShared = $currentLocation
+                ? Donor::query()
+                    ->where('location_id', $currentLocation->location_id)
+                    ->where('donor_id', '!=', $targetDonor->donor_id)
+                    ->exists()
+                : false;
+
+            $nextLocationId = $targetDonor->location_id;
+            $locationToDelete = null;
+
+            if (! $hasLocationData) {
+                $nextLocationId = null;
+
+                if ($currentLocation && ! $locationIsShared) {
+                    $locationToDelete = $currentLocation;
+                }
+            } elseif ($currentLocation && ! $locationIsShared) {
+                $currentLocation->fill($locationPayload);
+                $currentLocation->save();
+                $nextLocationId = (int) $currentLocation->location_id;
+            } elseif ($currentLocation && $this->userManagementLocationMatches($currentLocation, $locationPayload)) {
+                $nextLocationId = (int) $currentLocation->location_id;
+            } else {
+                $newLocation = Location::query()->create($locationPayload);
+                $nextLocationId = (int) $newLocation->location_id;
+            }
+
+            $targetDonor->fill([
+                'first_name' => trim((string) $validated['first_name']),
+                'last_name' => trim((string) $validated['last_name']),
+                'gender' => $this->userManagementNullableString($validated['gender'] ?? null),
+                'birthdate' => $validated['birthdate'] ?? null,
+                'contact_number' => $this->userManagementNullableString($validated['contact_number'] ?? null),
+                'blood_type_id' => isset($validated['blood_type_id']) ? (int) $validated['blood_type_id'] : null,
+                'location_id' => $nextLocationId,
+            ]);
+            $targetDonor->save();
+
+            $targetAuth->email = Str::lower(trim((string) $validated['email']));
+            $targetAuth->save();
+
+            if ($locationToDelete instanceof Location) {
+                $locationToDelete->delete();
+            }
+
+            $requestedStatus = $this->userManagementNullableString($validated['eligibility_status'] ?? null);
+            if ($requestedStatus !== null) {
+                $normalizedRequestedStatus = $this->normalizeUserManagementStatusValue($requestedStatus);
+                $currentDerivedStatus = $this->normalizeUserManagementStatusValue((string) ($before['eligibility_status'] ?? 'eligible'));
+
+                if ($latestEligibility instanceof EligibilityStatus) {
+                    $latestEligibility->status = $this->userManagementStatusDatabaseValue($normalizedRequestedStatus);
+                    $latestEligibility->save();
+                } elseif ($normalizedRequestedStatus !== $currentDerivedStatus) {
+                    EligibilityStatus::query()->create([
+                        'donor_id' => $targetDonor->donor_id,
+                        'status' => $this->userManagementStatusDatabaseValue($normalizedRequestedStatus),
+                    ]);
+                }
+            }
+        });
+
+        $after = $this->getUserManagementDonorDetail($targetDonor->donor_id);
+
+        $this->logUserManagementAudit(
+            $request,
+            'update',
+            'Updated donor account: ' . ($after['full_name'] ?? ('Donor #' . $targetDonor->donor_id)),
+            (int) $targetDonor->donor_id,
+            [
+                'changes' => $this->userManagementChangedFields($before, $after ?? []),
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Donor updated successfully.',
+            'donor' => $after,
+        ]);
+    }
+
+    /**
+     * Delete a donor record from the admin user management page.
+     */
+    public function deleteUser(Request $request, int $donor): JsonResponse
+    {
+        $targetDonor = Donor::query()->find($donor);
+        if (! $targetDonor) {
+            return response()->json([
+                'message' => 'Donor not found.',
+            ], 404);
+        }
+
+        $targetSummary = $this->getUserManagementDonorDetail($targetDonor->donor_id) ?? [];
+        $blockers = $this->userManagementDeleteBlockers($targetDonor->donor_id);
+
+        if ($blockers !== []) {
+            $this->logUserManagementAudit(
+                $request,
+                'delete',
+                'Blocked donor deletion for ' . ($targetSummary['full_name'] ?? ('Donor #' . $targetDonor->donor_id)),
+                (int) $targetDonor->donor_id,
+                [
+                    'blockers' => $blockers,
+                ],
+                'blocked'
+            );
+
+            return response()->json([
+                'message' => $this->userManagementDeleteBlockerMessage($blockers),
+                'blockers' => $blockers,
+            ], 409);
+        }
+
+        $currentLocation = $targetDonor->location_id
+            ? Location::query()->find($targetDonor->location_id)
+            : null;
+        $locationIsShared = $currentLocation
+            ? Donor::query()
+                ->where('location_id', $currentLocation->location_id)
+                ->where('donor_id', '!=', $targetDonor->donor_id)
+                ->exists()
+            : false;
+
+        DB::transaction(function () use ($targetDonor, $currentLocation, $locationIsShared): void {
+            if (Schema::hasTable('donor_forget')) {
+                DB::table('donor_forget')
+                    ->where('donor_id', $targetDonor->donor_id)
+                    ->delete();
+            }
+
+            DonorAuthentication::query()
+                ->where('donor_id', $targetDonor->donor_id)
+                ->orderByDesc('auth_id')
+                ->get()
+                ->each(function (DonorAuthentication $authentication): void {
+                    $authentication->delete();
+                });
+
+            $targetDonor->delete();
+
+            if ($currentLocation instanceof Location && ! $locationIsShared) {
+                $currentLocation->delete();
+            }
+        });
+
+        $this->logUserManagementAudit(
+            $request,
+            'delete',
+            'Deleted donor account: ' . ($targetSummary['full_name'] ?? ('Donor #' . $targetDonor->donor_id)),
+            (int) $targetDonor->donor_id,
+            [
+                'email' => $targetSummary['email'] ?? null,
+                'donor_code' => $targetSummary['donor_code'] ?? null,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Donor deleted successfully.',
+            'deletedUserId' => (int) $targetDonor->donor_id,
         ]);
     }
 
@@ -2897,7 +3139,10 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
         $statusExpression = $this->userManagementStatusExpression();
 
         return DB::table('donors as d')
-            ->leftJoin('donor_authentication as da', 'da.donor_id', '=', 'd.donor_id')
+            ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
+                $join->on('da_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('donor_authentication as da', 'da.auth_id', '=', 'da_latest.latest_auth_id')
             ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
             ->leftJoinSub($this->userManagementDonationAggregateQuery(), 'drs', function ($join): void {
                 $join->on('drs.donor_id', '=', 'd.donor_id');
@@ -2952,12 +3197,61 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
     private function userManagementStatusExpression(): string
     {
         return "CASE
-            WHEN LOWER(COALESCE(es.status, '')) IN ('eligible', 'qualified', 'ready') THEN 'eligible'
-            WHEN LOWER(COALESCE(es.status, '')) IN ('not eligible', 'not_eligible', 'deferred', 'ineligible') THEN 'not_eligible'
+            WHEN LOWER(COALESCE(es.status, '')) IN ('eligible', 'qualified', 'ready', 'approved') THEN 'eligible'
+            WHEN LOWER(COALESCE(es.status, '')) IN ('not eligible', 'not_eligible', 'deferred', 'ineligible', 'declined') THEN 'not_eligible'
             WHEN drs.last_donation_date IS NULL THEN 'eligible'
             WHEN drs.last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 56 DAY) THEN 'eligible'
             ELSE 'not_eligible'
         END";
+    }
+
+    /**
+     * Build the donor detail query used by admin user actions.
+     */
+    private function userManagementDonorDetailQuery()
+    {
+        $statusExpression = $this->userManagementStatusExpression();
+
+        return DB::table('donors as d')
+            ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
+                $join->on('da_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('donor_authentication as da', 'da.auth_id', '=', 'da_latest.latest_auth_id')
+            ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
+            ->leftJoinSub($this->userManagementDonationAggregateQuery(), 'drs', function ($join): void {
+                $join->on('drs.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoinSub($this->userManagementLatestEligibilityQuery(), 'es_latest', function ($join): void {
+                $join->on('es_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('eligibility_status as es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
+            ->select([
+                'd.donor_id',
+                'd.first_name',
+                'd.last_name',
+                'd.gender',
+                'd.birthdate',
+                'd.contact_number',
+                'd.blood_type_id',
+                'd.location_id',
+                'd.date_registered',
+                'da.auth_id',
+                'da.email',
+                'da.created_at as auth_created_at',
+                'bt.blood_type',
+                'l.street_address',
+                'l.barangay_name',
+                'l.city',
+                'l.province',
+                'es.eligibility_id',
+                'es.status as latest_eligibility_status',
+                'es.next_eligible_date',
+                DB::raw('COALESCE(drs.total_donations, 0) as total_donations'),
+                DB::raw('drs.last_donation_date as last_donation_date'),
+                DB::raw('NULL as updated_at'),
+            ])
+            ->selectRaw('(' . $statusExpression . ') as derived_status');
     }
 
     /**
@@ -2974,6 +3268,53 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
             ->pluck('blood_type')
             ->values()
             ->all();
+    }
+
+    /**
+     * Resolve blood type options for user management forms.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function userManagementBloodTypeFormOptions(): array
+    {
+        return BloodType::query()
+            ->orderBy('blood_type')
+            ->get(['blood_type_id', 'blood_type'])
+            ->map(function (BloodType $bloodType): array {
+                return [
+                    'id' => (int) $bloodType->blood_type_id,
+                    'label' => trim((string) $bloodType->blood_type),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Resolve status options for user management forms.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private function userManagementStatusOptions(): array
+    {
+        return [
+            ['value' => 'eligible', 'label' => 'Eligible'],
+            ['value' => 'not_eligible', 'label' => 'Not Eligible'],
+        ];
+    }
+
+    /**
+     * Fetch a single donor payload for admin user management.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function getUserManagementDonorDetail(int $donorId): ?array
+    {
+        $row = $this->userManagementDonorDetailQuery()
+            ->where('d.donor_id', $donorId)
+            ->first();
+
+        return $row ? $this->transformUserManagementDonorDetail($row) : null;
     }
 
     /**
@@ -3006,6 +3347,255 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
             'eligibility_status' => $status,
             'total_donations' => (int) ($donor->total_donations ?? 0),
         ];
+    }
+
+    /**
+     * Normalize donor detail payload for admin user actions.
+     *
+     * @return array<string, mixed>
+     */
+    private function transformUserManagementDonorDetail(object $donor): array
+    {
+        $fullName = trim((string) ($donor->first_name ?? '') . ' ' . (string) ($donor->last_name ?? ''));
+        if ($fullName === '') {
+            $fullName = 'Donor #' . (int) ($donor->donor_id ?? 0);
+        }
+
+        $status = $this->normalizeUserManagementStatusValue((string) ($donor->derived_status ?? 'eligible'));
+
+        return [
+            'donor_id' => (int) ($donor->donor_id ?? 0),
+            'donor_code' => 'D' . str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'auth_id' => isset($donor->auth_id) ? (int) $donor->auth_id : null,
+            'eligibility_id' => isset($donor->eligibility_id) ? (int) $donor->eligibility_id : null,
+            'first_name' => trim((string) ($donor->first_name ?? '')),
+            'last_name' => trim((string) ($donor->last_name ?? '')),
+            'full_name' => $fullName,
+            'email' => trim((string) ($donor->email ?? '')),
+            'contact_number' => trim((string) ($donor->contact_number ?? '')),
+            'gender' => $this->userManagementNullableString($donor->gender ?? null),
+            'birthdate' => ! empty($donor->birthdate) ? (string) $donor->birthdate : null,
+            'blood_type_id' => isset($donor->blood_type_id) ? (int) $donor->blood_type_id : null,
+            'blood_type' => trim((string) ($donor->blood_type ?? '')),
+            'location_id' => isset($donor->location_id) ? (int) $donor->location_id : null,
+            'street_address' => $this->userManagementNullableString($donor->street_address ?? null),
+            'barangay_name' => $this->userManagementNullableString($donor->barangay_name ?? null),
+            'city' => $this->userManagementNullableString($donor->city ?? null),
+            'province' => $this->userManagementNullableString($donor->province ?? null),
+            'full_address' => $this->userManagementFullAddress([
+                $donor->street_address ?? null,
+                $donor->barangay_name ?? null,
+                $donor->city ?? null,
+                $donor->province ?? null,
+            ]),
+            'eligibility_status' => $status,
+            'eligibility_status_raw' => $this->userManagementNullableString($donor->latest_eligibility_status ?? null),
+            'last_donation_date' => ! empty($donor->last_donation_date) ? (string) $donor->last_donation_date : null,
+            'next_eligible_date' => ! empty($donor->next_eligible_date) ? (string) $donor->next_eligible_date : null,
+            'total_donations' => (int) ($donor->total_donations ?? 0),
+            'date_registered' => ! empty($donor->date_registered) ? (string) $donor->date_registered : null,
+            'auth_created_at' => ! empty($donor->auth_created_at) ? (string) $donor->auth_created_at : null,
+            'updated_at' => ! empty($donor->updated_at) ? (string) $donor->updated_at : null,
+        ];
+    }
+
+    /**
+     * Normalize user management status into front-end supported values.
+     */
+    private function normalizeUserManagementStatusValue(?string $status): string
+    {
+        return Str::lower(trim((string) $status)) === 'not_eligible'
+            ? 'not_eligible'
+            : 'eligible';
+    }
+
+    /**
+     * Map front-end status values into stored eligibility status values.
+     */
+    private function userManagementStatusDatabaseValue(string $status): string
+    {
+        return $this->normalizeUserManagementStatusValue($status) === 'not_eligible'
+            ? 'declined'
+            : 'approved';
+    }
+
+    /**
+     * Build a location payload from validated user management input.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, string|null>
+     */
+    private function userManagementLocationPayload(array $validated): array
+    {
+        return [
+            'street_address' => $this->userManagementNullableString($validated['street_address'] ?? null),
+            'barangay_name' => $this->userManagementNullableString($validated['barangay_name'] ?? null),
+            'city' => $this->userManagementNullableString($validated['city'] ?? null),
+            'province' => $this->userManagementNullableString($validated['province'] ?? null),
+        ];
+    }
+
+    /**
+     * Determine whether a location payload contains meaningful data.
+     *
+     * @param  array<string, string|null>  $payload
+     */
+    private function userManagementLocationPayloadHasValue(array $payload): bool
+    {
+        foreach ($payload as $value) {
+            if ($value !== null && $value !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Determine whether an existing location already matches a payload.
+     *
+     * @param  array<string, string|null>  $payload
+     */
+    private function userManagementLocationMatches(?Location $location, array $payload): bool
+    {
+        if (! $location) {
+            return false;
+        }
+
+        foreach ($payload as $field => $value) {
+            if ($this->userManagementNullableString($location->{$field} ?? null) !== $value) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Build a user-friendly full address label from location parts.
+     *
+     * @param  array<int, mixed>  $parts
+     */
+    private function userManagementFullAddress(array $parts): ?string
+    {
+        $segments = [];
+
+        foreach ($parts as $part) {
+            $value = $this->userManagementNullableString($part);
+            if ($value !== null) {
+                $segments[] = $value;
+            }
+        }
+
+        return $segments === [] ? null : implode(', ', $segments);
+    }
+
+    /**
+     * Normalize blank strings into null values.
+     */
+    private function userManagementNullableString(mixed $value): ?string
+    {
+        $trimmed = trim((string) ($value ?? ''));
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * Resolve related-record blockers for donor deletion.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function userManagementDeleteBlockers(int $donorId): array
+    {
+        $definitions = [
+            ['table' => 'appointments', 'label' => 'appointments'],
+            ['table' => 'donation_records', 'label' => 'donation records'],
+            ['table' => 'eligibility_status', 'label' => 'eligibility records'],
+            ['table' => 'eligibility_submissions', 'label' => 'eligibility submissions'],
+            ['table' => 'notifications', 'label' => 'notifications'],
+        ];
+
+        $blockers = [];
+
+        foreach ($definitions as $definition) {
+            $table = (string) $definition['table'];
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
+
+            $count = (int) DB::table($table)
+                ->where('donor_id', $donorId)
+                ->count();
+
+            if ($count > 0) {
+                $blockers[] = [
+                    'key' => $table,
+                    'label' => (string) $definition['label'],
+                    'count' => $count,
+                ];
+            }
+        }
+
+        return $blockers;
+    }
+
+    /**
+     * Build a human-readable delete blocker message for donors.
+     *
+     * @param  array<int, array<string, mixed>>  $blockers
+     */
+    private function userManagementDeleteBlockerMessage(array $blockers): string
+    {
+        if ($blockers === []) {
+            return 'This donor cannot be deleted right now.';
+        }
+
+        $labels = array_map(function (array $blocker): string {
+            return (string) ($blocker['label'] ?? 'related records');
+        }, $blockers);
+
+        return 'This donor cannot be deleted because related ' . implode(', ', $labels) . ' still exist.';
+    }
+
+    /**
+     * Extract changed donor fields for audit metadata.
+     *
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
+     * @return array<string, array<string, mixed>>
+     */
+    private function userManagementChangedFields(array $before, array $after): array
+    {
+        $changes = [];
+        $trackedFields = [
+            'first_name',
+            'last_name',
+            'email',
+            'contact_number',
+            'gender',
+            'birthdate',
+            'blood_type_id',
+            'blood_type',
+            'street_address',
+            'barangay_name',
+            'city',
+            'province',
+            'eligibility_status',
+        ];
+
+        foreach ($trackedFields as $field) {
+            $beforeValue = $before[$field] ?? null;
+            $afterValue = $after[$field] ?? null;
+
+            if ((string) $beforeValue !== (string) $afterValue) {
+                $changes[$field] = [
+                    'from' => $beforeValue,
+                    'to' => $afterValue,
+                ];
+            }
+        }
+
+        return $changes;
     }
 
     /**
@@ -3210,6 +3800,56 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 'action_type' => $actionType,
                 'description' => $description,
                 'target_admin_id' => $targetAdminId,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Persist a donor user-management action to audit logs when available.
+     */
+    private function logUserManagementAudit(
+        Request $request,
+        string $actionType,
+        string $description,
+        ?int $targetDonorId = null,
+        array $metadata = [],
+        string $result = 'success'
+    ): void {
+        try {
+            $actorName = trim((string) ($request->session()->get('admin_full_name') ?: $request->session()->get('admin_username') ?: 'Admin'));
+            $actorRole = ucfirst($this->normalizeRole((string) $request->session()->get('admin_role', 'admin')));
+
+            if (! Schema::hasTable('audit_logs')) {
+                logger()->info('User management audit event', [
+                    'action_type' => $actionType,
+                    'description' => $description,
+                    'target_donor_id' => $targetDonorId,
+                    'metadata' => $metadata,
+                ]);
+
+                return;
+            }
+
+            DB::table('audit_logs')->insert([
+                'actor_admin_id' => is_numeric($request->session()->get('admin_id')) ? (int) $request->session()->get('admin_id') : null,
+                'actor_name' => $actorName,
+                'actor_role' => $actorRole,
+                'action_type' => $actionType,
+                'module_type' => 'user_management',
+                'target_table' => 'donors',
+                'target_id' => $targetDonorId,
+                'description' => $description,
+                'ip_address' => $request->ip(),
+                'result' => $result,
+                'metadata' => $metadata === [] ? null : json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to persist user management audit event.', [
+                'action_type' => $actionType,
+                'description' => $description,
+                'target_donor_id' => $targetDonorId,
                 'error' => $exception->getMessage(),
             ]);
         }

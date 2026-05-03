@@ -85,6 +85,15 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/dashboard', [AdminAuthController::class, 'dashboard'])->name('admin.dashboard');
         Route::get('/admin/users', [AdminAuthController::class, 'users'])->name('admin.users');
         Route::get('/admin/users/data', [AdminAuthController::class, 'listUsersData'])->name('admin.users.data');
+        Route::get('/admin/users/{donor}', [AdminAuthController::class, 'showUser'])
+            ->whereNumber('donor')
+            ->name('admin.users.show');
+        Route::put('/admin/users/{donor}', [AdminAuthController::class, 'updateUser'])
+            ->whereNumber('donor')
+            ->name('admin.users.update');
+        Route::delete('/admin/users/{donor}', [AdminAuthController::class, 'deleteUser'])
+            ->whereNumber('donor')
+            ->name('admin.users.delete');
         Route::get('/admin/report-analytics', [AdminAuthController::class, 'reportAnalytics'])->name('admin.report-analytics');
         Route::get('/admin/rbac', [AdminAuthController::class, 'rbac'])->name('admin.rbac');
         Route::get('/admin/rbac/users', [AdminAuthController::class, 'listRbacUsers'])
