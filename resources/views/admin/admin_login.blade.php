@@ -1,13 +1,16 @@
 <!doctype html>
 <html lang="en">
+
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Admin Login Page 2424Merrick Nga pala to sannanajugyvygh | eDonatess</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+	<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+		rel="stylesheet">
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+		integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
 	<style>
 		:root {
 			--color-bg-from: #750000;
@@ -51,13 +54,16 @@
 			--fs-lg: 48px;
 		}
 
-		*, *::before, *::after {
+		*,
+		*::before,
+		*::after {
 			box-sizing: border-box;
 			margin: 0;
 			padding: 0;
 		}
 
-		html, body {
+		html,
+		body {
 			min-height: 100%;
 			font-family: var(--font-family);
 		}
@@ -441,119 +447,107 @@
 		}
 	</style>
 </head>
+
 <body>
-<main class="page" role="main">
-	<div class="login-card">
-		<section class="card__left" aria-label="eDonate branding">
-			<div class="card__left__icon" aria-hidden="true">
-				<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-					<path d="M32 6C32 6 15 24 15 37.5C15 47.7173 23.2827 56 33.5 56C43.7173 56 52 47.7173 52 37.5C52 24 32 6 32 6Z" fill="white"/>
-					<path d="M39.5 37.5C39.5 41.6421 36.1421 45 32 45" stroke="#b60c0c" stroke-width="4" stroke-linecap="round"/>
-				</svg>
-			</div>
-
-			<p class="card__left__brand">eDonate</p>
-
-			<p class="card__left__tagline">
-				Give blood, save lives.<br>
-				Join our community of lifesavers today.
-			</p>
-
-			<div class="card__left__stats" aria-label="Statistics">
-				<div class="stat">
-					<span class="stat__number">12k+</span>
-					<span class="stat__label">Donors</span>
-				</div>
-				<div class="stat">
-					<span class="stat__number">9k+</span>
-					<span class="stat__label">Donations</span>
-				</div>
-				<div class="stat">
-					<span class="stat__number">27k+</span>
-					<span class="stat__label">Lives Saved</span>
-				</div>
-			</div>
-		</section>
-
-		<section class="card__right" aria-label="Login form">
-			@php
-				$setupModalPayload = is_array($twoFactorSetupModal ?? null) ? $twoFactorSetupModal : [];
-				$challengeModalPayload = is_array($twoFactorChallengeModal ?? null) ? $twoFactorChallengeModal : [];
-
-				$setupModalActive = (bool) ($setupModalPayload['required'] ?? false)
-					|| (is_array($setupModalPayload['recoveryCodes'] ?? null) && ($setupModalPayload['recoveryCodes'] ?? []) !== [])
-					|| $errors->has('otp');
-
-				$challengeModalActive = (bool) ($challengeModalPayload['show'] ?? false)
-					|| $errors->has('code')
-					|| $errors->has('recovery_code');
-
-				$suppressLoginAlerts = $setupModalActive || $challengeModalActive;
-			@endphp
-
-			<h1 class="form__heading">Welcome Back</h1>
-			<p class="form__subheading">Log in to continue to your admin account</p>
-
-			@if (session('error') && !$suppressLoginAlerts)
-				<div class="form__alert form__alert--error">{{ session('error') }}</div>
-			@endif
-
-			@if (session('success') && !$suppressLoginAlerts)
-				<div class="form__alert form__alert--success">{{ session('success') }}</div>
-			@endif
-
-			@if (isset($errors) && $errors->any() && !$suppressLoginAlerts)
-				<div class="form__alert form__alert--error">{{ $errors->first() }}</div>
-			@endif
-
-			<form id="adminLoginForm" method="POST" action="{{ route('admin.login.store') }}" novalidate>
-				@csrf
-				<label class="form__label" for="email">Email Address</label>
-				<input
-					class="form__input form-control"
-					id="email"
-					type="email"
-					name="email"
-					value="{{ old('email') }}"
-					autocomplete="email"
-					required
-				>
-
-				<label class="form__label" for="password">Password</label>
-				<input
-					class="form__input form-control"
-					id="password"
-					type="password"
-					name="password"
-					autocomplete="current-password"
-					required
-				>
-
-				<div class="form__meta">
-					<label class="form__remember" for="remember">
-						<input
-							type="checkbox"
-							id="remember"
-							name="remember"
-							value="1"
-							{{ old('remember') ? 'checked' : '' }}
-						>
-						<span>Remember Me</span>
-					</label>
-
-					<a href="{{ route('admin.password.request') }}" class="form__forgot">Forgot Password?</a>
+	<main class="page" role="main">
+		<div class="login-card">
+			<section class="card__left" aria-label="eDonate branding">
+				<div class="card__left__icon" aria-hidden="true">
+					<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<path
+							d="M32 6C32 6 15 24 15 37.5C15 47.7173 23.2827 56 33.5 56C43.7173 56 52 47.7173 52 37.5C52 24 32 6 32 6Z"
+							fill="white" />
+						<path d="M39.5 37.5C39.5 41.6421 36.1421 45 32 45" stroke="#b60c0c" stroke-width="4"
+							stroke-linecap="round" />
+					</svg>
 				</div>
 
-				<button type="submit" class="form__submit btn">Log In</button>
-			</form>
-		</section>
-	</div>
-</main>
+				<p class="card__left__brand">eDonate</p>
 
-@include('admin._two_factor_setup_modal')
-@include('admin._two_factor_challenge_modal')
+				<p class="card__left__tagline">
+					Give blood, save lives.<br>
+					Join our community of lifesavers today.
+				</p>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-@stack('admin_scripts')
+				<div class="card__left__stats" aria-label="Statistics">
+					<div class="stat">
+						<span class="stat__number">12k+</span>
+						<span class="stat__label">Donors</span>
+					</div>
+					<div class="stat">
+						<span class="stat__number">9k+</span>
+						<span class="stat__label">Donations</span>
+					</div>
+					<div class="stat">
+						<span class="stat__number">27k+</span>
+						<span class="stat__label">Lives Saved</span>
+					</div>
+				</div>
+			</section>
+
+			<section class="card__right" aria-label="Login form">
+				@php
+					$setupModalPayload = is_array($twoFactorSetupModal ?? null) ? $twoFactorSetupModal : [];
+					$challengeModalPayload = is_array($twoFactorChallengeModal ?? null) ? $twoFactorChallengeModal : [];
+
+					$setupModalActive = (bool) ($setupModalPayload['required'] ?? false)
+						|| (is_array($setupModalPayload['recoveryCodes'] ?? null) && ($setupModalPayload['recoveryCodes'] ?? []) !== [])
+						|| $errors->has('otp');
+
+					$challengeModalActive = (bool) ($challengeModalPayload['show'] ?? false)
+						|| $errors->has('code')
+						|| $errors->has('recovery_code');
+
+					$suppressLoginAlerts = $setupModalActive || $challengeModalActive;
+				@endphp
+
+				<h1 class="form__heading">Welcome Back</h1>
+				<p class="form__subheading">Log in to continue to your admin account</p>
+
+				@if (session('error') && !$suppressLoginAlerts)
+					<div class="form__alert form__alert--error">{{ session('error') }}</div>
+				@endif
+
+				@if (session('success') && !$suppressLoginAlerts)
+					<div class="form__alert form__alert--success">{{ session('success') }}</div>
+				@endif
+
+				@if (isset($errors) && $errors->any() && !$suppressLoginAlerts)
+					<div class="form__alert form__alert--error">{{ $errors->first() }}</div>
+				@endif
+
+				<form id="adminLoginForm" method="POST" action="{{ route('admin.login.store') }}" novalidate>
+					@csrf
+					<label class="form__label" for="email">Email Address</label>
+					<input class="form__input form-control" id="email" type="email" name="email"
+						value="{{ old('email') }}" autocomplete="email" required>
+
+					<label class="form__label" for="password">Password</label>
+					<input class="form__input form-control" id="password" type="password" name="password"
+						autocomplete="current-password" required>
+
+					<div class="form__meta">
+						<label class="form__remember" for="remember">
+							<input type="checkbox" id="remember" name="remember" value="1" {{ old('remember') ? 'checked' : '' }}>
+							<span>Remember Me</span>
+						</label>
+
+						<a href="{{ route('admin.password.request') }}" class="form__forgot">Forgot Password?</a>
+					</div>
+
+					<button type="submit" class="form__submit btn">Log In</button>
+				</form>
+			</section>
+		</div>
+	</main>
+
+	@include('admin._two_factor_setup_modal')
+	@include('admin._two_factor_challenge_modal')
+
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+		integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+		crossorigin="anonymous"></script>
+	@stack('admin_scripts')
 </body>
+
 </html>
