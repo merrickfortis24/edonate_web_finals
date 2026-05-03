@@ -278,6 +278,7 @@ class EligibilityController extends Controller
                 'notification_type' => $type,
                 'is_read'           => 0,
                 'created_at'        => now(),
+                'push_sent'         => 0,
             ]);
         } catch (Throwable $e) {
             logger()->warning('Failed to create eligibility notification.', [

@@ -51,7 +51,6 @@
 		'filters' => [],
 		'types' => [],
 		'channels' => [],
-		'recipients' => [],
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
@@ -62,7 +61,6 @@
 		$filters = data_get($notificationPayload ?? [], 'filters', []);
 		$types = data_get($notificationPayload ?? [], 'types', []);
 		$channels = data_get($notificationPayload ?? [], 'channels', []);
-		$recipients = data_get($notificationPayload ?? [], 'recipients', []);
 	@endphp
 
 	<main class="main container-fluid px-0">
@@ -164,7 +162,7 @@
 							<textarea class="form-control" id="notificationMessageField" name="message" rows="4" maxlength="1000" required></textarea>
 							<div class="invalid-feedback" id="notificationMessageError"></div>
 						</div>
-						<div class="col-12 col-md-4">
+						<div class="col-12 col-md-6">
 							<label for="notificationTypeField" class="form-label">Type/category</label>
 							<select class="form-select" id="notificationTypeField" name="type" required>
 								@forelse ($types as $type)
@@ -174,7 +172,7 @@
 								@endforelse
 							</select>
 						</div>
-						<div class="col-12 col-md-4">
+						<div class="col-12 col-md-6">
 							<label for="notificationChannelField" class="form-label">Channel</label>
 							<select class="form-select" id="notificationChannelField" name="channel" required>
 								@forelse ($channels as $channel)
@@ -183,21 +181,6 @@
 									<option value="system">System</option>
 								@endforelse
 							</select>
-						</div>
-						<div class="col-12 col-md-4">
-							<label for="notificationRecipientField" class="form-label">Recipient</label>
-							<select class="form-select" id="notificationRecipientField" name="recipient_type" required>
-								@forelse ($recipients as $recipient)
-									<option value="{{ data_get($recipient, 'value') }}">{{ data_get($recipient, 'label') }}</option>
-								@empty
-									<option value="system">System-wide</option>
-								@endforelse
-							</select>
-						</div>
-						<div class="col-12 d-none" id="notificationRecipientIdWrapper">
-							<label for="notificationRecipientIdField" class="form-label">Donor ID</label>
-							<input type="number" min="1" step="1" class="form-control" id="notificationRecipientIdField" name="recipient_id" placeholder="Enter donor ID">
-							<div class="invalid-feedback" id="notificationRecipientIdError"></div>
 						</div>
 					</div>
 				</div>

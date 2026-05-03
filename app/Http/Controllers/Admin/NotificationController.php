@@ -3,12 +3,11 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Notification;
+use App\Models\AdminNotification;
 use App\Services\AdminNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -31,10 +30,18 @@ class NotificationController extends Controller
     private const TYPES = [
         'system' => 'System',
         'donor_registration' => 'Donor Registration',
-        'appointment_booked' => 'Appointment',
-        'donation_completed' => 'Donation',
+        'appointment' => 'Appointment',
+        'appointment_booked' => 'Appointment Booked',
+        'appointment_cancelled' => 'Appointment Cancellation',
+        'appointment_rescheduled' => 'Appointment Rescheduled',
+        'appointment_approved' => 'Appointment Approved',
+        'appointment_rejected' => 'Appointment Rejected',
+        'donation' => 'Donation',
+        'donation_completed' => 'Donation Completed',
         'blood_stock_alert' => 'Blood Stock Alert',
         'report' => 'Report',
+        'eligibility_submitted' => 'Eligibility Submitted',
+        'eligibility_reviewed' => 'Eligibility Reviewed',
     ];
 
     public function __construct(private readonly AdminNotificationService $notificationService)
@@ -62,12 +69,6 @@ class NotificationController extends Controller
                     ['value' => 'email', 'label' => 'Email'],
                     ['value' => 'push', 'label' => 'Push'],
                 ],
-                'recipients' => [
-                    ['value' => 'system', 'label' => 'System-wide'],
-                    ['value' => 'admin', 'label' => 'Admins only'],
-                    ['value' => 'all_donors', 'label' => 'All donors'],
-                    ['value' => 'donor', 'label' => 'Specific donor ID'],
-                ],
             ],
         ]);
     }
@@ -84,22 +85,18 @@ class NotificationController extends Controller
         $perPage = (int) ($validated['per_page'] ?? 50);
         $filter = (string) ($validated['filter'] ?? 'all');
 
-        if (! $this->hasNotificationsTable()) {
+        if (! $this->hasAdminNotificationsTable()) {
             return response()->json($this->emptyPayload($page, $perPage));
         }
 
         try {
             $query = $this->filteredQuery($filter);
 
-            if ($this->hasColumn('donor_id') && $this->hasTable('donors')) {
-                $query->with('donor');
-            }
-
             if ($this->hasColumn('created_at')) {
                 $query->orderByDesc('created_at');
             }
 
-            $query->orderByDesc('notification_id');
+            $query->orderByDesc('admin_notification_id');
 
             $paginator = $query->paginate($perPage, ['*'], 'page', $page);
         } catch (Throwable $exception) {
@@ -110,7 +107,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn (Notification $notification): array => $this->transform($notification))
+                ->map(fn (AdminNotification $notification): array => $this->transform($notification))
                 ->values()
                 ->all(),
             'summary' => $this->summary(),
@@ -132,10 +129,6 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Notification not found.'], 404);
         }
 
-        if ($this->hasColumn('donor_id') && $this->hasTable('donors')) {
-            $notification->load('donor');
-        }
-
         return response()->json([
             'data' => $this->transform($notification, true),
         ]);
@@ -143,9 +136,9 @@ class NotificationController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        if (! $this->hasNotificationsTable()) {
+        if (! $this->hasAdminNotificationsTable()) {
             return response()->json([
-                'message' => 'Notification storage is not ready. Run the notification migration first.',
+                'message' => 'Admin notification storage is not ready. Run the admin_notifications migration first.',
                 'summary' => $this->summary(),
             ], 409);
         }
@@ -155,62 +148,16 @@ class NotificationController extends Controller
             'message' => ['required', 'string', 'max:1000'],
             'type' => ['required', 'string', Rule::in(array_keys(self::TYPES))],
             'channel' => ['required', 'string', Rule::in(['system', 'email', 'push'])],
-            'recipient_type' => ['required', 'string', Rule::in(['system', 'admin', 'all_donors', 'donor'])],
-            'recipient_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $recipientType = (string) $validated['recipient_type'];
-        $created = collect();
-
-        if ($recipientType === 'donor') {
-            $donorId = (int) ($validated['recipient_id'] ?? 0);
-            if ($donorId <= 0 || ! $this->donorExists($donorId)) {
-                return response()->json([
-                    'message' => 'Please enter a valid donor ID.',
-                    'errors' => ['recipient_id' => ['Please enter a valid donor ID.']],
-                ], 422);
-            }
-
-            $created->push($this->notificationService->create(array_merge($validated, [
-                'donor_id' => $donorId,
-                'recipient_id' => $donorId,
-                'related_type' => 'donor',
-                'related_id' => $donorId,
-            ])));
-        } elseif ($recipientType === 'all_donors') {
-            $donorIds = $this->hasTable('donors')
-                ? DB::table('donors')->orderBy('donor_id')->pluck('donor_id')
-                : collect();
-            foreach ($donorIds as $donorId) {
-                $created->push($this->notificationService->create(array_merge($validated, [
-                    'donor_id' => (int) $donorId,
-                    'recipient_id' => (int) $donorId,
-                    'related_type' => 'donor',
-                    'related_id' => (int) $donorId,
-                ])));
-            }
-
-            if ($donorIds->isEmpty()) {
-                $created->push($this->notificationService->create($validated));
-            }
-        } else {
-            $created->push($this->notificationService->create($validated));
-        }
-
-        $created = $created->filter();
-        if ($created->isEmpty()) {
+        $notification = $this->notificationService->create($validated);
+        if (! $notification) {
             return response()->json(['message' => 'Unable to create notification.'], 500);
         }
 
-        /** @var Notification $first */
-        $first = $created->first();
-        $first->load('donor');
-
         return response()->json([
-            'message' => $created->count() > 1
-                ? "Created {$created->count()} notifications."
-                : 'Notification created.',
-            'data' => $this->transform($first, true),
+            'message' => 'Notification created.',
+            'data' => $this->transform($notification, true),
             'summary' => $this->summary(),
         ], 201);
     }
@@ -224,25 +171,18 @@ class NotificationController extends Controller
 
         $updates = [];
         if ($this->hasColumn('is_read')) {
-            $updates['is_read'] = 1;
+            $updates['is_read'] = true;
         }
         if ($this->hasColumn('read_at')) {
             $updates['read_at'] = $notification->read_at ?: now();
-        }
-        if ($this->hasColumn('updated_at')) {
-            $updates['updated_at'] = now();
         }
         if ($updates !== []) {
             $notification->forceFill($updates)->save();
         }
 
-        if ($this->hasColumn('donor_id') && $this->hasTable('donors')) {
-            $notification->load('donor');
-        }
-
         return response()->json([
             'message' => 'Notification marked as read.',
-            'data' => $this->transform($notification, true),
+            'data' => $this->transform($notification->refresh(), true),
             'summary' => $this->summary(),
         ]);
     }
@@ -251,32 +191,38 @@ class NotificationController extends Controller
     {
         $count = 0;
 
-        if (! $this->hasNotificationsTable()) {
+        if (! $this->hasAdminNotificationsTable()) {
             return response()->json([
                 'message' => 'No unread notifications to update.',
                 'summary' => $this->summary(),
             ]);
         }
 
-        $this->unreadQuery()
-            ->chunkById(100, function ($notifications) use (&$count): void {
-                foreach ($notifications as $notification) {
-                    $updates = [];
-                    if ($this->hasColumn('is_read')) {
-                        $updates['is_read'] = 1;
+        try {
+            $this->unreadQuery()
+                ->chunkById(100, function ($notifications) use (&$count): void {
+                    foreach ($notifications as $notification) {
+                        $updates = [];
+                        if ($this->hasColumn('is_read')) {
+                            $updates['is_read'] = true;
+                        }
+                        if ($this->hasColumn('read_at')) {
+                            $updates['read_at'] = $notification->read_at ?: now();
+                        }
+                        if ($updates !== []) {
+                            $notification->forceFill($updates)->save();
+                        }
+                        $count++;
                     }
-                    if ($this->hasColumn('read_at')) {
-                        $updates['read_at'] = $notification->read_at ?: now();
-                    }
-                    if ($this->hasColumn('updated_at')) {
-                        $updates['updated_at'] = now();
-                    }
-                    if ($updates !== []) {
-                        $notification->forceFill($updates)->save();
-                    }
-                    $count++;
-                }
-            }, 'notification_id');
+                }, 'admin_notification_id', 'admin_notification_id');
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Unable to mark notifications as read.',
+                'summary' => $this->summary(),
+            ], 500);
+        }
 
         return response()->json([
             'message' => $count > 0 ? "{$count} notifications marked as read." : 'No unread notifications to update.',
@@ -303,20 +249,29 @@ class NotificationController extends Controller
     {
         $count = 0;
 
-        if (! $this->hasNotificationsTable()) {
+        if (! $this->hasAdminNotificationsTable()) {
             return response()->json([
                 'message' => 'No notifications to clear.',
                 'summary' => $this->summary(),
             ]);
         }
 
-        Notification::query()
-            ->chunkById(100, function ($notifications) use (&$count): void {
-                foreach ($notifications as $notification) {
-                    $this->deleteNotification($notification);
-                    $count++;
-                }
-            }, 'notification_id');
+        try {
+            AdminNotification::query()
+                ->chunkById(100, function ($notifications) use (&$count): void {
+                    foreach ($notifications as $notification) {
+                        $this->deleteNotification($notification);
+                        $count++;
+                    }
+                }, 'admin_notification_id', 'admin_notification_id');
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Unable to clear notifications.',
+                'summary' => $this->summary(),
+            ], 500);
+        }
 
         return response()->json([
             'message' => $count > 0 ? "{$count} notifications cleared." : 'No notifications to clear.',
@@ -332,8 +287,11 @@ class NotificationController extends Controller
             'unread' => $this->applyUnread($query),
             'read' => $this->applyRead($query),
             'donor_registration' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['donor_registration', 'new_donor_registration']) : $query,
-            'appointment' => $this->hasColumn('notification_type') ? $query->where('notification_type', 'like', 'appointment_%') : $query,
-            'donation' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['donation_completed', 'appointment_completed']) : $query,
+            'appointment' => $this->hasColumn('notification_type') ? $query->where(function ($builder): void {
+                $builder->where('notification_type', 'appointment')
+                    ->orWhere('notification_type', 'like', 'appointment_%');
+            }) : $query,
+            'donation' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['donation', 'donation_completed', 'appointment_completed']) : $query,
             'blood_stock_alert' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['blood_stock_alert', 'low_blood_stock_alert']) : $query,
             'report' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['report', 'monthly_report_generated', 'report_generated']) : $query,
             'system' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['system', 'admin', 'announcement']) : $query,
@@ -369,9 +327,7 @@ class NotificationController extends Controller
             });
         }
 
-        return $query->where(function ($builder): void {
-            $builder->whereRaw('1 = 0');
-        });
+        return $query->whereRaw('1 = 0');
     }
 
     private function applyRead($query)
@@ -396,7 +352,7 @@ class NotificationController extends Controller
 
     private function summary(): array
     {
-        if (! $this->hasNotificationsTable()) {
+        if (! $this->hasAdminNotificationsTable()) {
             return $this->emptySummary();
         }
 
@@ -443,23 +399,19 @@ class NotificationController extends Controller
 
     private function baseNotificationQuery()
     {
-        $query = Notification::query();
-
-        if ($this->hasColumn('deleted_at')) {
-            $query->whereNull('deleted_at');
-        }
-
-        return $query;
+        return AdminNotification::query();
     }
 
-    private function findNotification(int $id): ?Notification
+    private function findNotification(int $id): ?AdminNotification
     {
-        if (! $this->hasNotificationsTable()) {
+        if (! $this->hasAdminNotificationsTable()) {
             return null;
         }
 
         try {
-            return $this->baseNotificationQuery()->where('notification_id', $id)->first();
+            return $this->baseNotificationQuery()
+                ->where('admin_notification_id', $id)
+                ->first();
         } catch (Throwable $exception) {
             report($exception);
 
@@ -467,39 +419,14 @@ class NotificationController extends Controller
         }
     }
 
-    private function deleteNotification(Notification $notification): void
+    private function deleteNotification(AdminNotification $notification): void
     {
-        if ($this->hasColumn('deleted_at')) {
-            $updates = ['deleted_at' => now()];
-            if ($this->hasColumn('updated_at')) {
-                $updates['updated_at'] = now();
-            }
-
-            $notification->forceFill($updates)->save();
-            return;
-        }
-
         $notification->delete();
     }
 
-    private function donorExists(int $donorId): bool
+    private function hasAdminNotificationsTable(): bool
     {
-        if (! $this->hasTable('donors')) {
-            return false;
-        }
-
-        try {
-            return DB::table('donors')->where('donor_id', $donorId)->exists();
-        } catch (Throwable $exception) {
-            report($exception);
-
-            return false;
-        }
-    }
-
-    private function hasNotificationsTable(): bool
-    {
-        return $this->hasTable('notifications');
+        return $this->hasTable('admin_notifications');
     }
 
     private function hasTable(string $table): bool
@@ -526,12 +453,12 @@ class NotificationController extends Controller
         if ($columns === null) {
             $columns = [];
 
-            if (! $this->hasNotificationsTable()) {
+            if (! $this->hasAdminNotificationsTable()) {
                 return false;
             }
 
             try {
-                foreach (Schema::getColumnListing('notifications') as $existingColumn) {
+                foreach (Schema::getColumnListing('admin_notifications') as $existingColumn) {
                     $columns[$existingColumn] = true;
                 }
             } catch (Throwable $exception) {
@@ -542,29 +469,22 @@ class NotificationController extends Controller
         return isset($columns[$column]);
     }
 
-    private function transform(Notification $notification, bool $withDetails = false): array
+    private function transform(AdminNotification $notification, bool $withDetails = false): array
     {
+        $id = (int) $notification->admin_notification_id;
         $type = (string) ($notification->notification_type ?: 'system');
         $isRead = (bool) ($notification->is_read || $notification->read_at);
-        $createdAt = $notification->created_at instanceof Carbon
-            ? $notification->created_at
-            : ($notification->created_at ? Carbon::parse($notification->created_at) : null);
-        $readAt = $notification->read_at instanceof Carbon
-            ? $notification->read_at
-            : ($notification->read_at ? Carbon::parse($notification->read_at) : null);
+        $createdAt = $this->dateValue($notification->created_at);
+        $readAt = $this->dateValue($notification->read_at);
 
         $data = [
-            'id' => (int) $notification->notification_id,
+            'id' => $id,
+            'admin_notification_id' => $id,
             'type' => $type,
+            'notification_type' => $type,
             'title' => (string) ($notification->title ?: $this->notificationService->titleFromType($type)),
             'message' => (string) ($notification->message ?? ''),
             'channel' => (string) ($notification->channel ?: 'system'),
-            'recipient_type' => (string) ($notification->recipient_type ?: ($notification->donor_id ? 'donor' : 'system')),
-            'recipient_id' => $notification->recipient_id ? (int) $notification->recipient_id : null,
-            'donor_id' => $notification->donor_id ? (int) $notification->donor_id : null,
-            'donor_name' => $notification->relationLoaded('donor') && $notification->donor
-                ? trim((string) $notification->donor->first_name . ' ' . (string) $notification->donor->last_name)
-                : null,
             'is_read' => $isRead,
             'read_at' => $readAt?->toIso8601String(),
             'created_at' => $createdAt?->toIso8601String(),
@@ -583,7 +503,26 @@ class NotificationController extends Controller
         return $data;
     }
 
-    private function relatedLink(Notification $notification): ?array
+    private function dateValue(mixed $value): ?Carbon
+    {
+        if ($value instanceof Carbon) {
+            return $value;
+        }
+
+        if (! $value) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return null;
+        }
+    }
+
+    private function relatedLink(AdminNotification $notification): ?array
     {
         $type = strtolower((string) $notification->related_type);
         $id = $notification->related_id ? (int) $notification->related_id : null;

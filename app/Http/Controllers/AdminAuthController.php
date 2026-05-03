@@ -4447,6 +4447,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 'notification_type' => $type,
                 'is_read' => 0,
                 'created_at' => now(),
+                'push_sent' => 0,
             ]);
         } catch (Throwable $exception) {
             logger()->warning('Failed to create donor notification.', [

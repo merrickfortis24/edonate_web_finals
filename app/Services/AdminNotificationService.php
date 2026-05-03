@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\Notification;
+use App\Models\AdminNotification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
@@ -10,17 +10,16 @@ use Throwable;
 class AdminNotificationService
 {
     /**
-     * @var array<string, array<string, bool>>
+     * @var array<string, bool>|null
      */
-    private array $columnCache = [];
+    private ?array $columnCache = null;
 
-    public function create(array $data): ?Notification
+    public function create(array $data): ?AdminNotification
     {
-        if (! $this->hasNotificationsTable()) {
+        if (! $this->hasAdminNotificationsTable()) {
             return null;
         }
 
-        $now = now();
         $type = $this->normalizeType((string) ($data['type'] ?? $data['notification_type'] ?? 'system'));
         $message = trim((string) ($data['message'] ?? ''));
 
@@ -29,19 +28,14 @@ class AdminNotificationService
         }
 
         $values = [
-            'donor_id' => $this->nullableInteger($data['donor_id'] ?? null),
             'title' => trim((string) ($data['title'] ?? $this->titleFromType($type))),
             'message' => $message,
             'notification_type' => $type,
             'channel' => $this->normalizeChannel((string) ($data['channel'] ?? 'system')),
-            'recipient_type' => $this->normalizeRecipientType((string) ($data['recipient_type'] ?? 'admin')),
-            'recipient_id' => $this->nullableInteger($data['recipient_id'] ?? null),
             'related_type' => $this->nullableString($data['related_type'] ?? null),
             'related_id' => $this->nullableInteger($data['related_id'] ?? null),
-            'is_read' => 0,
+            'is_read' => false,
             'read_at' => null,
-            'created_at' => $now,
-            'updated_at' => $now,
         ];
 
         $insert = [];
@@ -56,7 +50,7 @@ class AdminNotificationService
         }
 
         try {
-            return Notification::query()->create($insert);
+            return AdminNotification::query()->create($insert);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -70,13 +64,12 @@ class AdminNotificationService
         string $message,
         ?string $relatedType = null,
         ?int $relatedId = null
-    ): ?Notification {
+    ): ?AdminNotification {
         return $this->create([
             'type' => $type,
             'title' => $title,
             'message' => $message,
             'channel' => 'system',
-            'recipient_type' => 'admin',
             'related_type' => $relatedType,
             'related_id' => $relatedId,
         ]);
@@ -115,36 +108,31 @@ class AdminNotificationService
         return in_array($channel, ['system', 'email', 'push'], true) ? $channel : 'system';
     }
 
-    public function normalizeRecipientType(string $recipientType): string
-    {
-        $recipientType = Str::of($recipientType)->lower()->replace([' ', '-'], '_')->trim()->toString();
-
-        return in_array($recipientType, ['admin', 'admins', 'system', 'all_donors', 'donor'], true)
-            ? $recipientType
-            : 'admin';
-    }
-
     private function hasColumn(string $column): bool
     {
-        if (! isset($this->columnCache['notifications'])) {
-            $this->columnCache['notifications'] = [];
+        if ($this->columnCache === null) {
+            $this->columnCache = [];
+
+            if (! $this->hasAdminNotificationsTable()) {
+                return false;
+            }
 
             try {
-                foreach (Schema::getColumnListing('notifications') as $existingColumn) {
-                    $this->columnCache['notifications'][$existingColumn] = true;
+                foreach (Schema::getColumnListing('admin_notifications') as $existingColumn) {
+                    $this->columnCache[$existingColumn] = true;
                 }
             } catch (Throwable $exception) {
                 report($exception);
             }
         }
 
-        return isset($this->columnCache['notifications'][$column]);
+        return isset($this->columnCache[$column]);
     }
 
-    private function hasNotificationsTable(): bool
+    private function hasAdminNotificationsTable(): bool
     {
         try {
-            return Schema::hasTable('notifications');
+            return Schema::hasTable('admin_notifications');
         } catch (Throwable $exception) {
             report($exception);
 

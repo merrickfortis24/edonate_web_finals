@@ -26,9 +26,6 @@ document.addEventListener('DOMContentLoaded', function () {
         sendModal: '#notificationSendModal',
         sendForm: '#notificationSendForm',
         submitBtn: '#notificationSubmitBtn',
-        recipientField: '#notificationRecipientField',
-        recipientIdWrapper: '#notificationRecipientIdWrapper',
-        recipientIdField: '#notificationRecipientIdField',
     };
 
     function csrfToken() {
@@ -287,8 +284,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     ${detailRow('Status', notification.status_label || (notification.is_read ? 'Read' : 'Unread'))}
                     ${detailRow('Created', notification.created_at_display)}
                     ${detailRow('Read at', notification.read_at_display || '-')}
-                    ${detailRow('Recipient', notification.recipient_type)}
-                    ${detailRow('Donor', notification.donor_name || (notification.donor_id ? `Donor #${notification.donor_id}` : '-'))}
                     ${detailRow('Related record', notification.related_type && notification.related_id ? `${notification.related_type} #${notification.related_id}` : '-')}
                 </div>`;
 
@@ -364,7 +359,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('#notificationSendForm .is-invalid').forEach((element) => {
             element.classList.remove('is-invalid');
         });
-        ['notificationTitleError', 'notificationMessageError', 'notificationRecipientIdError'].forEach((id) => {
+        ['notificationTitleError', 'notificationMessageError'].forEach((id) => {
             const element = document.getElementById(id);
             if (element) element.textContent = '';
         });
@@ -374,7 +369,6 @@ document.addEventListener('DOMContentLoaded', function () {
         const map = {
             title: ['notificationTitleField', 'notificationTitleError'],
             message: ['notificationMessageField', 'notificationMessageError'],
-            recipient_id: ['notificationRecipientIdField', 'notificationRecipientIdError'],
         };
 
         Object.keys(errors || {}).forEach((field) => {
@@ -395,21 +389,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         form.reset();
         clearFormErrors();
-        toggleRecipientId();
         bootstrap.Modal.getOrCreateInstance(modalElement).show();
-    }
-
-    function toggleRecipientId() {
-        const recipientField = document.querySelector(selectors.recipientField);
-        const wrapper = document.querySelector(selectors.recipientIdWrapper);
-        const input = document.querySelector(selectors.recipientIdField);
-        const needsDonorId = recipientField && recipientField.value === 'donor';
-
-        if (wrapper) wrapper.classList.toggle('d-none', !needsDonorId);
-        if (input) {
-            input.required = Boolean(needsDonorId);
-            if (!needsDonorId) input.value = '';
-        }
     }
 
     async function submitNotification(event) {
@@ -425,8 +405,6 @@ document.addEventListener('DOMContentLoaded', function () {
             message: formData.get('message'),
             type: formData.get('type'),
             channel: formData.get('channel'),
-            recipient_type: formData.get('recipient_type'),
-            recipient_id: formData.get('recipient_id') || null,
         };
 
         if (submitBtn) {
@@ -479,7 +457,6 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelector(selectors.sendBtn)?.addEventListener('click', openSendModal);
     document.querySelector(selectors.markAllBtn)?.addEventListener('click', markAllRead);
     document.querySelector(selectors.clearAllBtn)?.addEventListener('click', clearAll);
-    document.querySelector(selectors.recipientField)?.addEventListener('change', toggleRecipientId);
     document.querySelector(selectors.sendForm)?.addEventListener('submit', submitNotification);
 
     updateSummary(payload.summary || {});

@@ -17,30 +17,18 @@ class Notification extends Model
 
     protected $fillable = [
         'donor_id',
-        'title',
         'message',
         'notification_type',
-        'channel',
-        'recipient_type',
-        'recipient_id',
-        'related_type',
-        'related_id',
         'is_read',
-        'read_at',
         'created_at',
-        'updated_at',
-        'deleted_at',
+        'push_sent',
     ];
 
     protected $casts = [
         'donor_id' => 'integer',
-        'recipient_id' => 'integer',
-        'related_id' => 'integer',
         'is_read' => 'boolean',
-        'read_at' => 'datetime',
         'created_at' => 'datetime',
-        'updated_at' => 'datetime',
-        'deleted_at' => 'datetime',
+        'push_sent' => 'boolean',
     ];
 
     public function donor()

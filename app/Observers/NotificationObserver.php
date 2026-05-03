@@ -18,18 +18,11 @@ class NotificationObserver
             $database->getReference('notifications/' . $notification->notification_id)->set([
                 'notification_id' => $notification->notification_id,
                 'donor_id' => $notification->donor_id,
-                'title' => $notification->title,
                 'message' => $notification->message,
                 'notification_type' => $notification->notification_type,
-                'channel' => $notification->channel,
-                'recipient_type' => $notification->recipient_type,
-                'recipient_id' => $notification->recipient_id,
-                'related_type' => $notification->related_type,
-                'related_id' => $notification->related_id,
-                'is_read' => (bool) ($notification->is_read || $notification->read_at),
-                'read_at' => $notification->read_at ? (string) $notification->read_at : null,
+                'is_read' => (bool) $notification->is_read,
                 'created_at' => (string) $notification->created_at,
-                'updated_at' => $notification->updated_at ? (string) $notification->updated_at : null,
+                'push_sent' => (bool) $notification->push_sent,
             ]);
         } catch (Throwable $exception) {
             report($exception);
