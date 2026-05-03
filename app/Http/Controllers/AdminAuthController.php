@@ -815,6 +815,7 @@ class AdminAuthController extends BaseController
                 'donor_id'        => $row->donor_id,
                 'appointment_id'  => $row->appointment_id,
                 'donation_date'   => $row->appointment_date,
+                'donation_center' => $row->donation_center ?? 'Unknown',
                 // Default status for a completed appointment is usually completed or pending evaluation
                 // We'll set it to 'completed' per instructions, or let observers handle it if they exist
                 'status'          => 'completed',
