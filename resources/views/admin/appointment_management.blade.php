@@ -159,6 +159,75 @@
     </section>
 </main>
 
+{{-- ── Complete Donation Modal ── --}}
+<div class="modal fade" id="completeModal" tabindex="-1" role="dialog" aria-labelledby="completeModalTitle" aria-modal="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border:none; border-radius:20px; overflow:hidden;">
+
+            <div class="modal-header" style="background:#129800; border:none; padding:18px 24px;">
+                <h5 class="modal-title" id="completeModalTitle" style="color:#fff; font-weight:700; font-size:18px; display:flex; align-items:center; gap:10px;">
+                    <svg viewBox="0 0 24 24" fill="none" style="width:20px;height:20px;" aria-hidden="true">
+                        <path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Complete Donation
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter:brightness(0) invert(1);"></button>
+            </div>
+
+            <div class="modal-body" style="padding:24px; display:flex; flex-direction:column; gap:20px;">
+
+                {{-- Appointment info --}}
+                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px 16px;">
+                    <p style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#129800; margin-bottom:6px;">Completing Appointment</p>
+                    <p class="complete-info-code" style="font-size:15px; font-weight:700; color:#111; margin:0;">—</p>
+                    <p class="complete-info-donor" style="font-size:13px; color:#555; margin-top:3px;">—</p>
+                </div>
+
+                {{-- Blood units input --}}
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                    <label for="completeBloodUnits" style="font-size:13px; font-weight:600; color:#1f1f1f;">
+                        Blood Units Donated <span style="color:#b60c0c;">*</span>
+                    </label>
+                    <input
+                        type="number"
+                        id="completeBloodUnits"
+                        min="1"
+                        max="10"
+                        step="1"
+                        placeholder="e.g. 1"
+                        style="height:44px; padding:0 14px; border:1.5px solid #d7d7d7; border-radius:10px; background:#f3f3f3; font-size:15px; font-weight:500; outline:none; width:100%;"
+                    />
+                    <span style="font-size:11px; color:#888;">Standard whole blood donation = 1 unit (450 mL)</span>
+                </div>
+
+                {{-- Next eligible date preview --}}
+                <div id="completeEligiblePreview" style="display:none; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px 14px;">
+                    <p style="font-size:12px; font-weight:600; color:#92400e; margin:0;">
+                        📅 Next eligible donation date: <span id="completeNextEligible" style="font-weight:700;">—</span>
+                    </p>
+                </div>
+
+                {{-- Error --}}
+                <div id="completeError" style="display:none; background:#fff0f0; border:1px solid #ffc5c5; border-radius:10px; padding:13px 15px; font-size:13px; color:#8b0000; font-weight:500;">
+                    <span id="completeErrorText"></span>
+                </div>
+
+            </div>
+
+            <div class="modal-footer" style="padding:16px 24px; border-top:1px solid rgba(0,0,0,0.08); gap:10px; justify-content:flex-end;">
+                <button type="button" data-bs-dismiss="modal" style="height:42px; padding:0 22px; border-radius:10px; border:1.5px solid #ccc; background:#fff; font-size:14px; font-weight:600; color:#555; cursor:pointer;">
+                    Cancel
+                </button>
+                <button type="button" id="completeConfirmBtn" style="height:42px; padding:0 24px; border-radius:10px; border:none; background:#129800; font-size:14px; font-weight:600; color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:8px;">
+                    <span class="complete-spinner" style="display:none; width:15px; height:15px; border:2px solid rgba(255,255,255,0.35); border-top-color:#fff; border-radius:50%; animation:spin 0.65s linear infinite;"></span>
+                    <span class="complete-label">Confirm Donation</span>
+                </button>
+            </div>
+
+        </div>
+    </div>
+</div>
+
 {{-- ── Reschedule Modal ── --}}
 <div class="modal fade reschedule-modal"
      id="rescheduleModal"
@@ -809,37 +878,15 @@
                 }
 
                 if (action === 'complete') {
-                    Swal.fire({
-                        title: 'Mark as Completed?',
-                        text: 'This will create a donation record for the donor.',
-                        icon: 'question',
-                        showCancelButton: true,
-                        confirmButtonColor: '#129800',
-                        cancelButtonColor: '#6c757d',
-                        confirmButtonText: 'Yes, Complete',
-                        cancelButtonText: 'Cancel'
-                    }).then(function (result) {
-                        if (!result.isConfirmed) { return; }
-                        actionButton.disabled = true;
-                        performAppointmentAction(appointmentId, action, null)
-                            .then(function () {
-                                loadAppointments();
-                                Swal.fire({
-                                    title: 'Donation Completed!',
-                                    text: 'Donation record has been created successfully.',
-                                    icon: 'success',
-                                    timer: 2500,
-                                    showConfirmButton: false
-                                });
-                            })
-                            .catch(function (error) {
-                                Swal.fire('Error', error && error.message ? error.message : 'Action failed.', 'error');
-                            })
-                            .then(function () { actionButton.disabled = false; });
-                    });
+                    var donorNameText = row ? (row.querySelector('.appointment-donor__name')
+                        ? row.querySelector('.appointment-donor__name').textContent : '') : '';
+                    var apptCodeText = row ? (row.querySelector('.appointment-id')
+                        ? row.querySelector('.appointment-id').textContent : '') : '';
+                    openCompleteModal(appointmentId, apptCodeText, donorNameText);
                     return;
                 }
             });
+        }
         }
 
         document.querySelectorAll('.appointment-view-btn').forEach(function (element) {

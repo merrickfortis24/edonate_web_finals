@@ -788,6 +788,10 @@ class AdminAuthController extends BaseController
      */
     public function completeAppointment(Request $request, int $appointment): JsonResponse
     {
+        $validated = $request->validate([
+            'blood_units' => ['nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+
         $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
         if (!$row) {
             return response()->json(['message' => 'Appointment not found.'], 404);
@@ -802,19 +806,23 @@ class AdminAuthController extends BaseController
             ? (int) $request->session()->get('admin_id')
             : null;
 
-        DB::transaction(function () use ($row, $appointment, $actorAdminId) {
+        $bloodUnits = isset($validated['blood_units']) && is_numeric($validated['blood_units'])
+            ? (int) $validated['blood_units']
+            : null;
+
+        DB::transaction(function () use ($row, $appointment, $actorAdminId, $bloodUnits) {
             DB::table('appointments')->where('appointment_id', $appointment)->update([
-                'status' => 'completed',
+                'status'       => 'completed',
                 'completed_at' => now(),
-                'admin_id' => $actorAdminId,
+                'admin_id'     => $actorAdminId,
             ]);
 
             DB::table('donation_records')->insert([
-                'donor_id' => $row->donor_id,
+                'donor_id'       => $row->donor_id,
                 'appointment_id' => $row->appointment_id,
-                'donation_date' => $row->appointment_date,
-                'blood_units' => null,
-                'remarks' => null,
+                'donation_date'  => $row->appointment_date,
+                'blood_units'    => $bloodUnits,
+                'remarks'        => null,
             ]);
         });
 
@@ -829,9 +837,10 @@ class AdminAuthController extends BaseController
 
         $this->logAppointmentAudit($request, 'appointment_completed', "Completed appointment {$appointmentCode}.", $appointment, [
             'appointment_id' => $appointment,
-            'donor_id' => $donorId,
-            'previous_status' => $row->status ?? null,
-            'new_status' => 'completed',
+            'donor_id'       => $donorId,
+            'blood_units'    => $bloodUnits,
+            'previous_status'=> $row->status ?? null,
+            'new_status'     => 'completed',
         ]);
 
         return response()->json(['message' => 'Appointment completed and donation record created.']);
