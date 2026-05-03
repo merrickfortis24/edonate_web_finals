@@ -54,7 +54,7 @@
 			</div>
 
 			{{-- Blood type filter --}}
-			<p class="filter-panel__label">Blood Typessssssssssss</p>
+			<p class="filter-panel__label">Blood Typessssssssssss rrrrrrrr</p>
 			<div class="filter-panel__select-wrap">
 				<select id="filterBloodType" class="filter-panel__select form-select" aria-label="Filter by blood type">
 					<option value="">All Blood Types</option>
