@@ -8,6 +8,7 @@ use App\Models\DonationRecord;
 use App\Models\Donor;
 use App\Models\Location;
 use App\Models\Notification;
+use App\Services\GeocodingService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -132,6 +133,7 @@ class DonorDashboardController extends Controller
         DB::beginTransaction();
 
         try {
+            $shouldGeocodeLocation = false;
             $bloodType = BloodType::query()->firstOrCreate([
                 'blood_type' => $validated['blood_type'],
             ]);
@@ -141,12 +143,23 @@ class DonorDashboardController extends Controller
                 : null;
 
             if ($location) {
-                $location->update([
+                $addressChanged = $this->locationAddressChanged($location, [
                     'street_address' => $validated['street_address'],
                     'barangay_name' => $validated['barangay'],
                     'city' => $validated['city'],
                     'province' => $validated['province'],
                 ]);
+
+                $location->update([
+                    'street_address' => $validated['street_address'],
+                    'barangay_name' => $validated['barangay'],
+                    'city' => $validated['city'],
+                    'province' => $validated['province'],
+                    'latitude' => $addressChanged ? null : $location->latitude,
+                    'longitude' => $addressChanged ? null : $location->longitude,
+                ]);
+
+                $shouldGeocodeLocation = $addressChanged || ! app(GeocodingService::class)->hasCoordinates($location);
             } else {
                 $location = Location::query()->create([
                     'street_address' => $validated['street_address'],
@@ -154,6 +167,7 @@ class DonorDashboardController extends Controller
                     'city' => $validated['city'],
                     'province' => $validated['province'],
                 ]);
+                $shouldGeocodeLocation = true;
             }
 
             $donor->update([
@@ -167,6 +181,10 @@ class DonorDashboardController extends Controller
             $request->session()->put('donor_name', trim($donor->first_name . ' ' . $donor->last_name));
 
             DB::commit();
+
+            if ($shouldGeocodeLocation) {
+                app(GeocodingService::class)->geocodeAndSave($location);
+            }
 
             return redirect('/dashboard')->with('success', 'Profile completed successfully.');
         } catch (\Throwable $exception) {
@@ -188,5 +206,19 @@ class DonorDashboardController extends Controller
             && !empty($location->barangay_name)
             && !empty($location->city)
             && !empty($location->province);
+    }
+
+    /**
+     * @param  array<string, string>  $payload
+     */
+    private function locationAddressChanged(Location $location, array $payload): bool
+    {
+        foreach ($payload as $field => $value) {
+            if (trim((string) ($location->{$field} ?? '')) !== trim((string) $value)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

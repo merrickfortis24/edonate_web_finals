@@ -31,6 +31,7 @@
 	'donorsUrl'       => route('admin.map.donors'),
 	'barangaysUrl'    => route('admin.map.barangays'),
 	'summaryUrl'      => route('admin.map.summary'),
+	'geocodeMissingUrl' => route('admin.map.geocode-missing'),
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
@@ -109,7 +110,15 @@
 					<span class="quick-stats__key">Visible Pins:</span>
 					<span class="quick-stats__val" id="statVisiblePins">—</span>
 				</div>
+				<div class="quick-stats__row">
+					<span class="quick-stats__key">Unmapped Donors:</span>
+					<span class="quick-stats__val" id="statUnmappedLocations">—</span>
+				</div>
 			</div>
+
+			<button id="geocodeMissingBtn" class="filter-panel__clear-btn btn btn-outline-primary mt-2" type="button">
+				Geocode Missing Locations
+			</button>
 
 			<hr class="filter-panel__divider"/>
 
@@ -246,8 +255,10 @@
 	const statDonors      = document.getElementById('statTotalDonors');
 	const statLocations   = document.getElementById('statTotalLocations');
 	const statPins        = document.getElementById('statVisiblePins');
+	const statUnmapped    = document.getElementById('statUnmappedLocations');
 	const summaryBar      = document.getElementById('mapSummaryBar');
 	const btLegend        = document.getElementById('btLegend');
+	const geocodeMissingBtn = document.getElementById('geocodeMissingBtn');
 
 	const btnMarkers  = document.getElementById('btnMarkers');
 	const btnHeatmap  = document.getElementById('btnHeatmap');
@@ -278,6 +289,73 @@
 		const url = new URL(base, window.location.origin);
 		Object.entries(params).forEach(([k, v]) => { if (v) url.searchParams.set(k, v); });
 		return url.toString();
+	}
+
+	function csrfToken() {
+		return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '{{ csrf_token() }}';
+	}
+
+	function validCoordinate(lat, lng) {
+		const latitude = Number(lat);
+		const longitude = Number(lng);
+
+		return Number.isFinite(latitude)
+			&& Number.isFinite(longitude)
+			&& latitude >= -90
+			&& latitude <= 90
+			&& longitude >= -180
+			&& longitude <= 180
+			&& !(latitude === 0 && longitude === 0);
+	}
+
+	function normalizeDonorCoordinates(donors) {
+		return (Array.isArray(donors) ? donors : [])
+			.map(function (donor) {
+				const lat = donor.lat ?? donor.latitude;
+				const lng = donor.lng ?? donor.longitude;
+
+				return {
+					...donor,
+					lat: Number(lat),
+					lng: Number(lng),
+				};
+			})
+			.filter(function (donor) {
+				return validCoordinate(donor.lat, donor.lng);
+			});
+	}
+
+	function normalizeBarangayCoordinates(barangays) {
+		return (Array.isArray(barangays) ? barangays : [])
+			.map(function (barangay) {
+				return {
+					...barangay,
+					centroid_lat: Number(barangay.centroid_lat ?? barangay.lat ?? barangay.latitude),
+					centroid_lng: Number(barangay.centroid_lng ?? barangay.lng ?? barangay.longitude),
+				};
+			})
+			.filter(function (barangay) {
+				return validCoordinate(barangay.centroid_lat, barangay.centroid_lng);
+			});
+	}
+
+	async function postJson(url, payload = {}) {
+		const response = await fetch(url, {
+			method: 'POST',
+			headers: {
+				'Accept': 'application/json',
+				'Content-Type': 'application/json',
+				'X-Requested-With': 'XMLHttpRequest',
+				'X-CSRF-TOKEN': csrfToken(),
+			},
+			body: JSON.stringify(payload),
+		});
+
+		if (!response.ok) {
+			throw new Error('Request failed.');
+		}
+
+		return response.json();
 	}
 
 	function updateFilterChips(filters) {
@@ -434,8 +512,14 @@
 
 	/* ── Populate summary bar ── */
 	function renderSummaryBar(summary) {
-		statDonors.textContent    = summary.total_donors    ?? '—';
-		statLocations.textContent = summary.total_locations ?? '—';
+		const mappedLocations = summary.mapped_locations ?? summary.total_locations ?? '—';
+		const unmappedDonors = summary.unmapped_donors ?? summary.unmapped_locations ?? '—';
+
+		statDonors.textContent    = summary.total_donors ?? '—';
+		statLocations.textContent = mappedLocations;
+		if (statUnmapped) {
+			statUnmapped.textContent = unmappedDonors;
+		}
 
 		const btBreakdown = (summary.blood_type_breakdown ?? [])
 			.map(b => `<div class="summary-stat">
@@ -493,8 +577,8 @@
 				throw new Error('One or more API calls failed.');
 			}
 
-			allDonors    = await donorResp.json();
-			allBarangays = await barangayResp.json();
+			allDonors    = normalizeDonorCoordinates(await donorResp.json());
+			allBarangays = normalizeBarangayCoordinates(await barangayResp.json());
 			const summary = await summaryResp.json();
 
 			populateBarangayDropdown(allBarangays);
@@ -556,6 +640,30 @@
 	});
 
 	/* ── Today's date ── */
+	if (geocodeMissingBtn && URLS.geocodeMissingUrl) {
+		geocodeMissingBtn.addEventListener('click', async function () {
+			if (!window.confirm('Try to geocode donor locations that are missing map coordinates?')) {
+				return;
+			}
+
+			const defaultLabel = 'Geocode Missing Locations';
+			geocodeMissingBtn.disabled = true;
+			geocodeMissingBtn.textContent = 'Geocoding...';
+
+			try {
+				const result = await postJson(URLS.geocodeMissingUrl, { limit: 5 });
+				summaryBar.innerHTML = `<span style="color:#276749;font-size:13px;">Geocoding complete: ${result.succeeded ?? 0} saved, ${result.failed ?? 0} failed.</span>`;
+				await refresh();
+			} catch (err) {
+				console.error('Geocode missing locations error:', err);
+				summaryBar.innerHTML = '<span style="color:#e53e3e;font-size:13px;">Could not geocode missing locations. Please try again.</span>';
+			} finally {
+				geocodeMissingBtn.disabled = false;
+				geocodeMissingBtn.textContent = defaultLabel;
+			}
+		});
+	}
+
 	const dateEl = document.getElementById('todayDate');
 	if (dateEl) {
 		dateEl.textContent = new Date().toLocaleDateString('en-US', {

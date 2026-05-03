@@ -76,6 +76,7 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/map/donors', [AdminAuthController::class, 'mapDonors'])->name('admin.map.donors');
         Route::get('/admin/map/barangays', [AdminAuthController::class, 'mapBarangays'])->name('admin.map.barangays');
         Route::get('/admin/map/summary', [AdminAuthController::class, 'mapSummary'])->name('admin.map.summary');
+        Route::post('/admin/map/geocode-missing', [AdminAuthController::class, 'geocodeMissingLocations'])->name('admin.map.geocode-missing');
         Route::get('/admin/notification-center', [AdminNotificationController::class, 'index'])->name('admin.notification-center');
         Route::get('/admin/notifications/data', [AdminNotificationController::class, 'data'])->name('admin.notifications.data');
         Route::post('/admin/notifications', [AdminNotificationController::class, 'store'])->name('admin.notifications.store');

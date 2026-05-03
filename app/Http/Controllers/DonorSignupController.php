@@ -9,6 +9,7 @@ use App\Models\Donor;
 use App\Models\DonorAuthentication;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
+use App\Services\GeocodingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -259,6 +260,8 @@ class DonorSignupController extends Controller
             ]);
 
             DB::commit();
+
+            app(GeocodingService::class)->geocodeAndSave($location);
 
             $donorName = trim($donor->first_name . ' ' . $donor->last_name);
             app(AdminNotificationService::class)->createAdminEvent(

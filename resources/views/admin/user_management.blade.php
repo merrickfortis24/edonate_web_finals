@@ -221,6 +221,14 @@
                             <div class="fw-semibold" id="userManagementViewAddress">-</div>
                         </div>
                         <div class="col-md-6">
+                            <div class="small text-muted text-uppercase">Latitude</div>
+                            <div class="fw-semibold" id="userManagementViewLatitude">-</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="small text-muted text-uppercase">Longitude</div>
+                            <div class="fw-semibold" id="userManagementViewLongitude">-</div>
+                        </div>
+                        <div class="col-md-6">
                             <div class="small text-muted text-uppercase">Last Donation Date</div>
                             <div class="fw-semibold" id="userManagementViewLastDonationDate">-</div>
                         </div>
@@ -326,6 +334,14 @@
                                 <label for="userManagementEditProvince" class="form-label">Province</label>
                                 <input type="text" class="form-control" id="userManagementEditProvince" maxlength="100">
                             </div>
+                            <div class="col-md-6">
+                                <label for="userManagementEditLatitude" class="form-label">Latitude</label>
+                                <input type="number" class="form-control" id="userManagementEditLatitude" min="-90" max="90" step="any" placeholder="Auto-geocode if blank">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="userManagementEditLongitude" class="form-label">Longitude</label>
+                                <input type="number" class="form-control" id="userManagementEditLongitude" min="-180" max="180" step="any" placeholder="Auto-geocode if blank">
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -401,6 +417,8 @@
         var viewBloodType = document.getElementById('userManagementViewBloodType');
         var viewEligibilityStatus = document.getElementById('userManagementViewEligibilityStatus');
         var viewAddress = document.getElementById('userManagementViewAddress');
+        var viewLatitude = document.getElementById('userManagementViewLatitude');
+        var viewLongitude = document.getElementById('userManagementViewLongitude');
         var viewLastDonationDate = document.getElementById('userManagementViewLastDonationDate');
         var viewNextEligibleDate = document.getElementById('userManagementViewNextEligibleDate');
         var viewTotalDonations = document.getElementById('userManagementViewTotalDonations');
@@ -424,6 +442,8 @@
         var editBarangayInput = document.getElementById('userManagementEditBarangay');
         var editCityInput = document.getElementById('userManagementEditCity');
         var editProvinceInput = document.getElementById('userManagementEditProvince');
+        var editLatitudeInput = document.getElementById('userManagementEditLatitude');
+        var editLongitudeInput = document.getElementById('userManagementEditLongitude');
         var editSaveButton = document.getElementById('userManagementEditSaveBtn');
 
         var deleteFeedback = document.getElementById('userManagementDeleteFeedback');
@@ -937,6 +957,8 @@
             setValue(viewBloodType, donorPayload.blood_type);
             setValue(viewEligibilityStatus, statusLabel(donorPayload.eligibility_status));
             setValue(viewAddress, donorPayload.full_address);
+            setValue(viewLatitude, donorPayload.latitude);
+            setValue(viewLongitude, donorPayload.longitude);
             setValue(viewLastDonationDate, formatDate(donorPayload.last_donation_date));
             setValue(viewNextEligibleDate, formatDate(donorPayload.next_eligible_date));
             setValue(viewTotalDonations, formatNumber(donorPayload.total_donations || 0));
@@ -987,6 +1009,12 @@
             }
             if (editProvinceInput) {
                 editProvinceInput.value = String(donorPayload.province || '');
+            }
+            if (editLatitudeInput) {
+                editLatitudeInput.value = donorPayload.latitude != null ? String(donorPayload.latitude) : '';
+            }
+            if (editLongitudeInput) {
+                editLongitudeInput.value = donorPayload.longitude != null ? String(donorPayload.longitude) : '';
             }
 
             setSelectOptions(editBloodTypeSelect, responseOptions.blood_types || [], 'Select blood type', donorPayload.blood_type_id);
@@ -1211,6 +1239,8 @@
                     barangay_name: String((editBarangayInput && editBarangayInput.value) || '').trim() || null,
                     city: String((editCityInput && editCityInput.value) || '').trim() || null,
                     province: String((editProvinceInput && editProvinceInput.value) || '').trim() || null,
+                    latitude: String((editLatitudeInput && editLatitudeInput.value) || '').trim() || null,
+                    longitude: String((editLongitudeInput && editLongitudeInput.value) || '').trim() || null,
                     eligibility_status: String((editEligibilityStatusSelect && editEligibilityStatusSelect.value) || '').trim() || null
                 };
 

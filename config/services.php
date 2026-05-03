@@ -41,4 +41,11 @@ return [
         'security_events_path' => env('FIREBASE_SECURITY_EVENTS_PATH', 'admin_security_events'),
     ],
 
+    'geocoding' => [
+        'provider' => env('GEOCODING_PROVIDER', 'nominatim'),
+        'nominatim_url' => env('NOMINATIM_URL', 'https://nominatim.openstreetmap.org/search'),
+        'user_agent' => env('NOMINATIM_USER_AGENT', 'eDonate-CapstoneProject/1.0 (fortismerrick@gmail.com)'),
+        'timeout' => env('GEOCODING_TIMEOUT', 10),
+    ],
+
 ];

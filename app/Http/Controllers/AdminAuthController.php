@@ -9,6 +9,7 @@ use App\Models\DonorAuthentication;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
+use App\Services\GeocodingService;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
@@ -611,8 +612,17 @@ class AdminAuthController extends BaseController
             'barangay_name' => ['nullable', 'string', 'max:100'],
             'city' => ['nullable', 'string', 'max:100'],
             'province' => ['nullable', 'string', 'max:100'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'eligibility_status' => ['nullable', 'string', Rule::in(['eligible', 'not_eligible'])],
         ]);
+
+        $manualCoordinates = $this->userManagementManualCoordinates($validated);
+        if ($manualCoordinates === false) {
+            return response()->json([
+                'message' => 'Please provide both latitude and longitude, or leave both blank for automatic geocoding.',
+            ], 422);
+        }
 
         $before = $this->getUserManagementDonorDetail($targetDonor->donor_id) ?? [];
         $currentLocation = $targetDonor->location_id
@@ -623,7 +633,9 @@ class AdminAuthController extends BaseController
             ->orderByDesc('eligibility_id')
             ->first();
 
-        DB::transaction(function () use ($validated, $targetDonor, $targetAuth, $currentLocation, $latestEligibility, $before): void {
+        $locationToGeocodeId = null;
+
+        DB::transaction(function () use ($validated, $targetDonor, $targetAuth, $currentLocation, $latestEligibility, $before, $manualCoordinates, &$locationToGeocodeId): void {
             $locationPayload = $this->userManagementLocationPayload($validated);
             $hasLocationData = $this->userManagementLocationPayloadHasValue($locationPayload);
             $locationIsShared = $currentLocation
@@ -635,6 +647,12 @@ class AdminAuthController extends BaseController
 
             $nextLocationId = $targetDonor->location_id;
             $locationToDelete = null;
+            $locationAddressChanged = $currentLocation
+                ? ! $this->userManagementLocationMatches($currentLocation, $locationPayload)
+                : true;
+            $coordinatePayload = is_array($manualCoordinates)
+                ? $manualCoordinates
+                : ($locationAddressChanged ? ['latitude' => null, 'longitude' => null] : []);
 
             if (! $hasLocationData) {
                 $nextLocationId = null;
@@ -643,14 +661,26 @@ class AdminAuthController extends BaseController
                     $locationToDelete = $currentLocation;
                 }
             } elseif ($currentLocation && ! $locationIsShared) {
-                $currentLocation->fill($locationPayload);
+                $currentLocation->fill(array_merge($locationPayload, $coordinatePayload));
                 $currentLocation->save();
                 $nextLocationId = (int) $currentLocation->location_id;
-            } elseif ($currentLocation && $this->userManagementLocationMatches($currentLocation, $locationPayload)) {
+            } elseif ($currentLocation && $manualCoordinates === null && $this->userManagementLocationMatches($currentLocation, $locationPayload)) {
                 $nextLocationId = (int) $currentLocation->location_id;
             } else {
-                $newLocation = Location::query()->create($locationPayload);
+                $newLocation = Location::query()->create(array_merge($locationPayload, is_array($manualCoordinates)
+                    ? $manualCoordinates
+                    : ['latitude' => null, 'longitude' => null]));
                 $nextLocationId = (int) $newLocation->location_id;
+            }
+
+            if ($hasLocationData && $manualCoordinates === null && $nextLocationId !== null) {
+                $nextLocation = $nextLocationId === (int) ($currentLocation->location_id ?? 0)
+                    ? $currentLocation
+                    : Location::query()->find($nextLocationId);
+
+                if (! $nextLocation || ! app(GeocodingService::class)->hasCoordinates($nextLocation)) {
+                    $locationToGeocodeId = $nextLocationId;
+                }
             }
 
             $targetDonor->fill([
@@ -687,6 +717,13 @@ class AdminAuthController extends BaseController
                 }
             }
         });
+
+        if ($locationToGeocodeId !== null) {
+            $locationToGeocode = Location::query()->find($locationToGeocodeId);
+            if ($locationToGeocode) {
+                app(GeocodingService::class)->geocodeAndSave($locationToGeocode);
+            }
+        }
 
         $after = $this->getUserManagementDonorDetail($targetDonor->donor_id);
 
@@ -1291,17 +1328,76 @@ class AdminAuthController extends BaseController
             $query->where('locations.barangay_name', $barangay);
         }
 
-        $donors = $query->get()->map(fn($row) => [
-            'donor_id' => $row->donor_id,
-            'name' => trim("{$row->first_name} {$row->last_name}"),
-            'blood_type' => $row->blood_type,
-            'barangay' => $row->barangay_name,
-            'city' => $row->city,
-            'lat' => (float) $row->latitude,
-            'lng' => (float) $row->longitude,
-        ]);
+        $geocoding = app(GeocodingService::class);
+        $donors = $query->get()
+            ->filter(fn ($row): bool => $geocoding->validCoordinate($row->latitude, $row->longitude))
+            ->map(fn($row) => [
+                'donor_id' => (int) $row->donor_id,
+                'name' => trim("{$row->first_name} {$row->last_name}"),
+                'blood_type' => $row->blood_type,
+                'barangay' => $row->barangay_name,
+                'city' => $row->city,
+                'lat' => (float) $row->latitude,
+                'lng' => (float) $row->longitude,
+                'latitude' => (float) $row->latitude,
+                'longitude' => (float) $row->longitude,
+            ])
+            ->values();
 
         return response()->json($donors);
+    }
+
+    /**
+     * POST /admin/map/geocode-missing
+     * Geocode a small batch of missing location coordinates from the admin map.
+     */
+    public function geocodeMissingLocations(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'limit' => ['nullable', 'integer', 'min:1', 'max:10'],
+        ]);
+
+        $limit = (int) ($validated['limit'] ?? 5);
+        $locations = Location::query()
+            ->where(function ($query): void {
+                $query->whereNull('latitude')
+                    ->orWhereNull('longitude');
+            })
+            ->orderBy('location_id')
+            ->limit($limit)
+            ->get();
+
+        if ($locations->isEmpty()) {
+            return response()->json([
+                'message' => 'No missing location coordinates found.',
+                'processed' => 0,
+                'succeeded' => 0,
+                'failed' => 0,
+            ]);
+        }
+
+        $geocoding = app(GeocodingService::class);
+        $succeeded = 0;
+        $failed = 0;
+
+        foreach ($locations as $index => $location) {
+            if ($geocoding->geocodeAndSave($location)) {
+                $succeeded++;
+            } else {
+                $failed++;
+            }
+
+            if ($index < $locations->count() - 1) {
+                sleep(1);
+            }
+        }
+
+        return response()->json([
+            'message' => "Geocoding finished. {$succeeded} updated, {$failed} failed.",
+            'processed' => $locations->count(),
+            'succeeded' => $succeeded,
+            'failed' => $failed,
+        ]);
     }
 
     /**
@@ -1408,14 +1504,32 @@ class AdminAuthController extends BaseController
             $shortageBarangays = $allBarangays->diff($coveredBarangays)->values();
         }
 
-        $totalLocations = DB::table('locations')
+        $mappedLocations = DB::table('locations')
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
+            ->count();
+        $totalLocations = DB::table('locations')->count();
+        $unmappedLocations = DB::table('locations')
+            ->where(function ($query): void {
+                $query->whereNull('latitude')
+                    ->orWhereNull('longitude');
+            })
+            ->count();
+        $unmappedDonors = DB::table('donors')
+            ->join('locations', 'donors.location_id', '=', 'locations.location_id')
+            ->where(function ($query): void {
+                $query->whereNull('locations.latitude')
+                    ->orWhereNull('locations.longitude');
+            })
             ->count();
 
         return response()->json([
             'total_donors' => DB::table('donors')->count(),
-            'total_locations' => $totalLocations,
+            'total_locations' => $mappedLocations,
+            'all_locations' => $totalLocations,
+            'mapped_locations' => $mappedLocations,
+            'unmapped_locations' => $unmappedLocations,
+            'unmapped_donors' => $unmappedDonors,
             'blood_type_breakdown' => $breakdown,
             'critical_barangays' => $criticalBarangays,
             'shortage_barangays' => $shortageBarangays,
@@ -3995,6 +4109,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 'l.barangay_name',
                 'l.city',
                 'l.province',
+                'l.latitude',
+                'l.longitude',
                 'es.eligibility_id',
                 'es.status as latest_eligibility_status',
                 'es.next_eligible_date',
@@ -4133,6 +4249,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
             'barangay_name' => $this->userManagementNullableString($donor->barangay_name ?? null),
             'city' => $this->userManagementNullableString($donor->city ?? null),
             'province' => $this->userManagementNullableString($donor->province ?? null),
+            'latitude' => is_numeric($donor->latitude ?? null) ? (float) $donor->latitude : null,
+            'longitude' => is_numeric($donor->longitude ?? null) ? (float) $donor->longitude : null,
             'full_address' => $this->userManagementFullAddress([
                 $donor->street_address ?? null,
                 $donor->barangay_name ?? null,
@@ -4183,6 +4301,29 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
             'barangay_name' => $this->userManagementNullableString($validated['barangay_name'] ?? null),
             'city' => $this->userManagementNullableString($validated['city'] ?? null),
             'province' => $this->userManagementNullableString($validated['province'] ?? null),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array<string, float>|false|null
+     */
+    private function userManagementManualCoordinates(array $validated): array|false|null
+    {
+        $hasLatitude = array_key_exists('latitude', $validated) && $validated['latitude'] !== null && $validated['latitude'] !== '';
+        $hasLongitude = array_key_exists('longitude', $validated) && $validated['longitude'] !== null && $validated['longitude'] !== '';
+
+        if (! $hasLatitude && ! $hasLongitude) {
+            return null;
+        }
+
+        if (! $hasLatitude || ! $hasLongitude) {
+            return false;
+        }
+
+        return [
+            'latitude' => (float) $validated['latitude'],
+            'longitude' => (float) $validated['longitude'],
         ];
     }
 
