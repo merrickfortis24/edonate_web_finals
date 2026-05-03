@@ -3146,24 +3146,155 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
      */
     private function buildAdminDashboardPayload(): array
     {
-        $unreadNotifications = $this->dashboardUnreadNotificationCount();
+        $unreadNotifications = $this->dashboardTry('notification_count', function (): int {
+            return $this->dashboardUnreadNotificationCount();
+        }, 0);
 
         return [
-            'stats' => $this->buildAdminDashboardStats(),
+            'stats' => $this->dashboardTry('stats', function (): array {
+                return $this->buildAdminDashboardStats();
+            }, $this->emptyDashboardStats()),
             'notification_count' => $unreadNotifications,
             'notification_badge' => [
                 'label' => $unreadNotifications > 9 ? '9+' : (string) $unreadNotifications,
                 'visible' => $unreadNotifications > 0,
             ],
-            'monthly_donations' => $this->buildDashboardMonthlyDonations(),
-            'blood_type_distribution' => $this->buildDashboardBloodTypeDistribution(),
-            'recent_activities' => $this->buildDashboardRecentActivities(),
-            'pending_approvals' => $this->buildDashboardPendingApprovals(),
+            'monthly_donations' => $this->dashboardTry('monthly_donations', function (): array {
+                return $this->buildDashboardMonthlyDonations();
+            }, $this->emptyDashboardMonthlyDonations()),
+            'blood_type_distribution' => $this->dashboardTry('blood_type_distribution', function (): array {
+                return $this->buildDashboardBloodTypeDistribution();
+            }, []),
+            'recent_activities' => $this->dashboardTry('recent_activities', function (): array {
+                return $this->buildDashboardRecentActivities();
+            }, []),
+            'pending_approvals' => $this->dashboardTry('pending_approvals', function (): array {
+                return $this->buildDashboardPendingApprovals();
+            }, []),
             'links' => [
                 'map' => route('admin.blood-availability-mapping'),
                 'activities' => route('admin.audit-logs'),
                 'approvals' => route('admin.eligibility.index'),
             ],
+        ];
+    }
+
+    /**
+     * Run an optional dashboard data builder without allowing it to break the page.
+     */
+    private function dashboardTry(string $section, callable $callback, $fallback)
+    {
+        try {
+            return $callback();
+        } catch (Throwable $exception) {
+            logger()->warning('Admin dashboard data section failed.', [
+                'section' => $section,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return $fallback;
+        }
+    }
+
+    /**
+     * Safely check table existence for optional dashboard data.
+     */
+    private function dashboardTableExists(string $table): bool
+    {
+        static $cache = [];
+
+        if (array_key_exists($table, $cache)) {
+            return $cache[$table];
+        }
+
+        try {
+            $cache[$table] = Schema::hasTable($table);
+        } catch (Throwable $exception) {
+            logger()->warning('Admin dashboard table check failed.', [
+                'table' => $table,
+                'error' => $exception->getMessage(),
+            ]);
+
+            $cache[$table] = false;
+        }
+
+        return $cache[$table];
+    }
+
+    /**
+     * Safely check columns before dashboard queries touch optional schema.
+     *
+     * @param array<int, string> $columns
+     */
+    private function dashboardTableHasColumns(string $table, array $columns): bool
+    {
+        if (! $this->dashboardTableExists($table)) {
+            return false;
+        }
+
+        foreach ($columns as $column) {
+            if (! $this->dashboardColumnExists($table, $column)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Safely check a single column for optional dashboard queries.
+     */
+    private function dashboardColumnExists(string $table, string $column): bool
+    {
+        static $cache = [];
+        $key = $table . '.' . $column;
+
+        if (array_key_exists($key, $cache)) {
+            return $cache[$key];
+        }
+
+        try {
+            $cache[$key] = Schema::hasColumn($table, $column);
+        } catch (Throwable $exception) {
+            logger()->warning('Admin dashboard column check failed.', [
+                'table' => $table,
+                'column' => $column,
+                'error' => $exception->getMessage(),
+            ]);
+
+            $cache[$key] = false;
+        }
+
+        return $cache[$key];
+    }
+
+    /**
+     * Empty summary card payload used when dashboard data is unavailable.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function emptyDashboardStats(): array
+    {
+        return [
+            'total_donors' => ['value' => '0', 'change' => '0% this month'],
+            'successful_donations' => ['value' => '0', 'change' => '0% this month'],
+            'upcoming_appointments' => ['value' => '0', 'change' => '0% this month'],
+            'donation_records' => ['value' => '0', 'change' => '0% this month'],
+        ];
+    }
+
+    /**
+     * Empty chart payload used when donation data is unavailable.
+     *
+     * @return array<string, mixed>
+     */
+    private function emptyDashboardMonthlyDonations(): array
+    {
+        return [
+            'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+            'values' => array_fill(0, 12, 0),
+            'maxY' => 5,
+            'stepY' => 1,
         ];
     }
 
@@ -3174,24 +3305,24 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
      */
     private function buildAdminDashboardStats(): array
     {
-        $donorTotal = Schema::hasTable('donors')
+        $donorTotal = $this->dashboardTableExists('donors')
             ? (int) DB::table('donors')->count()
             : 0;
         $successfulDonationTotal = $this->dashboardSuccessfulDonationQuery()->count();
         $upcomingAppointmentTotal = $this->dashboardUpcomingAppointmentQuery()->count();
-        $donationRecordTotal = Schema::hasTable('donation_records')
+        $donationRecordTotal = $this->dashboardTableExists('donation_records')
             ? (int) DB::table('donation_records')->count()
             : 0;
 
         [$currentStart, $currentEnd, $previousStart, $previousEnd] = $this->dashboardMonthRanges();
 
-        $donorCurrent = Schema::hasTable('donors')
+        $donorCurrent = $this->dashboardTableHasColumns('donors', ['date_registered'])
             ? (int) DB::table('donors')
                 ->whereDate('date_registered', '>=', $currentStart)
                 ->whereDate('date_registered', '<=', $currentEnd)
                 ->count()
             : 0;
-        $donorPrevious = Schema::hasTable('donors')
+        $donorPrevious = $this->dashboardTableHasColumns('donors', ['date_registered'])
             ? (int) DB::table('donors')
                 ->whereDate('date_registered', '>=', $previousStart)
                 ->whereDate('date_registered', '<=', $previousEnd)
@@ -3216,13 +3347,13 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
             ->whereDate('ap.appointment_date', '<=', $previousEnd)
             ->count();
 
-        $donationRecordCurrent = Schema::hasTable('donation_records')
+        $donationRecordCurrent = $this->dashboardTableHasColumns('donation_records', ['donation_date'])
             ? (int) DB::table('donation_records as dr')
                 ->whereDate('dr.donation_date', '>=', $currentStart)
                 ->whereDate('dr.donation_date', '<=', $currentEnd)
                 ->count()
             : 0;
-        $donationRecordPrevious = Schema::hasTable('donation_records')
+        $donationRecordPrevious = $this->dashboardTableHasColumns('donation_records', ['donation_date'])
             ? (int) DB::table('donation_records as dr')
                 ->whereDate('dr.donation_date', '>=', $previousStart)
                 ->whereDate('dr.donation_date', '<=', $previousEnd)
@@ -3254,7 +3385,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
      */
     private function dashboardUnreadNotificationCount(): int
     {
-        if (! Schema::hasTable('notifications')) {
+        if (! $this->dashboardTableHasColumns('notifications', ['is_read'])) {
             return 0;
         }
 
@@ -3318,12 +3449,17 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
      */
     private function dashboardSuccessfulDonationQuery()
     {
-        if (! Schema::hasTable('donation_records')) {
+        if (! $this->dashboardTableHasColumns('donation_records', ['donation_date'])) {
             return DB::query()->fromRaw('(select null as donation_id, null as donation_date where 1 = 0) as dr');
         }
 
-        return DB::table('donation_records as dr')
-            ->whereRaw('(' . $this->donationRecordStatusExpression('dr') . ') = ?', ['completed']);
+        $query = DB::table('donation_records as dr');
+
+        if ($this->dashboardTableHasColumns('donation_records', ['remarks'])) {
+            return $query->whereRaw('(' . $this->donationRecordStatusExpression('dr') . ') = ?', ['completed']);
+        }
+
+        return $query->whereNotNull('dr.donation_date');
     }
 
     /**
@@ -3331,7 +3467,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
      */
     private function dashboardSchedulableAppointmentQuery()
     {
-        if (! Schema::hasTable('appointments')) {
+        if (! $this->dashboardTableHasColumns('appointments', ['appointment_date', 'status'])) {
             return DB::query()->fromRaw('(select null as appointment_id, null as appointment_date, null as status where 1 = 0) as ap');
         }
 
@@ -3360,7 +3496,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
         $labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         $values = array_fill(0, 12, 0);
 
-        if (Schema::hasTable('donation_records')) {
+        if ($this->dashboardTableHasColumns('donation_records', ['donation_date'])) {
             $rows = $this->dashboardSuccessfulDonationQuery()
                 ->whereYear('dr.donation_date', Carbon::now()->year)
                 ->selectRaw('MONTH(dr.donation_date) as month_number, COUNT(*) as total')
@@ -3423,7 +3559,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
      */
     private function buildDashboardBloodTypeDistribution(): array
     {
-        if (! Schema::hasTable('donors') || ! Schema::hasTable('blood_types')) {
+        if (! $this->dashboardTableHasColumns('donors', ['donor_id', 'blood_type_id'])
+            || ! $this->dashboardTableHasColumns('blood_types', ['blood_type_id', 'blood_type'])) {
             return [];
         }
 
@@ -3467,7 +3604,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
     {
         $activities = collect();
 
-        if (Schema::hasTable('audit_logs')) {
+        if ($this->dashboardTableHasColumns('audit_logs', ['actor_name', 'description', 'action_type', 'created_at'])) {
             DB::table('audit_logs')
                 ->orderByDesc('created_at')
                 ->limit(5)
@@ -3482,7 +3619,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 });
         }
 
-        if (Schema::hasTable('donors')) {
+        if ($this->dashboardTableHasColumns('donors', ['first_name', 'last_name', 'date_registered'])) {
             DB::table('donors')
                 ->orderByDesc('date_registered')
                 ->limit(5)
@@ -3497,7 +3634,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 });
         }
 
-        if (Schema::hasTable('donation_records')) {
+        if ($this->dashboardTableHasColumns('donation_records', ['donation_date', 'donor_id'])
+            && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
             $this->dashboardSuccessfulDonationQuery()
                 ->leftJoin('donors as d', 'd.donor_id', '=', 'dr.donor_id')
                 ->orderByDesc('dr.donation_date')
@@ -3513,7 +3651,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 });
         }
 
-        if (Schema::hasTable('appointments')) {
+        if ($this->dashboardTableHasColumns('appointments', ['donor_id', 'status', 'created_at'])
+            && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
             DB::table('appointments as ap')
                 ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
                 ->orderByDesc('ap.created_at')
@@ -3530,7 +3669,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 });
         }
 
-        if (Schema::hasTable('eligibility_status')) {
+        if ($this->dashboardTableHasColumns('eligibility_status', ['donor_id', 'status', 'eligibility_id'])
+            && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
             DB::table('eligibility_status as es')
                 ->leftJoin('donors as d', 'd.donor_id', '=', 'es.donor_id')
                 ->orderByDesc('es.eligibility_id')
@@ -3570,7 +3710,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
     {
         $approvals = collect();
 
-        if (Schema::hasTable('eligibility_status')) {
+        if ($this->dashboardTableHasColumns('eligibility_status', ['donor_id', 'status', 'eligibility_id'])
+            && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
             DB::table('eligibility_status as es')
                 ->leftJoin('donors as d', 'd.donor_id', '=', 'es.donor_id')
                 ->where(function ($query): void {
@@ -3590,7 +3731,9 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 });
         }
 
-        if ($approvals->count() < 5 && Schema::hasTable('appointments')) {
+        if ($approvals->count() < 5
+            && $this->dashboardTableHasColumns('appointments', ['donor_id', 'status', 'appointment_date'])
+            && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
             $needed = 5 - $approvals->count();
             $statusExpression = $this->appointmentStatusExpression('ap');
 
