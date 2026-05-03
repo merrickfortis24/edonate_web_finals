@@ -471,15 +471,15 @@
 
 				<div class="card__left__stats" aria-label="Statistics">
 					<div class="stat">
-						<span class="stat__number">12k+</span>
+						<span class="stat__number">{{ $loginStats['donors'] ?? '0' }}</span>
 						<span class="stat__label">Donors</span>
 					</div>
 					<div class="stat">
-						<span class="stat__number">9k+</span>
+						<span class="stat__number">{{ $loginStats['donations'] ?? '0' }}</span>
 						<span class="stat__label">Donations</span>
 					</div>
 					<div class="stat">
-						<span class="stat__number">27k+</span>
+						<span class="stat__number">{{ $loginStats['lives_saved'] ?? '0' }}</span>
 						<span class="stat__label">Lives Saved</span>
 					</div>
 				</div>

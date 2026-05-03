@@ -56,6 +56,8 @@ class AdminAuthController extends BaseController
      */
     public function create(Request $request)
     {
+        $loginStats = $this->buildLoginStats();
+
         if ($this->hasActiveAdminSession($request)) {
             $dashboardRoute = $this->dashboardRouteForRole((string) $request->session()->get('admin_role', ''));
             $twoFactorSetupModal = $this->buildDashboardTwoFactorModalData($request);
@@ -66,6 +68,7 @@ class AdminAuthController extends BaseController
 
             if ($requiresEnrollment || $hasRecoveryCodes) {
                 return view('admin.admin_login', [
+                    'loginStats' => $loginStats,
                     'twoFactorSetupModal' => $twoFactorSetupModal,
                     'postLoginDashboardUrl' => route($dashboardRoute),
                 ]);
@@ -77,11 +80,14 @@ class AdminAuthController extends BaseController
         $twoFactorChallengeModal = $this->buildLoginTwoFactorChallengeModalData($request);
         if ((bool) ($twoFactorChallengeModal['show'] ?? false)) {
             return view('admin.admin_login', [
+                'loginStats' => $loginStats,
                 'twoFactorChallengeModal' => $twoFactorChallengeModal,
             ]);
         }
 
-        return view('admin.admin_login');
+        return view('admin.admin_login', [
+            'loginStats' => $loginStats,
+        ]);
     }
 
     /**
@@ -3092,6 +3098,43 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
             WHEN LOWER(COALESCE({$donationsAlias}.remarks, '')) LIKE '%defer%' THEN 'deferred'
             ELSE 'pending'
         END";
+    }
+
+    /**
+     * Build public statistics displayed on the admin login page.
+     *
+     * @return array<string, string>
+     */
+    private function buildLoginStats(): array
+    {
+        $successfulDonationCount = (int) DB::table('donation_records as dr')
+            ->whereRaw('(' . $this->donationRecordStatusExpression('dr') . ') = ?', ['completed'])
+            ->count();
+
+        $donorCount = (int) DB::table('donors')->count();
+        $livesSavedCount = $successfulDonationCount * 3;
+
+        return [
+            'donors' => $this->formatCompactStatNumber($donorCount),
+            'donations' => $this->formatCompactStatNumber($successfulDonationCount),
+            'lives_saved' => $this->formatCompactStatNumber($livesSavedCount),
+        ];
+    }
+
+    /**
+     * Format large statistic values for compact login-page display.
+     */
+    private function formatCompactStatNumber(int $value): string
+    {
+        if ($value < 1000) {
+            return (string) $value;
+        }
+
+        $compactValue = round($value / 1000, 1);
+        $formatted = number_format($compactValue, 1, '.', '');
+        $formatted = rtrim(rtrim($formatted, '0'), '.');
+
+        return $formatted . 'k+';
     }
 
     /**
