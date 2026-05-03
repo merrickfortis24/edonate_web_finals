@@ -1092,6 +1092,115 @@
             }, 3500);
         }
 
+        /* ── Complete Donation Modal Controller ── */
+        var completeModalEl    = document.getElementById('completeModal');
+        var completeModal      = null;
+        var completeConfirmBtn = document.getElementById('completeConfirmBtn');
+        var completeBloodUnits = document.getElementById('completeBloodUnits');
+        var completeErrorEl    = document.getElementById('completeError');
+        var completeErrorText  = document.getElementById('completeErrorText');
+        var completeEligiblePreview = document.getElementById('completeEligiblePreview');
+        var completeNextEligible    = document.getElementById('completeNextEligible');
+        var completePendingId  = 0;
+
+        function getCompleteModal() {
+            if (!completeModal && completeModalEl && typeof bootstrap !== 'undefined') {
+                completeModal = new bootstrap.Modal(completeModalEl, { backdrop: 'static', keyboard: false });
+            }
+            return completeModal;
+        }
+
+        function openCompleteModal(appointmentId, appointmentCode, donorName) {
+            var modal = getCompleteModal();
+            if (!modal) { return; }
+
+            completePendingId = appointmentId;
+
+            var infoCode  = completeModalEl.querySelector('.complete-info-code');
+            var infoDonor = completeModalEl.querySelector('.complete-info-donor');
+            if (infoCode)  { infoCode.textContent  = appointmentCode || ('Appointment #' + appointmentId); }
+            if (infoDonor) { infoDonor.textContent = donorName || ''; }
+            if (completeBloodUnits)     { completeBloodUnits.value = ''; }
+            if (completeErrorEl)        { completeErrorEl.style.display = 'none'; }
+            if (completeEligiblePreview){ completeEligiblePreview.style.display = 'none'; }
+
+            modal.show();
+        }
+
+        if (completeBloodUnits) {
+            completeBloodUnits.addEventListener('input', function () {
+                var units = parseInt(completeBloodUnits.value, 10);
+                if (!isNaN(units) && units >= 1) {
+                    var next = new Date();
+                    next.setDate(next.getDate() + 56);
+                    var formatted = next.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+                    if (completeNextEligible)    { completeNextEligible.textContent = formatted; }
+                    if (completeEligiblePreview) { completeEligiblePreview.style.display = 'block'; }
+                } else {
+                    if (completeEligiblePreview) { completeEligiblePreview.style.display = 'none'; }
+                }
+            });
+        }
+
+        if (completeConfirmBtn) {
+            completeConfirmBtn.addEventListener('click', function () {
+                var units = parseInt(completeBloodUnits ? completeBloodUnits.value : '', 10);
+                if (isNaN(units) || units < 1) {
+                    if (completeErrorEl)   { completeErrorEl.style.display = 'block'; }
+                    if (completeErrorText) { completeErrorText.textContent = 'Please enter a valid number of blood units (minimum 1).'; }
+                    if (completeBloodUnits){ completeBloodUnits.focus(); }
+                    return;
+                }
+                if (completeErrorEl) { completeErrorEl.style.display = 'none'; }
+
+                completeConfirmBtn.disabled = true;
+                var spinner = completeConfirmBtn.querySelector('.complete-spinner');
+                var label   = completeConfirmBtn.querySelector('.complete-label');
+                if (spinner) { spinner.style.display = 'inline-block'; }
+                if (label)   { label.textContent = 'Processing...'; }
+
+                performAppointmentAction(completePendingId, 'complete', { blood_units: units })
+                    .then(function () {
+                        var modal = getCompleteModal();
+                        if (modal) { modal.hide(); }
+                        loadAppointments();
+
+                        var nextDate = new Date();
+                        nextDate.setDate(nextDate.getDate() + 56);
+                        var nextFormatted = nextDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+                        Swal.fire({
+                            title: 'Donation Completed!',
+                            html: 'Donation record has been created.<br><br>'
+                                + '<strong>Next eligible donation date:</strong><br>'
+                                + '<span style="color:#129800; font-size:16px; font-weight:700;">' + nextFormatted + '</span>',
+                            icon: 'success',
+                            timer: 4000,
+                            showConfirmButton: false
+                        });
+                    })
+                    .catch(function (error) {
+                        if (completeErrorEl)   { completeErrorEl.style.display = 'block'; }
+                        if (completeErrorText) { completeErrorText.textContent = error && error.message ? error.message : 'Action failed.'; }
+                    })
+                    .then(function () {
+                        completeConfirmBtn.disabled = false;
+                        if (spinner) { spinner.style.display = 'none'; }
+                        if (label)   { label.textContent = 'Confirm Donation'; }
+                    });
+            });
+        }
+
+        if (completeModalEl) {
+            completeModalEl.addEventListener('hidden.bs.modal', function () {
+                completePendingId = 0;
+                if (completeBloodUnits)      { completeBloodUnits.value = ''; }
+                if (completeErrorEl)         { completeErrorEl.style.display = 'none'; }
+                if (completeEligiblePreview) { completeEligiblePreview.style.display = 'none'; }
+                if (completeConfirmBtn)      { completeConfirmBtn.disabled = false; }
+            });
+        }
+
         hydrateCenterFilter((payload.filters && payload.filters.centers) || []);
         loadAppointments();
     })();
