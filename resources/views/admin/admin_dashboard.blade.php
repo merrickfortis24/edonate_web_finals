@@ -30,7 +30,9 @@
 			<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
 				<path d="M12 2C10.07 2 8.32 2.85 7.14 4.21L3 8.99V15H5V20H19V15H21V8.99L16.86 4.21C15.68 2.85 13.93 2 12 2ZM12 4C13.38 4 14.63 4.57 15.52 5.5H8.48C9.37 4.57 10.62 4 12 4ZM5 10.41L8.14 7H15.86L19 10.41V13H5V10.41ZM7 15H17V18H7V15Z" />
 			</svg>
-			<span class="header__badge" aria-hidden="true">9+</span>
+			@if ((bool) data_get($dashboardPayload ?? [], 'notification_badge.visible', false))
+				<span class="header__badge" aria-hidden="true">{{ data_get($dashboardPayload ?? [], 'notification_badge.label', '0') }}</span>
+			@endif
 		</a>
 
 		<a class="header__icon-btn" href="{{ route('admin.settings') }}" aria-label="Go to Settings">
@@ -45,24 +47,25 @@
 {!! json_encode([
 	'page' => 'admin-dashboard',
 	'dashboard' => [
-		'monthlyDonations' => [
+		'monthlyDonations' => data_get($dashboardPayload ?? [], 'monthly_donations', [
 			'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-			'values' => [3, 4, 5.5, 7, 9, 11, 13, 15, 17, 18.5, 19.5, 20.5],
-			'maxY' => 25,
-			'stepY' => 5,
-		],
-		'bloodTypeDistribution' => [
-			['label' => 'O+', 'value' => 0.38, 'color' => '#b60c0c'],
-			['label' => 'A+', 'value' => 0.29, 'color' => '#5a0000'],
-			['label' => 'B+', 'value' => 0.20, 'color' => '#e83333'],
-			['label' => 'AB+', 'value' => 0.08, 'color' => '#f07070'],
-			['label' => 'O-', 'value' => 0.05, 'color' => '#ffd0d0'],
-		],
+			'values' => array_fill(0, 12, 0),
+			'maxY' => 5,
+			'stepY' => 1,
+		]),
+		'bloodTypeDistribution' => data_get($dashboardPayload ?? [], 'blood_type_distribution', []),
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
+	@php
+		$dashboard = $dashboardPayload ?? [];
+		$stats = data_get($dashboard, 'stats', []);
+		$recentActivities = data_get($dashboard, 'recent_activities', []);
+		$pendingApprovals = data_get($dashboard, 'pending_approvals', []);
+		$dashboardLinks = data_get($dashboard, 'links', []);
+	@endphp
 	<div class="main container-fluid px-0">
 		<main class="content container-fluid py-3">
 			<section class="dashboard-stats row" aria-label="Dashboard statistics">
@@ -73,8 +76,8 @@
 							<span class="stat-card__icon-aux" aria-hidden="true">&#8599;</span>
 						</div>
 						<p class="stat-card__label stat-card__label--white">Total Donors</p>
-						<p class="stat-card__value stat-card__value--white">10,143</p>
-						<p class="stat-card__change stat-card__change--white">+12% this month</p>
+						<p class="stat-card__value stat-card__value--white">{{ data_get($stats, 'total_donors.value', '0') }}</p>
+						<p class="stat-card__change stat-card__change--white">{{ data_get($stats, 'total_donors.change', '0% this month') }}</p>
 					</div>
 				</div>
 
@@ -85,8 +88,8 @@
 							<span class="stat-card__icon-aux" aria-hidden="true">&#128202;</span>
 						</div>
 						<p class="stat-card__label">Successful Donations</p>
-						<p class="stat-card__value">25,143</p>
-						<p class="stat-card__change stat-card__change--green">+12% this month</p>
+						<p class="stat-card__value">{{ data_get($stats, 'successful_donations.value', '0') }}</p>
+						<p class="stat-card__change stat-card__change--green">{{ data_get($stats, 'successful_donations.change', '0% this month') }}</p>
 					</div>
 				</div>
 
@@ -97,8 +100,8 @@
 							<span class="stat-card__icon-aux" aria-hidden="true">&#128339;</span>
 						</div>
 						<p class="stat-card__label">Upcoming Appointments</p>
-						<p class="stat-card__value">143</p>
-						<p class="stat-card__change stat-card__change--blue">+12% this month</p>
+						<p class="stat-card__value">{{ data_get($stats, 'upcoming_appointments.value', '0') }}</p>
+						<p class="stat-card__change stat-card__change--blue">{{ data_get($stats, 'upcoming_appointments.change', '0% this month') }}</p>
 					</div>
 				</div>
 
@@ -109,8 +112,8 @@
 							<span class="stat-card__icon-aux" aria-hidden="true">&#128204;</span>
 						</div>
 						<p class="stat-card__label">Donation Records</p>
-						<p class="stat-card__value">1,921</p>
-						<p class="stat-card__change stat-card__change--gold">+12% this month</p>
+						<p class="stat-card__value">{{ data_get($stats, 'donation_records.value', '0') }}</p>
+						<p class="stat-card__change stat-card__change--gold">{{ data_get($stats, 'donation_records.change', '0% this month') }}</p>
 					</div>
 				</div>
 			</section>
@@ -125,7 +128,7 @@
 					<p class="map-banner__title">Geographic Blood Availability Map</p>
 					<p class="map-banner__subtitle">Monitor blood availability across all locations in real-time</p>
 				</div>
-				<button class="map-banner__btn btn" type="button">View Map</button>
+				<a class="map-banner__btn btn" href="{{ data_get($dashboardLinks, 'map', route('admin.blood-availability-mapping')) }}">View Map</a>
 			</section>
 
 			<section class="dashboard-charts row" aria-label="Data visualization charts">
@@ -152,40 +155,27 @@
 					<div class="panel h-100">
 					<h2 class="panel__title">Recent Activities</h2>
 					<ul class="activity-list">
-						<li class="activity-item">
-							<span class="activity-item__dot activity-item__dot--green"></span>
-							<div class="activity-item__info">
-								<p class="activity-item__name">John Smith</p>
-								<p class="activity-item__action">Completed Donation</p>
-							</div>
-							<span class="activity-item__time">5 min ago</span>
-						</li>
-						<li class="activity-item">
-							<span class="activity-item__dot activity-item__dot--blue"></span>
-							<div class="activity-item__info">
-								<p class="activity-item__name">Chelsea Marie</p>
-								<p class="activity-item__action">Booked Appointment</p>
-							</div>
-							<span class="activity-item__time">1 hour ago</span>
-						</li>
-						<li class="activity-item">
-							<span class="activity-item__dot activity-item__dot--gold"></span>
-							<div class="activity-item__info">
-								<p class="activity-item__name">John Cena</p>
-								<p class="activity-item__action">Cancelled Appointment</p>
-							</div>
-							<span class="activity-item__time">5 hours ago</span>
-						</li>
-						<li class="activity-item">
-							<span class="activity-item__dot activity-item__dot--red"></span>
-							<div class="activity-item__info">
-								<p class="activity-item__name">Johnson Dwyane</p>
-								<p class="activity-item__action">Registration Complete</p>
-							</div>
-							<span class="activity-item__time">20 min ago</span>
-						</li>
+						@forelse ($recentActivities as $activity)
+							<li class="activity-item">
+								<span class="activity-item__dot activity-item__dot--{{ data_get($activity, 'tone', 'blue') }}"></span>
+								<div class="activity-item__info">
+									<p class="activity-item__name">{{ data_get($activity, 'name', 'System') }}</p>
+									<p class="activity-item__action">{{ data_get($activity, 'action', 'Activity') }}</p>
+								</div>
+								<span class="activity-item__time">{{ data_get($activity, 'time', 'Recently') }}</span>
+							</li>
+						@empty
+							<li class="activity-item">
+								<span class="activity-item__dot activity-item__dot--blue"></span>
+								<div class="activity-item__info">
+									<p class="activity-item__name">No recent activities yet.</p>
+									<p class="activity-item__action">Activity will appear here once records are created.</p>
+								</div>
+								<span class="activity-item__time">-</span>
+							</li>
+						@endforelse
 					</ul>
-					<button class="panel__footer-btn panel__footer-btn--red btn" type="button">View All Activities</button>
+					<a class="panel__footer-btn panel__footer-btn--red btn" href="{{ data_get($dashboardLinks, 'activities', route('admin.audit-logs')) }}">View All Activities</a>
 					</div>
 				</div>
 
@@ -193,38 +183,27 @@
 					<div class="panel h-100">
 					<h2 class="panel__title">Pending Approvals</h2>
 					<ul class="approval-list">
-						<li class="approval-item">
-							<div class="approval-item__info">
-								<p class="approval-item__name">Michael Jackson</p>
-								<p class="approval-item__type">New Registration</p>
-							</div>
-							<div class="approval-item__actions">
-								<button class="btn-approve btn" type="button">Approve</button>
-								<button class="btn-review btn" type="button">Review</button>
-							</div>
-						</li>
-						<li class="approval-item">
-							<div class="approval-item__info">
-								<p class="approval-item__name">Noli De Castro</p>
-								<p class="approval-item__type">Eligibility Review</p>
-							</div>
-							<div class="approval-item__actions">
-								<button class="btn-approve btn" type="button">Approve</button>
-								<button class="btn-review btn" type="button">Review</button>
-							</div>
-						</li>
-						<li class="approval-item">
-							<div class="approval-item__info">
-								<p class="approval-item__name">Hev Abi</p>
-								<p class="approval-item__type">Appointment Change</p>
-							</div>
-							<div class="approval-item__actions">
-								<button class="btn-approve btn" type="button">Approve</button>
-								<button class="btn-review btn" type="button">Review</button>
-							</div>
-						</li>
+						@forelse ($pendingApprovals as $approval)
+							<li class="approval-item">
+								<div class="approval-item__info">
+									<p class="approval-item__name">{{ data_get($approval, 'name', 'Unknown donor') }}</p>
+									<p class="approval-item__type">{{ data_get($approval, 'type', 'Pending approval') }}</p>
+								</div>
+								<div class="approval-item__actions">
+									<a class="btn-approve btn" href="{{ data_get($approval, 'approve_url', route('admin.eligibility.index')) }}">Approve</a>
+									<a class="btn-review btn" href="{{ data_get($approval, 'review_url', route('admin.eligibility.index')) }}">Review</a>
+								</div>
+							</li>
+						@empty
+							<li class="approval-item">
+								<div class="approval-item__info">
+									<p class="approval-item__name">No pending approvals at the moment.</p>
+									<p class="approval-item__type">Pending eligibility and appointment items will appear here.</p>
+								</div>
+							</li>
+						@endforelse
 					</ul>
-					<button class="panel__footer-btn panel__footer-btn--green btn" type="button">View All Approvals</button>
+					<a class="panel__footer-btn panel__footer-btn--green btn" href="{{ data_get($dashboardLinks, 'approvals', route('admin.eligibility.index')) }}">View All Approvals</a>
 					</div>
 				</div>
 			</section>
@@ -306,9 +285,9 @@
 				: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 			var values = Array.isArray(lineChartData.values) && lineChartData.values.length
 				? lineChartData.values
-				: [3, 4, 5.5, 7, 9, 11, 13, 15, 17, 18.5, 19.5, 20.5];
-			var yMax = Number(lineChartData.maxY || 25);
-			var yStep = Number(lineChartData.stepY || 5);
+				: months.map(function () { return 0; });
+			var yMax = Number(lineChartData.maxY || 5);
+			var yStep = Number(lineChartData.stepY || 1);
 
 			ctx.clearRect(0, 0, w, h);
 			ctx.font = '11px Poppins, sans-serif';
@@ -393,17 +372,9 @@
 			var w = setup.width;
 			var h = setup.height;
 
-			var fallbackSegments = [
-				{ label: 'O+', value: 0.38, color: '#b60c0c' },
-				{ label: 'A+', value: 0.29, color: '#5a0000' },
-				{ label: 'B+', value: 0.20, color: '#e83333' },
-				{ label: 'AB+', value: 0.08, color: '#f07070' },
-				{ label: 'O-', value: 0.05, color: '#ffd0d0' }
-			];
-
-			var segmentSource = Array.isArray(dashboardData.bloodTypeDistribution) && dashboardData.bloodTypeDistribution.length
+			var segmentSource = Array.isArray(dashboardData.bloodTypeDistribution)
 				? dashboardData.bloodTypeDistribution
-				: fallbackSegments;
+				: [];
 
 			var segments = segmentSource.map(function (item) {
 				return {
@@ -411,6 +382,8 @@
 					value: Number(item.value || 0),
 					color: item.color || '#b60c0c'
 				};
+			}).filter(function (item) {
+				return item.label && item.value > 0;
 			});
 
 			var legendW = 112;
@@ -421,6 +394,15 @@
 			var innerR = outerR * 0.45;
 
 			ctx.clearRect(0, 0, w, h);
+
+			if (!segments.length) {
+				ctx.textAlign = 'center';
+				ctx.textBaseline = 'middle';
+				ctx.font = '600 13px Poppins, sans-serif';
+				ctx.fillStyle = '#666';
+				ctx.fillText('No donor blood type data yet', w / 2, h / 2);
+				return;
+			}
 
 			var start = -Math.PI / 2;
 			for (var i = 0; i < segments.length; i += 1) {

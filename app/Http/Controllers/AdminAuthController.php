@@ -437,7 +437,9 @@ class AdminAuthController extends BaseController
      */
     public function dashboard(Request $request)
     {
-        return view('admin.admin_dashboard');
+        return view('admin.admin_dashboard', [
+            'dashboardPayload' => $this->buildAdminDashboardPayload(),
+        ]);
     }
 
     /**
@@ -3135,6 +3137,536 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
         $formatted = rtrim(rtrim($formatted, '0'), '.');
 
         return $formatted . 'k+';
+    }
+
+    /**
+     * Build all database-backed data shown on the admin dashboard.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildAdminDashboardPayload(): array
+    {
+        $unreadNotifications = $this->dashboardUnreadNotificationCount();
+
+        return [
+            'stats' => $this->buildAdminDashboardStats(),
+            'notification_count' => $unreadNotifications,
+            'notification_badge' => [
+                'label' => $unreadNotifications > 9 ? '9+' : (string) $unreadNotifications,
+                'visible' => $unreadNotifications > 0,
+            ],
+            'monthly_donations' => $this->buildDashboardMonthlyDonations(),
+            'blood_type_distribution' => $this->buildDashboardBloodTypeDistribution(),
+            'recent_activities' => $this->buildDashboardRecentActivities(),
+            'pending_approvals' => $this->buildDashboardPendingApprovals(),
+            'links' => [
+                'map' => route('admin.blood-availability-mapping'),
+                'activities' => route('admin.audit-logs'),
+                'approvals' => route('admin.eligibility.index'),
+            ],
+        ];
+    }
+
+    /**
+     * Build dashboard summary card data.
+     *
+     * @return array<string, array<string, string>>
+     */
+    private function buildAdminDashboardStats(): array
+    {
+        $donorTotal = Schema::hasTable('donors')
+            ? (int) DB::table('donors')->count()
+            : 0;
+        $successfulDonationTotal = $this->dashboardSuccessfulDonationQuery()->count();
+        $upcomingAppointmentTotal = $this->dashboardUpcomingAppointmentQuery()->count();
+        $donationRecordTotal = Schema::hasTable('donation_records')
+            ? (int) DB::table('donation_records')->count()
+            : 0;
+
+        [$currentStart, $currentEnd, $previousStart, $previousEnd] = $this->dashboardMonthRanges();
+
+        $donorCurrent = Schema::hasTable('donors')
+            ? (int) DB::table('donors')
+                ->whereDate('date_registered', '>=', $currentStart)
+                ->whereDate('date_registered', '<=', $currentEnd)
+                ->count()
+            : 0;
+        $donorPrevious = Schema::hasTable('donors')
+            ? (int) DB::table('donors')
+                ->whereDate('date_registered', '>=', $previousStart)
+                ->whereDate('date_registered', '<=', $previousEnd)
+                ->count()
+            : 0;
+
+        $successfulDonationCurrent = $this->dashboardSuccessfulDonationQuery()
+            ->whereDate('dr.donation_date', '>=', $currentStart)
+            ->whereDate('dr.donation_date', '<=', $currentEnd)
+            ->count();
+        $successfulDonationPrevious = $this->dashboardSuccessfulDonationQuery()
+            ->whereDate('dr.donation_date', '>=', $previousStart)
+            ->whereDate('dr.donation_date', '<=', $previousEnd)
+            ->count();
+
+        $appointmentCurrent = $this->dashboardSchedulableAppointmentQuery()
+            ->whereDate('ap.appointment_date', '>=', $currentStart)
+            ->whereDate('ap.appointment_date', '<=', $currentEnd)
+            ->count();
+        $appointmentPrevious = $this->dashboardSchedulableAppointmentQuery()
+            ->whereDate('ap.appointment_date', '>=', $previousStart)
+            ->whereDate('ap.appointment_date', '<=', $previousEnd)
+            ->count();
+
+        $donationRecordCurrent = Schema::hasTable('donation_records')
+            ? (int) DB::table('donation_records as dr')
+                ->whereDate('dr.donation_date', '>=', $currentStart)
+                ->whereDate('dr.donation_date', '<=', $currentEnd)
+                ->count()
+            : 0;
+        $donationRecordPrevious = Schema::hasTable('donation_records')
+            ? (int) DB::table('donation_records as dr')
+                ->whereDate('dr.donation_date', '>=', $previousStart)
+                ->whereDate('dr.donation_date', '<=', $previousEnd)
+                ->count()
+            : 0;
+
+        return [
+            'total_donors' => [
+                'value' => number_format($donorTotal),
+                'change' => $this->dashboardMonthlyChangeLabel($donorCurrent, $donorPrevious),
+            ],
+            'successful_donations' => [
+                'value' => number_format($successfulDonationTotal),
+                'change' => $this->dashboardMonthlyChangeLabel($successfulDonationCurrent, $successfulDonationPrevious),
+            ],
+            'upcoming_appointments' => [
+                'value' => number_format($upcomingAppointmentTotal),
+                'change' => $this->dashboardMonthlyChangeLabel($appointmentCurrent, $appointmentPrevious),
+            ],
+            'donation_records' => [
+                'value' => number_format($donationRecordTotal),
+                'change' => $this->dashboardMonthlyChangeLabel($donationRecordCurrent, $donationRecordPrevious),
+            ],
+        ];
+    }
+
+    /**
+     * Count unread donor notifications for the dashboard badge.
+     */
+    private function dashboardUnreadNotificationCount(): int
+    {
+        if (! Schema::hasTable('notifications')) {
+            return 0;
+        }
+
+        return (int) DB::table('notifications')
+            ->where('is_read', 0)
+            ->count();
+    }
+
+    /**
+     * Build current, previous month date ranges.
+     *
+     * @return array<int, string>
+     */
+    private function dashboardMonthRanges(): array
+    {
+        $now = Carbon::now();
+
+        return [
+            $now->copy()->startOfMonth()->toDateString(),
+            $now->copy()->endOfMonth()->toDateString(),
+            $now->copy()->subMonthNoOverflow()->startOfMonth()->toDateString(),
+            $now->copy()->subMonthNoOverflow()->endOfMonth()->toDateString(),
+        ];
+    }
+
+    /**
+     * Format the monthly change label used on summary cards.
+     */
+    private function dashboardMonthlyChangeLabel(int $current, int $previous): string
+    {
+        if ($previous === 0 && $current === 0) {
+            return '0% this month';
+        }
+
+        if ($previous === 0) {
+            return 'New this month';
+        }
+
+        if ($current === $previous) {
+            return 'No change this month';
+        }
+
+        $change = (($current - $previous) / $previous) * 100;
+        $prefix = $change > 0 ? '+' : '';
+
+        return $prefix . $this->dashboardFormatPercent($change) . '% this month';
+    }
+
+    /**
+     * Format a percentage with one optional decimal place.
+     */
+    private function dashboardFormatPercent(float $value): string
+    {
+        $formatted = number_format(round($value, 1), 1, '.', '');
+
+        return rtrim(rtrim($formatted, '0'), '.');
+    }
+
+    /**
+     * Base query for dashboard successful donations.
+     */
+    private function dashboardSuccessfulDonationQuery()
+    {
+        if (! Schema::hasTable('donation_records')) {
+            return DB::query()->fromRaw('(select null as donation_id, null as donation_date where 1 = 0) as dr');
+        }
+
+        return DB::table('donation_records as dr')
+            ->whereRaw('(' . $this->donationRecordStatusExpression('dr') . ') = ?', ['completed']);
+    }
+
+    /**
+     * Base query for appointments that are pending/approved/scheduled.
+     */
+    private function dashboardSchedulableAppointmentQuery()
+    {
+        if (! Schema::hasTable('appointments')) {
+            return DB::query()->fromRaw('(select null as appointment_id, null as appointment_date, null as status where 1 = 0) as ap');
+        }
+
+        $statusExpression = $this->appointmentStatusExpression('ap');
+
+        return DB::table('appointments as ap')
+            ->whereRaw('(' . $statusExpression . ') in (?, ?)', ['pending', 'confirmed']);
+    }
+
+    /**
+     * Base query for upcoming appointments.
+     */
+    private function dashboardUpcomingAppointmentQuery()
+    {
+        return $this->dashboardSchedulableAppointmentQuery()
+            ->whereDate('ap.appointment_date', '>=', Carbon::today()->toDateString());
+    }
+
+    /**
+     * Build successful donation counts by month for the current year.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildDashboardMonthlyDonations(): array
+    {
+        $labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        $values = array_fill(0, 12, 0);
+
+        if (Schema::hasTable('donation_records')) {
+            $rows = $this->dashboardSuccessfulDonationQuery()
+                ->whereYear('dr.donation_date', Carbon::now()->year)
+                ->selectRaw('MONTH(dr.donation_date) as month_number, COUNT(*) as total')
+                ->groupByRaw('MONTH(dr.donation_date)')
+                ->pluck('total', 'month_number');
+
+            foreach ($rows as $month => $total) {
+                $monthIndex = (int) $month - 1;
+                if ($monthIndex >= 0 && $monthIndex < 12) {
+                    $values[$monthIndex] = (int) $total;
+                }
+            }
+        }
+
+        $maxValue = max($values);
+        [$maxY, $stepY] = $this->dashboardChartScale($maxValue);
+
+        return [
+            'labels' => $labels,
+            'values' => $values,
+            'maxY' => $maxY,
+            'stepY' => $stepY,
+        ];
+    }
+
+    /**
+     * Resolve a readable chart scale for the dashboard line chart.
+     *
+     * @return array<int, int>
+     */
+    private function dashboardChartScale(int $maxValue): array
+    {
+        if ($maxValue <= 0) {
+            return [5, 1];
+        }
+
+        $roughStep = max(1, (int) ceil($maxValue / 5));
+        $magnitude = 10 ** max(0, strlen((string) $roughStep) - 1);
+        $normalized = $roughStep / $magnitude;
+
+        if ($normalized <= 1) {
+            $niceStep = 1 * $magnitude;
+        } elseif ($normalized <= 2) {
+            $niceStep = 2 * $magnitude;
+        } elseif ($normalized <= 5) {
+            $niceStep = 5 * $magnitude;
+        } else {
+            $niceStep = 10 * $magnitude;
+        }
+
+        $maxY = (int) (ceil($maxValue / $niceStep) * $niceStep);
+
+        return [max($niceStep, $maxY), $niceStep];
+    }
+
+    /**
+     * Build donor blood type distribution chart data.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildDashboardBloodTypeDistribution(): array
+    {
+        if (! Schema::hasTable('donors') || ! Schema::hasTable('blood_types')) {
+            return [];
+        }
+
+        $rows = DB::table('blood_types as bt')
+            ->leftJoin('donors as d', 'd.blood_type_id', '=', 'bt.blood_type_id')
+            ->whereNotNull('bt.blood_type')
+            ->where('bt.blood_type', '!=', '')
+            ->select('bt.blood_type', DB::raw('COUNT(d.donor_id) as donor_count'))
+            ->groupBy('bt.blood_type')
+            ->orderBy('bt.blood_type')
+            ->get();
+
+        $totalDonorsWithType = (int) $rows->sum('donor_count');
+        if ($totalDonorsWithType <= 0) {
+            return [];
+        }
+
+        $palette = ['#b60c0c', '#5a0000', '#e83333', '#f07070', '#ffd0d0', '#8f1010', '#d64545', '#ff9a9a'];
+
+        return $rows
+            ->filter(fn(object $row): bool => (int) $row->donor_count > 0)
+            ->values()
+            ->map(function (object $row, int $index) use ($totalDonorsWithType, $palette): array {
+                return [
+                    'label' => (string) $row->blood_type,
+                    'value' => round(((int) $row->donor_count) / $totalDonorsWithType, 4),
+                    'count' => (int) $row->donor_count,
+                    'color' => $palette[$index % count($palette)],
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Build a mixed feed of recent dashboard activities.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private function buildDashboardRecentActivities(): array
+    {
+        $activities = collect();
+
+        if (Schema::hasTable('audit_logs')) {
+            DB::table('audit_logs')
+                ->orderByDesc('created_at')
+                ->limit(5)
+                ->get(['actor_name', 'description', 'action_type', 'created_at'])
+                ->each(function (object $row) use ($activities): void {
+                    $activities->push($this->dashboardActivityItem(
+                        (string) ($row->actor_name ?: 'System'),
+                        (string) ($row->description ?: Str::headline((string) ($row->action_type ?? 'Activity'))),
+                        (string) ($row->created_at ?? ''),
+                        $this->dashboardActivityTone((string) ($row->action_type ?? ''))
+                    ));
+                });
+        }
+
+        if (Schema::hasTable('donors')) {
+            DB::table('donors')
+                ->orderByDesc('date_registered')
+                ->limit(5)
+                ->get(['first_name', 'last_name', 'date_registered'])
+                ->each(function (object $row) use ($activities): void {
+                    $activities->push($this->dashboardActivityItem(
+                        $this->dashboardDonorName($row),
+                        'Registration Complete',
+                        (string) ($row->date_registered ?? ''),
+                        'red'
+                    ));
+                });
+        }
+
+        if (Schema::hasTable('donation_records')) {
+            $this->dashboardSuccessfulDonationQuery()
+                ->leftJoin('donors as d', 'd.donor_id', '=', 'dr.donor_id')
+                ->orderByDesc('dr.donation_date')
+                ->limit(5)
+                ->get(['d.first_name', 'd.last_name', 'dr.donation_date'])
+                ->each(function (object $row) use ($activities): void {
+                    $activities->push($this->dashboardActivityItem(
+                        $this->dashboardDonorName($row),
+                        'Completed Donation',
+                        (string) ($row->donation_date ?? ''),
+                        'green'
+                    ));
+                });
+        }
+
+        if (Schema::hasTable('appointments')) {
+            DB::table('appointments as ap')
+                ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
+                ->orderByDesc('ap.created_at')
+                ->limit(5)
+                ->get(['d.first_name', 'd.last_name', 'ap.status', 'ap.created_at'])
+                ->each(function (object $row) use ($activities): void {
+                    $status = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
+                    $activities->push($this->dashboardActivityItem(
+                        $this->dashboardDonorName($row),
+                        $status === 'cancelled' ? 'Cancelled Appointment' : 'Booked Appointment',
+                        (string) ($row->created_at ?? ''),
+                        $status === 'cancelled' ? 'gold' : 'blue'
+                    ));
+                });
+        }
+
+        if (Schema::hasTable('eligibility_status')) {
+            DB::table('eligibility_status as es')
+                ->leftJoin('donors as d', 'd.donor_id', '=', 'es.donor_id')
+                ->orderByDesc('es.eligibility_id')
+                ->limit(5)
+                ->get(['d.first_name', 'd.last_name', 'es.status', 'es.eligibility_id'])
+                ->each(function (object $row) use ($activities): void {
+                    $activities->push($this->dashboardActivityItem(
+                        $this->dashboardDonorName($row),
+                        'Eligibility ' . Str::headline((string) ($row->status ?? 'Update')),
+                        '',
+                        'gold',
+                        (int) ($row->eligibility_id ?? 0)
+                    ));
+                });
+        }
+
+        return $activities
+            ->filter(fn(array $item): bool => $item['name'] !== '' || $item['action'] !== '')
+            ->sortByDesc('sort_value')
+            ->take(5)
+            ->map(fn(array $item): array => [
+                'name' => $item['name'],
+                'action' => $item['action'],
+                'time' => $item['time'],
+                'tone' => $item['tone'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Build pending approval rows for the dashboard.
+     *
+     * @return array<int, array<string, string>>
+     */
+    private function buildDashboardPendingApprovals(): array
+    {
+        $approvals = collect();
+
+        if (Schema::hasTable('eligibility_status')) {
+            DB::table('eligibility_status as es')
+                ->leftJoin('donors as d', 'd.donor_id', '=', 'es.donor_id')
+                ->where(function ($query): void {
+                    $query->whereNull('es.status')
+                        ->orWhere('es.status', 'pending');
+                })
+                ->orderByDesc('es.eligibility_id')
+                ->limit(5)
+                ->get(['d.first_name', 'd.last_name'])
+                ->each(function (object $row) use ($approvals): void {
+                    $approvals->push([
+                        'name' => $this->dashboardDonorName($row),
+                        'type' => 'Eligibility Review',
+                        'approve_url' => route('admin.eligibility.index'),
+                        'review_url' => route('admin.eligibility.index'),
+                    ]);
+                });
+        }
+
+        if ($approvals->count() < 5 && Schema::hasTable('appointments')) {
+            $needed = 5 - $approvals->count();
+            $statusExpression = $this->appointmentStatusExpression('ap');
+
+            DB::table('appointments as ap')
+                ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
+                ->whereRaw('(' . $statusExpression . ') = ?', ['pending'])
+                ->orderBy('ap.appointment_date')
+                ->limit($needed)
+                ->get(['d.first_name', 'd.last_name'])
+                ->each(function (object $row) use ($approvals): void {
+                    $approvals->push([
+                        'name' => $this->dashboardDonorName($row),
+                        'type' => 'Pending Appointment',
+                        'approve_url' => route('admin.appointments'),
+                        'review_url' => route('admin.appointments'),
+                    ]);
+                });
+        }
+
+        return $approvals->values()->all();
+    }
+
+    /**
+     * Normalize a dashboard activity row.
+     *
+     * @return array<string, string|int>
+     */
+    private function dashboardActivityItem(string $name, string $action, string $timestamp, string $tone, int $fallbackSort = 0): array
+    {
+        $parsed = null;
+
+        try {
+            $parsed = trim($timestamp) !== '' ? Carbon::parse($timestamp) : null;
+        } catch (Throwable) {
+            $parsed = null;
+        }
+
+        return [
+            'name' => trim($name) !== '' ? trim($name) : 'Unknown Donor',
+            'action' => trim($action) !== '' ? trim($action) : 'Activity',
+            'time' => $parsed ? $parsed->diffForHumans() : 'Recently',
+            'tone' => in_array($tone, ['green', 'blue', 'gold', 'red'], true) ? $tone : 'blue',
+            'sort_value' => $parsed ? $parsed->timestamp : $fallbackSort,
+        ];
+    }
+
+    /**
+     * Resolve dashboard activity color tone from an action name.
+     */
+    private function dashboardActivityTone(string $actionType): string
+    {
+        $action = Str::lower($actionType);
+
+        if (Str::contains($action, ['delete', 'cancel', 'reject', 'decline', 'fail'])) {
+            return 'red';
+        }
+
+        if (Str::contains($action, ['complete', 'approve', 'success'])) {
+            return 'green';
+        }
+
+        if (Str::contains($action, ['update', 'review', 'security'])) {
+            return 'gold';
+        }
+
+        return 'blue';
+    }
+
+    /**
+     * Build a readable donor name from joined donor columns.
+     */
+    private function dashboardDonorName(object $row): string
+    {
+        $name = trim((string) ($row->first_name ?? '') . ' ' . (string) ($row->last_name ?? ''));
+
+        return $name !== '' ? $name : 'Unknown Donor';
     }
 
     /**
