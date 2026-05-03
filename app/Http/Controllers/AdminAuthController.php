@@ -324,7 +324,7 @@ class AdminAuthController extends BaseController
                 'email' => $admin->email,
                 'token' => $token,
             ], false);
-            $resetUrl = rtrim($request->getSchemeAndHttpHost(), '/').$resetPath;
+            $resetUrl = rtrim($request->getSchemeAndHttpHost(), '/') . $resetPath;
 
             Cache::store(self::RESET_CACHE_STORE)->put(
                 $this->makePasswordResetCacheKey($admin->email),
@@ -477,7 +477,7 @@ class AdminAuthController extends BaseController
         $query = $this->userManagementDonorQuery();
 
         if ($searchTerm !== '') {
-            $likeTerm = '%'.$searchTerm.'%';
+            $likeTerm = '%' . $searchTerm . '%';
 
             $query->where(function ($builder) use ($searchTerm, $likeTerm): void {
                 $builder->whereRaw("CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, '')) like ?", [$likeTerm])
@@ -495,7 +495,7 @@ class AdminAuthController extends BaseController
         }
 
         if ($status !== '') {
-            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
+            $query->whereRaw('(' . $statusExpression . ') = ?', [$status]);
         }
 
         $paginator = $query
@@ -510,7 +510,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn (object $donor): array => $this->transformUserManagementDonor($donor))
+                ->map(fn(object $donor): array => $this->transformUserManagementDonor($donor))
                 ->values()
                 ->all(),
             'meta' => [
@@ -579,7 +579,7 @@ class AdminAuthController extends BaseController
         $query = $this->appointmentManagementBaseQuery();
 
         if ($searchTerm !== '') {
-            $likeTerm = '%'.$searchTerm.'%';
+            $likeTerm = '%' . $searchTerm . '%';
             $numericSearch = null;
 
             if (preg_match('/(\d+)/', $searchTerm, $matches) === 1) {
@@ -599,11 +599,11 @@ class AdminAuthController extends BaseController
         }
 
         if ($center !== '') {
-            $query->whereRaw('LOWER('.$centerExpression.') = ?', [Str::lower($center)]);
+            $query->whereRaw('LOWER(' . $centerExpression . ') = ?', [Str::lower($center)]);
         }
 
         if ($status !== '') {
-            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
+            $query->whereRaw('(' . $statusExpression . ') = ?', [$status]);
         }
 
         $paginator = $query
@@ -620,7 +620,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn (object $entry): array => $this->transformAppointmentManagementRow($entry))
+                ->map(fn(object $entry): array => $this->transformAppointmentManagementRow($entry))
                 ->values()
                 ->all(),
             'meta' => [
@@ -668,7 +668,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification($donorId, 'appointment_approved', "Your appointment {$appointmentCode} has been approved.");
         $this->logAppointmentAudit($request, 'appointment_approved', "Approved appointment {$appointmentCode}.", $appointment, [
@@ -706,7 +706,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification($donorId, 'appointment_rejected', "Your appointment {$appointmentCode} has been rejected.");
         $this->logAppointmentAudit($request, 'appointment_rejected', "Rejected appointment {$appointmentCode}.", $appointment, [
@@ -761,7 +761,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification(
             $donorId,
@@ -803,29 +803,23 @@ class AdminAuthController extends BaseController
             : null;
 
         DB::transaction(function () use ($row, $appointment, $actorAdminId) {
-            // Update appointment
             DB::table('appointments')->where('appointment_id', $appointment)->update([
-                'status'       => 'completed',
+                'status' => 'completed',
                 'completed_at' => now(),
-                'admin_id'     => $actorAdminId,
+                'admin_id' => $actorAdminId,
             ]);
 
-            // Create donation record
             DB::table('donation_records')->insert([
-                'donor_id'        => $row->donor_id,
-                'appointment_id'  => $row->appointment_id,
-                'donation_date'   => $row->appointment_date,
-                'donation_center' => $row->donation_center ?? 'Unknown',
-                // Default status for a completed appointment is usually completed or pending evaluation
-                // We'll set it to 'completed' per instructions, or let observers handle it if they exist
-                'status'          => 'completed',
-                'created_at'      => now(),
-                'updated_at'      => now(),
+                'donor_id' => $row->donor_id,
+                'appointment_id' => $row->appointment_id,
+                'donation_date' => $row->appointment_date,
+                'blood_units' => null,
+                'remarks' => null,
             ]);
         });
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification(
             $donorId,
@@ -882,7 +876,7 @@ class AdminAuthController extends BaseController
         $query = $this->donationRecordsBaseQuery();
 
         if ($searchTerm !== '') {
-            $likeTerm = '%'.$searchTerm.'%';
+            $likeTerm = '%' . $searchTerm . '%';
             $numericSearch = null;
 
             if (preg_match('/(\d+)/', $searchTerm, $matches) === 1) {
@@ -908,7 +902,7 @@ class AdminAuthController extends BaseController
 
         if ($status !== '') {
             $statusExpression = $this->donationRecordStatusExpression();
-            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
+            $query->whereRaw('(' . $statusExpression . ') = ?', [$status]);
         }
 
         $paginator = $query
@@ -936,7 +930,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn (object $entry): array => $this->transformDonationRecordRow($entry))
+                ->map(fn(object $entry): array => $this->transformDonationRecordRow($entry))
                 ->values()
                 ->all(),
             'meta' => [
@@ -985,7 +979,7 @@ class AdminAuthController extends BaseController
     public function mapDonors(Request $request): JsonResponse
     {
         $query = DB::table('donors')
-            ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+            ->join('locations', 'donors.location_id', '=', 'locations.location_id')
             ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
             ->whereNotNull('locations.latitude')
             ->whereNotNull('locations.longitude')
@@ -1009,14 +1003,14 @@ class AdminAuthController extends BaseController
             $query->where('locations.barangay_name', $barangay);
         }
 
-        $donors = $query->get()->map(fn ($row) => [
-            'donor_id'      => $row->donor_id,
-            'name'          => trim("{$row->first_name} {$row->last_name}"),
-            'blood_type'    => $row->blood_type,
-            'barangay'      => $row->barangay_name,
-            'city'          => $row->city,
-            'lat'           => (float) $row->latitude,
-            'lng'           => (float) $row->longitude,
+        $donors = $query->get()->map(fn($row) => [
+            'donor_id' => $row->donor_id,
+            'name' => trim("{$row->first_name} {$row->last_name}"),
+            'blood_type' => $row->blood_type,
+            'barangay' => $row->barangay_name,
+            'city' => $row->city,
+            'lat' => (float) $row->latitude,
+            'lng' => (float) $row->longitude,
         ]);
 
         return response()->json($donors);
@@ -1030,7 +1024,7 @@ class AdminAuthController extends BaseController
     public function mapBarangays(Request $request): JsonResponse
     {
         $rows = DB::table('donors')
-            ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+            ->join('locations', 'donors.location_id', '=', 'locations.location_id')
             ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
             ->whereNotNull('locations.latitude')
             ->whereNotNull('locations.longitude')
@@ -1046,7 +1040,7 @@ class AdminAuthController extends BaseController
 
         // Per-barangay dominant blood type (separate query for accuracy)
         $dominantRows = DB::table('donors')
-            ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+            ->join('locations', 'donors.location_id', '=', 'locations.location_id')
             ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
             ->whereNotNull('locations.latitude')
             ->whereNotNull('locations.longitude')
@@ -1059,24 +1053,24 @@ class AdminAuthController extends BaseController
             ->orderByDesc('type_count')
             ->get()
             ->groupBy('barangay_name')
-            ->map(fn ($group) => $group->first());
+            ->map(fn($group) => $group->first());
 
         $barangays = $rows->map(function ($row) use ($dominantRows) {
-            $count   = (int) $row->donor_count;
+            $count = (int) $row->donor_count;
             $dominant = $dominantRows->get($row->barangay_name);
-            $dominantType  = $dominant?->blood_type ?? null;
-            $dominantCount = $dominant?->type_count  ?? 0;
-            $isSurplus     = $count > 0 && ($dominantCount / $count) > 0.60;
+            $dominantType = $dominant?->blood_type ?? null;
+            $dominantCount = $dominant?->type_count ?? 0;
+            $isSurplus = $count > 0 && ($dominantCount / $count) > 0.60;
 
             return [
-                'barangay'           => $row->barangay_name,
-                'centroid_lat'       => (float) $row->centroid_lat,
-                'centroid_lng'       => (float) $row->centroid_lng,
-                'donor_count'        => $count,
+                'barangay' => $row->barangay_name,
+                'centroid_lat' => (float) $row->centroid_lat,
+                'centroid_lng' => (float) $row->centroid_lng,
+                'donor_count' => $count,
                 'availability_level' => $this->classifyAvailability($count),
-                'types_present'      => $row->types_present ? explode(',', $row->types_present) : [],
-                'dominant_type'      => $dominantType,
-                'is_surplus'         => $isSurplus,
+                'types_present' => $row->types_present ? explode(',', $row->types_present) : [],
+                'dominant_type' => $dominantType,
+                'is_surplus' => $isSurplus,
             ];
         });
 
@@ -1100,9 +1094,9 @@ class AdminAuthController extends BaseController
             ->pluck('count', 'blood_type');
 
         // Fill missing types with zero
-        $breakdown = collect($allBloodTypes)->map(fn ($bt) => [
+        $breakdown = collect($allBloodTypes)->map(fn($bt) => [
             'blood_type' => $bt,
-            'count'      => (int) ($bloodTypeBreakdown[$bt] ?? 0),
+            'count' => (int) ($bloodTypeBreakdown[$bt] ?? 0),
         ]);
 
         // Barangays with fewer than 2 donors = critical zones
@@ -1118,7 +1112,7 @@ class AdminAuthController extends BaseController
         if ($filterType = $request->query('blood_type')) {
             $allBarangays = DB::table('locations')->distinct()->pluck('barangay_name');
             $coveredBarangays = DB::table('donors')
-                ->join('locations',   'donors.location_id',   '=', 'locations.location_id')
+                ->join('locations', 'donors.location_id', '=', 'locations.location_id')
                 ->join('blood_types', 'donors.blood_type_id', '=', 'blood_types.blood_type_id')
                 ->where('blood_types.blood_type', $filterType)
                 ->distinct()
@@ -1132,12 +1126,12 @@ class AdminAuthController extends BaseController
             ->count();
 
         return response()->json([
-            'total_donors'        => DB::table('donors')->count(),
-            'total_locations'     => $totalLocations,
-            'blood_type_breakdown'=> $breakdown,
-            'critical_barangays'  => $criticalBarangays,
-            'shortage_barangays'  => $shortageBarangays,
-            'last_updated'        => now()->format('M d, Y h:i A'),
+            'total_donors' => DB::table('donors')->count(),
+            'total_locations' => $totalLocations,
+            'blood_type_breakdown' => $breakdown,
+            'critical_barangays' => $criticalBarangays,
+            'shortage_barangays' => $shortageBarangays,
+            'last_updated' => now()->format('M d, Y h:i A'),
         ]);
     }
 
@@ -1148,9 +1142,9 @@ class AdminAuthController extends BaseController
     {
         return match (true) {
             $count >= 10 => 'high',
-            $count >= 5  => 'medium',
-            $count >= 2  => 'low',
-            default      => 'critical',
+            $count >= 5 => 'medium',
+            $count >= 2 => 'low',
+            default => 'critical',
         };
     }
 
@@ -1219,7 +1213,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn (object $entry) => $this->transformAuditLogEntry($entry))
+                ->map(fn(object $entry) => $this->transformAuditLogEntry($entry))
                 ->values()
                 ->all(),
             'meta' => [
@@ -1257,7 +1251,7 @@ class AdminAuthController extends BaseController
             ->distinct()
             ->orderBy('action_type')
             ->pluck('action_type')
-            ->map(fn (string $value): array => [
+            ->map(fn(string $value): array => [
                 'value' => Str::lower(trim($value)),
                 'label' => $this->labelizeAuditValue($value),
             ])
@@ -1276,13 +1270,13 @@ class AdminAuthController extends BaseController
             ->where('actor_role', '!=', '')
             ->distinct()
             ->pluck('actor_role')
-            ->map(fn (string $value): string => $this->resolveAuditUserType($value))
+            ->map(fn(string $value): string => $this->resolveAuditUserType($value))
             ->unique()
             ->values()
             ->all();
 
         return collect($roleValues)
-            ->map(fn (string $value): array => [
+            ->map(fn(string $value): array => [
                 'value' => $value,
                 'label' => Str::title($value),
             ])
@@ -1316,7 +1310,7 @@ class AdminAuthController extends BaseController
             ->orderByDesc('audit_log_id')
             ->get();
 
-        $fileName = 'audit-logs-'.now()->format('Ymd-His').'.csv';
+        $fileName = 'audit-logs-' . now()->format('Ymd-His') . '.csv';
 
         return response()->streamDownload(function () use ($rows): void {
             $handle = fopen('php://output', 'wb');
@@ -1404,7 +1398,7 @@ class AdminAuthController extends BaseController
 
         if ($searchTerm !== '') {
             $query->where(function ($builder) use ($searchTerm) {
-                $likeTerm = '%'.$searchTerm.'%';
+                $likeTerm = '%' . $searchTerm . '%';
 
                 $builder->where('full_name', 'like', $likeTerm)
                     ->orWhere('username', 'like', $likeTerm)
@@ -1433,7 +1427,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn (object $admin) => $this->transformRbacAdminUser($admin))
+                ->map(fn(object $admin) => $this->transformRbacAdminUser($admin))
                 ->values()
                 ->all(),
             'meta' => [
@@ -1490,12 +1484,12 @@ class AdminAuthController extends BaseController
 
         $displayName = $createdAdmin
             ? $this->displayNameForAdmin($createdAdmin)
-            : ('Admin #'.(int) $newAdminId);
+            : ('Admin #' . (int) $newAdminId);
 
         $this->logRbacAdminAudit(
             $request,
             'create',
-            'Created admin account: '.$displayName,
+            'Created admin account: ' . $displayName,
             (int) $newAdminId,
             [
                 'username' => $username,
@@ -1577,7 +1571,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'update',
-            'Updated admin account: '.$this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
+            'Updated admin account: ' . $this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
             (int) $targetAdmin->admin_id,
             [
                 'changes' => $changes,
@@ -1622,7 +1616,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'delete',
-            'Deleted admin account: '.$targetDisplayName,
+            'Deleted admin account: ' . $targetDisplayName,
             (int) $targetAdmin->admin_id,
             [
                 'email' => (string) ($targetAdmin->email ?? ''),
@@ -1685,7 +1679,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'update',
-            'Updated admin role for '.$this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
+            'Updated admin role for ' . $this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
             (int) $targetAdmin->admin_id,
             [
                 'role_from' => (string) ($targetAdmin->role ?? ''),
@@ -1730,7 +1724,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'update',
-            'Reset password for admin account: '.$this->displayNameForAdmin($targetAdmin),
+            'Reset password for admin account: ' . $this->displayNameForAdmin($targetAdmin),
             (int) $targetAdmin->admin_id,
             [
                 'email' => (string) ($targetAdmin->email ?? ''),
@@ -2004,7 +1998,7 @@ class AdminAuthController extends BaseController
 
         $recoveryCodes = $this->generateRecoveryCodes();
         $hashedRecoveryCodes = collect($recoveryCodes)
-            ->map(fn (string $value): string => Hash::make($value))
+            ->map(fn(string $value): string => Hash::make($value))
             ->values()
             ->all();
 
@@ -2495,7 +2489,7 @@ class AdminAuthController extends BaseController
         $codes = [];
 
         for ($index = 0; $index < self::TWO_FACTOR_RECOVERY_CODES_COUNT; $index++) {
-            $codes[] = Str::upper(Str::random(5)).'-'.Str::upper(Str::random(5));
+            $codes[] = Str::upper(Str::random(5)) . '-' . Str::upper(Str::random(5));
         }
 
         return $codes;
@@ -2522,7 +2516,7 @@ class AdminAuthController extends BaseController
         }
 
         return array_values(array_filter(array_map(
-            static fn (mixed $value): string => is_string($value) ? $value : '',
+            static fn(mixed $value): string => is_string($value) ? $value : '',
             $decoded
         )));
     }
@@ -2600,13 +2594,13 @@ class AdminAuthController extends BaseController
         $localPart = trim($localPart);
 
         if (Str::length($localPart) <= 2) {
-            $maskedLocalPart = Str::substr($localPart, 0, 1).'*';
+            $maskedLocalPart = Str::substr($localPart, 0, 1) . '*';
         } else {
             $maskedLocalPart = Str::substr($localPart, 0, 2)
-                .str_repeat('*', max(1, Str::length($localPart) - 2));
+                . str_repeat('*', max(1, Str::length($localPart) - 2));
         }
 
-        return $maskedLocalPart.'@'.$domain;
+        return $maskedLocalPart . '@' . $domain;
     }
 
     /**
@@ -2676,8 +2670,8 @@ class AdminAuthController extends BaseController
                 'da.email',
                 'bt.blood_type',
             ])
-            ->selectRaw('('.$centerExpression.') as center_label')
-            ->selectRaw('('.$statusExpression.') as normalized_status');
+            ->selectRaw('(' . $centerExpression . ') as center_label')
+            ->selectRaw('(' . $statusExpression . ') as normalized_status');
     }
 
     /**
@@ -2750,12 +2744,12 @@ class AdminAuthController extends BaseController
         return DB::table('donors as d')
             ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
             ->whereNotNull('d.location_id')
-            ->selectRaw('('.$centerExpression.') as center_label')
+            ->selectRaw('(' . $centerExpression . ') as center_label')
             ->distinct()
             ->orderBy('center_label')
             ->pluck('center_label')
-            ->map(fn ($value): string => trim((string) $value))
-            ->filter(fn (string $value): bool => $value !== '' && Str::lower($value) !== 'n/a')
+            ->map(fn($value): string => trim((string) $value))
+            ->filter(fn(string $value): bool => $value !== '' && Str::lower($value) !== 'n/a')
             ->values()
             ->all();
     }
@@ -2767,7 +2761,7 @@ class AdminAuthController extends BaseController
      */
     private function transformAppointmentManagementRow(object $entry): array
     {
-        $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
+        $donorName = trim((string) ($entry->first_name ?? '') . ' ' . (string) ($entry->last_name ?? ''));
         if ($donorName === '') {
             $donorName = 'Unknown Donor';
         }
@@ -2779,9 +2773,9 @@ class AdminAuthController extends BaseController
 
         return [
             'appointment_id' => (int) ($entry->appointment_id ?? 0),
-            'appointment_code' => 'AP'.str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'appointment_code' => 'AP' . str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'donor_id' => (int) ($entry->donor_id ?? 0),
-            'donor_code' => 'D'.str_pad((string) ((int) ($entry->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_code' => 'D' . str_pad((string) ((int) ($entry->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'donor_name' => $donorName,
             'donor_email' => trim((string) ($entry->email ?? '')),
             'blood_type' => trim((string) ($entry->blood_type ?? '')),
@@ -2827,8 +2821,8 @@ class AdminAuthController extends BaseController
                 'bt.blood_type',
                 'es.next_eligible_date',
             ])
-            ->selectRaw('('.$centerExpression.') as center_label')
-            ->selectRaw('('.$statusExpression.') as derived_status');
+            ->selectRaw('(' . $centerExpression . ') as center_label')
+            ->selectRaw('(' . $statusExpression . ') as derived_status');
     }
 
     /**
@@ -2850,7 +2844,7 @@ class AdminAuthController extends BaseController
      */
     private function transformDonationRecordRow(object $entry): array
     {
-        $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
+        $donorName = trim((string) ($entry->first_name ?? '') . ' ' . (string) ($entry->last_name ?? ''));
         if ($donorName === '') {
             $donorName = 'Unknown Donor';
         }
@@ -2866,7 +2860,7 @@ class AdminAuthController extends BaseController
 
         return [
             'donation_id' => (int) ($entry->donation_id ?? 0),
-            'record_code' => 'DR'.str_pad((string) ((int) ($entry->donation_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'record_code' => 'DR' . str_pad((string) ((int) ($entry->donation_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'donor_id' => (int) ($entry->donor_id ?? 0),
             'donor_name' => $donorName,
             'blood_type' => trim((string) ($entry->blood_type ?? '')),
@@ -2907,7 +2901,7 @@ class AdminAuthController extends BaseController
                 DB::raw('COALESCE(drs.total_donations, 0) as total_donations'),
                 DB::raw('drs.last_donation_date as last_donation_date'),
             ])
-            ->selectRaw('('.$statusExpression.') as derived_status');
+            ->selectRaw('(' . $statusExpression . ') as derived_status');
     }
 
     /**
@@ -2974,9 +2968,9 @@ class AdminAuthController extends BaseController
      */
     private function transformUserManagementDonor(object $donor): array
     {
-        $fullName = trim((string) ($donor->first_name ?? '').' '.(string) ($donor->last_name ?? ''));
+        $fullName = trim((string) ($donor->first_name ?? '') . ' ' . (string) ($donor->last_name ?? ''));
         if ($fullName === '') {
-            $fullName = 'Donor #'.(int) ($donor->donor_id ?? 0);
+            $fullName = 'Donor #' . (int) ($donor->donor_id ?? 0);
         }
 
         $status = Str::lower(trim((string) ($donor->derived_status ?? 'eligible')));
@@ -2986,7 +2980,7 @@ class AdminAuthController extends BaseController
 
         return [
             'donor_id' => (int) ($donor->donor_id ?? 0),
-            'donor_code' => 'D'.str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_code' => 'D' . str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'full_name' => $fullName,
             'email' => trim((string) ($donor->email ?? '')),
             'blood_type' => trim((string) ($donor->blood_type ?? '')),
@@ -3010,7 +3004,7 @@ class AdminAuthController extends BaseController
             ->select($this->rbacAdminSelectColumns())
             ->orderBy('admin_id')
             ->get()
-            ->map(fn (object $admin) => $this->transformRbacAdminUser($admin))
+            ->map(fn(object $admin) => $this->transformRbacAdminUser($admin))
             ->values()
             ->all();
     }
@@ -3071,7 +3065,7 @@ class AdminAuthController extends BaseController
             $displayName = trim((string) ($admin->username ?? ''));
         }
         if ($displayName === '') {
-            $displayName = 'Admin #'.(int) ($admin->admin_id ?? 0);
+            $displayName = 'Admin #' . (int) ($admin->admin_id ?? 0);
         }
 
         return $displayName;
@@ -3259,10 +3253,9 @@ class AdminAuthController extends BaseController
         string $actionType,
         string $userType,
         bool $securityPolicyOnly = false
-    ): void
-    {
+    ): void {
         if ($searchTerm !== '') {
-            $likeTerm = '%'.$searchTerm.'%';
+            $likeTerm = '%' . $searchTerm . '%';
 
             $query->where(function ($builder) use ($likeTerm): void {
                 $builder->where('actor_name', 'like', $likeTerm)
@@ -3435,7 +3428,7 @@ class AdminAuthController extends BaseController
                 'remember_token_expires_at' => $expiresAt,
             ]);
 
-        $cookiePayload = Crypt::encryptString($adminId.'|'.$plainToken);
+        $cookiePayload = Crypt::encryptString($adminId . '|' . $plainToken);
 
         Cookie::queue(cookie(
             self::REMEMBER_COOKIE_NAME,
@@ -3485,7 +3478,7 @@ class AdminAuthController extends BaseController
      */
     private function makePasswordResetCacheKey(string $email): string
     {
-        return self::RESET_CACHE_PREFIX.Str::lower(trim($email));
+        return self::RESET_CACHE_PREFIX . Str::lower(trim($email));
     }
 
     /**
