@@ -259,6 +259,7 @@
 @endsection
 
 @push('admin_scripts')
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     (function () {
         var payload = (window.AdminPageData && window.AdminPageData.appointmentManagement)
@@ -751,23 +752,44 @@
                 var requestBody = null;
 
                 if (action === 'reject') {
-                    if (!window.confirm('Reject this appointment? This cannot be undone.')) {
-                        return;
-                    }
-
-                    actionButton.disabled = true;
-                    performAppointmentAction(appointmentId, action, null)
-                        .then(function () { loadAppointments(); })
-                        .catch(function (error) { alert(error && error.message ? error.message : 'Action failed.'); })
-                        .then(function () { actionButton.disabled = false; });
+                    Swal.fire({
+                        title: 'Reject Appointment?',
+                        text: 'This cannot be undone.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#b60c0c',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Yes, Reject',
+                        cancelButtonText: 'Cancel'
+                    }).then(function (result) {
+                        if (!result.isConfirmed) { return; }
+                        actionButton.disabled = true;
+                        performAppointmentAction(appointmentId, action, null)
+                            .then(function () { loadAppointments(); })
+                            .catch(function (error) {
+                                Swal.fire('Error', error && error.message ? error.message : 'Action failed.', 'error');
+                            })
+                            .then(function () { actionButton.disabled = false; });
+                    });
                     return;
                 }
 
                 if (action === 'approve') {
                     actionButton.disabled = true;
                     performAppointmentAction(appointmentId, action, null)
-                        .then(function () { loadAppointments(); })
-                        .catch(function (error) { alert(error && error.message ? error.message : 'Action failed.'); })
+                        .then(function () {
+                            loadAppointments();
+                            Swal.fire({
+                                title: 'Approved!',
+                                text: 'Appointment has been confirmed.',
+                                icon: 'success',
+                                timer: 2000,
+                                showConfirmButton: false
+                            });
+                        })
+                        .catch(function (error) {
+                            Swal.fire('Error', error && error.message ? error.message : 'Action failed.', 'error');
+                        })
                         .then(function () { actionButton.disabled = false; });
                     return;
                 }
@@ -783,26 +805,34 @@
                 }
 
                 if (action === 'complete') {
-                    if (!window.confirm('Mark this appointment as completed? This will create a donation record.')) {
-                        return;
-                    }
-                    actionButton.disabled = true;
-                    performAppointmentAction(appointmentId, action, null)
-                        .then(function () {
-                            loadAppointments();
-                            // showRsToast logic expects global function, if available
-                            if (typeof showRsToast === 'function') {
-                                showRsToast('Donation Completed', 'Donation record has been created successfully.');
-                            } else {
-                                alert('Donation record has been created successfully.');
-                            }
-                        })
-                        .catch(function (error) {
-                            alert(error && error.message ? error.message : 'Action failed.');
-                        })
-                        .then(function () {
-                            actionButton.disabled = false;
-                        });
+                    Swal.fire({
+                        title: 'Mark as Completed?',
+                        text: 'This will create a donation record for the donor.',
+                        icon: 'question',
+                        showCancelButton: true,
+                        confirmButtonColor: '#129800',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Yes, Complete',
+                        cancelButtonText: 'Cancel'
+                    }).then(function (result) {
+                        if (!result.isConfirmed) { return; }
+                        actionButton.disabled = true;
+                        performAppointmentAction(appointmentId, action, null)
+                            .then(function () {
+                                loadAppointments();
+                                Swal.fire({
+                                    title: 'Donation Completed!',
+                                    text: 'Donation record has been created successfully.',
+                                    icon: 'success',
+                                    timer: 2500,
+                                    showConfirmButton: false
+                                });
+                            })
+                            .catch(function (error) {
+                                Swal.fire('Error', error && error.message ? error.message : 'Action failed.', 'error');
+                            })
+                            .then(function () { actionButton.disabled = false; });
+                    });
                     return;
                 }
             });
