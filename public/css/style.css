@@ -6354,10 +6354,40 @@ button {
 	margin: 0;
 }
 
+.admin-eligibility-page,
+.admin-questions-page {
+	overflow-x: hidden;
+}
+
+.admin-eligibility-page .eligibility-stats > [class*="col-"],
+.admin-questions-page .questions-stats > [class*="col-"] {
+	display: flex;
+}
+
+.admin-eligibility-page .eligibility-stat,
+.admin-questions-page .questions-stat {
+	width: 100%;
+	min-height: 112px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	padding: 20px;
+}
+
+.admin-eligibility-page .eligibility-stat__label,
+.admin-questions-page .questions-stat__label {
+	line-height: 1.25;
+	white-space: nowrap;
+	overflow-wrap: normal;
+	word-break: normal;
+}
+
 .eligibility-stat--total { border-left: 4px solid #0066cc; }
 .eligibility-stat--pending { border-left: 4px solid #ff9900; }
 .eligibility-stat--eligible { border-left: 4px solid #28a745; }
 .eligibility-stat--ineligible { border-left: 4px solid #dc3545; }
+.eligibility-stat--approved { border-left: 4px solid #28a745; }
+.eligibility-stat--declined { border-left: 4px solid #dc3545; }
 
 .questions-stat--total { border-left: 4px solid #0066cc; }
 .questions-stat--active { border-left: 4px solid #28a745; }
@@ -6425,6 +6455,8 @@ button {
 .eligibility-table-wrapper,
 .questions-table-wrapper {
 	overflow-x: auto;
+	max-width: 100%;
+	-webkit-overflow-scrolling: touch;
 	border-radius: 14px;
 	border: 1px solid #eee;
 	background: #fff;
@@ -6489,6 +6521,16 @@ button {
 	.eligibility-filter__search,
 	.questions-filter__search {
 		width: 100%;
+	}
+
+	.eligibility-filter__search,
+	.questions-filter__search,
+	.eligibility-filter__select-wrap,
+	.questions-filter__select-wrap,
+	.eligibility-filter .btn,
+	.questions-filter .btn {
+		flex: 0 0 100%;
+		max-width: 100%;
 	}
 
 	.eligibility-table,

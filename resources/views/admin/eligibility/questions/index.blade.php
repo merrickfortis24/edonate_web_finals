@@ -44,19 +44,19 @@
     <section class="content questions-content container-fluid py-3" aria-label="Questions content">
         <!-- Stats Cards -->
         <div class="questions-stats row g-3" aria-label="Questions summary">
-            <div class="col-12 col-md-4">
+            <div class="col-12 col-sm-6 col-md-4">
                 <article class="stat-card questions-stat questions-stat--total h-100">
                     <p class="questions-stat__label">Total Questions</p>
                     <p class="questions-stat__value" id="questionsStatTotal">0</p>
                 </article>
             </div>
-            <div class="col-6 col-md-4">
+            <div class="col-12 col-sm-6 col-md-4">
                 <article class="stat-card questions-stat questions-stat--active h-100">
                     <p class="questions-stat__label">Active</p>
                     <p class="questions-stat__value" id="questionsStatActive">0</p>
                 </article>
             </div>
-            <div class="col-6 col-md-4">
+            <div class="col-12 col-sm-6 col-md-4">
                 <article class="stat-card questions-stat questions-stat--inactive h-100">
                     <p class="questions-stat__label">Inactive</p>
                     <p class="questions-stat__value" id="questionsStatInactive">0</p>

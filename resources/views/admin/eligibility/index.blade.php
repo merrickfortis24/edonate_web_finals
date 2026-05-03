@@ -38,25 +38,25 @@
         <section class="content eligibility-content container-fluid py-3" aria-label="Eligibility content">
             <!-- Stats Cards -->
             <div class="eligibility-stats row g-3" aria-label="Eligibility summary">
-                <div class="col-6 col-xl-3">
+                <div class="col-12 col-sm-6 col-xl-3">
                     <article class="stat-card eligibility-stat eligibility-stat--total h-100">
                         <p class="eligibility-stat__label">Total Submissions</p>
                         <p class="eligibility-stat__value" id="eligibilityStatTotal">0</p>
                     </article>
                 </div>
-                <div class="col-6 col-xl-3">
+                <div class="col-12 col-sm-6 col-xl-3">
                     <article class="stat-card eligibility-stat eligibility-stat--pending h-100">
                         <p class="eligibility-stat__label">Pending Review</p>
                         <p class="eligibility-stat__value" id="eligibilityStatPending">0</p>
                     </article>
                 </div>
-                <div class="col-6 col-xl-3">
+                <div class="col-12 col-sm-6 col-xl-3">
                     <article class="stat-card eligibility-stat eligibility-stat--approved h-100">
                         <p class="eligibility-stat__label">Approved</p>
                         <p class="eligibility-stat__value" id="eligibilityStatApproved">0</p>
                     </article>
                 </div>
-                <div class="col-6 col-xl-3">
+                <div class="col-12 col-sm-6 col-xl-3">
                     <article class="stat-card eligibility-stat eligibility-stat--declined h-100">
                         <p class="eligibility-stat__label">Declined</p>
                         <p class="eligibility-stat__value" id="eligibilityStatDeclined">0</p>
