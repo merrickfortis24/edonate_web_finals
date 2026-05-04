@@ -256,17 +256,35 @@ class QuestionController extends Controller
             $riskLevel = 'safe';
         }
 
+        $triggerAnswer = $this->nullableString($q->trigger_answer ?? null);
+        $deferralDays = $q->deferral_days === null ? null : (int) $q->deferral_days;
+        $recommendationMessage = $this->nullableString($q->recommendation_message ?? null);
+        $followupPrompt = $this->nullableString($q->followup_prompt ?? null);
+        $followupTrigger = $this->nullableString($q->followup_trigger ?? null);
+
         return [
             'question_id' => (int) $q->question_id,
             'question_text' => (string) $q->question_text,
-            'followup_prompt' => (string) ($q->followup_prompt ?? ''),
-            'followup_trigger' => (string) ($q->followup_trigger ?? ''),
+            'followup_prompt' => $followupPrompt,
+            'followup_trigger' => $followupTrigger,
             'question_order' => (int) ($q->question_order ?? 0),
             'is_active' => (bool) ($q->is_active ?? true),
             'risk_level' => $riskLevel,
-            'trigger_answer' => (string) ($q->trigger_answer ?? ''),
-            'deferral_days' => $q->deferral_days === null ? null : (int) $q->deferral_days,
-            'recommendation_message' => (string) ($q->recommendation_message ?? ''),
+            'trigger_answer' => $triggerAnswer,
+            'deferral_days' => $deferralDays,
+            'recommendation_message' => $recommendationMessage,
+
+            // Compatibility aliases for any frontend expecting camelCase keys.
+            'questionId' => (int) $q->question_id,
+            'questionText' => (string) $q->question_text,
+            'followupPrompt' => $followupPrompt,
+            'followupTrigger' => $followupTrigger,
+            'questionOrder' => (int) ($q->question_order ?? 0),
+            'isActive' => (bool) ($q->is_active ?? true),
+            'riskLevel' => $riskLevel,
+            'triggerAnswer' => $triggerAnswer,
+            'deferralDays' => $deferralDays,
+            'recommendationMessage' => $recommendationMessage,
         ];
     }
 

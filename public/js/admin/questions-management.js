@@ -154,6 +154,18 @@ document.addEventListener('DOMContentLoaded', function () {
         return String(value == null ? '' : value).trim();
     }
 
+    function pickValue(row, snakeCaseKey, camelCaseKey) {
+        if (row && Object.prototype.hasOwnProperty.call(row, snakeCaseKey)) {
+            return row[snakeCaseKey];
+        }
+
+        if (row && Object.prototype.hasOwnProperty.call(row, camelCaseKey)) {
+            return row[camelCaseKey];
+        }
+
+        return null;
+    }
+
     function renderTextCell(text, type) {
         const normalized = safeText(text);
         const fallback = type === 'recommendation' ? 'No recommendation set' : '—';
@@ -236,19 +248,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
         tbody.innerHTML = rows.map((row) => `
             <tr>
-                <td class="text-center fw-semibold">${escapeHtml(row.question_order)}</td>
-                <td>${renderTextCell(row.question_text, 'question')}</td>
-                <td>${renderTextCell(row.followup_prompt, 'followup')}</td>
-                <td>${getFollowupBadge(row.followup_trigger)}</td>
-                <td>${getRiskBadge(row.risk_level)}</td>
-                <td>${getAnswerBadge(row.trigger_answer)}</td>
-                <td>${getDeferralText(row.deferral_days)}</td>
-                <td>${renderTextCell(row.recommendation_message, 'recommendation')}</td>
-                <td>${getStatusBadge(row.is_active)}</td>
+                <td class="text-center fw-semibold">${escapeHtml(pickValue(row, 'question_order', 'questionOrder') ?? '')}</td>
+                <td>${renderTextCell(pickValue(row, 'question_text', 'questionText'), 'question')}</td>
+                <td>${renderTextCell(pickValue(row, 'followup_prompt', 'followupPrompt'), 'followup')}</td>
+                <td>${getFollowupBadge(pickValue(row, 'followup_trigger', 'followupTrigger'))}</td>
+                <td>${getRiskBadge(pickValue(row, 'risk_level', 'riskLevel'))}</td>
+                <td>${getAnswerBadge(pickValue(row, 'trigger_answer', 'triggerAnswer'))}</td>
+                <td>${getDeferralText(pickValue(row, 'deferral_days', 'deferralDays'))}</td>
+                <td>${renderTextCell(pickValue(row, 'recommendation_message', 'recommendationMessage'), 'recommendation')}</td>
+                <td>${getStatusBadge(Boolean(pickValue(row, 'is_active', 'isActive')))}</td>
                 <td class="text-nowrap">
-                    <button type="button" class="btn btn-sm btn-outline-primary edit-btn me-1" data-id="${row.question_id}">Edit</button>
-                    <button type="button" class="btn btn-sm ${row.is_active ? 'btn-outline-danger' : 'btn-outline-success'} toggle-btn" data-id="${row.question_id}">
-                        ${row.is_active ? 'Disable' : 'Enable'}
+                    <button type="button" class="btn btn-sm btn-outline-primary edit-btn me-1" data-id="${pickValue(row, 'question_id', 'questionId')}">Edit</button>
+                    <button type="button" class="btn btn-sm ${Boolean(pickValue(row, 'is_active', 'isActive')) ? 'btn-outline-danger' : 'btn-outline-success'} toggle-btn" data-id="${pickValue(row, 'question_id', 'questionId')}">
+                        ${Boolean(pickValue(row, 'is_active', 'isActive')) ? 'Disable' : 'Enable'}
                     </button>
                 </td>
             </tr>
@@ -409,7 +421,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function openEditModal(id) {
-        const question = questionsData.find((item) => item.question_id === id);
+        const question = questionsData.find((item) => Number(pickValue(item, 'question_id', 'questionId')) === id);
         if (!question) {
             showToast('Selected question was not found.', 'error');
             return;
@@ -419,16 +431,27 @@ document.addEventListener('DOMContentLoaded', function () {
         getElement(selectors.modalLabel).textContent = 'Edit Question';
         getElement(selectors.submitBtn).textContent = 'Save Changes';
 
-        getElement(selectors.idField).value = question.question_id;
-        getElement(selectors.textField).value = question.question_text || '';
-        getElement(selectors.orderField).value = question.question_order || 1;
-        getElement(selectors.activeField).checked = Boolean(question.is_active);
-        getElement(selectors.followupTriggerField).value = question.followup_trigger || '';
-        getElement(selectors.promptField).value = question.followup_prompt || '';
-        getElement(selectors.riskField).value = riskLabels[question.risk_level] ? question.risk_level : 'safe';
-        getElement(selectors.triggerAnswerField).value = question.trigger_answer || '';
-        getElement(selectors.deferralDaysField).value = question.deferral_days || '';
-        getElement(selectors.recommendationField).value = question.recommendation_message || '';
+        const questionId = pickValue(question, 'question_id', 'questionId');
+        const questionText = pickValue(question, 'question_text', 'questionText');
+        const questionOrder = pickValue(question, 'question_order', 'questionOrder');
+        const isActive = Boolean(pickValue(question, 'is_active', 'isActive'));
+        const followupTrigger = pickValue(question, 'followup_trigger', 'followupTrigger');
+        const followupPrompt = pickValue(question, 'followup_prompt', 'followupPrompt');
+        const riskLevel = pickValue(question, 'risk_level', 'riskLevel');
+        const triggerAnswer = pickValue(question, 'trigger_answer', 'triggerAnswer');
+        const deferralDays = pickValue(question, 'deferral_days', 'deferralDays');
+        const recommendationMessage = pickValue(question, 'recommendation_message', 'recommendationMessage');
+
+        getElement(selectors.idField).value = questionId || '';
+        getElement(selectors.textField).value = questionText || '';
+        getElement(selectors.orderField).value = questionOrder || 1;
+        getElement(selectors.activeField).checked = isActive;
+        getElement(selectors.followupTriggerField).value = followupTrigger || '';
+        getElement(selectors.promptField).value = followupPrompt || '';
+        getElement(selectors.riskField).value = riskLabels[riskLevel] ? riskLevel : 'safe';
+        getElement(selectors.triggerAnswerField).value = triggerAnswer || '';
+        getElement(selectors.deferralDaysField).value = deferralDays || '';
+        getElement(selectors.recommendationField).value = recommendationMessage || '';
 
         toggleFollowupPrompt();
         updateDecisionFields();
@@ -562,13 +585,13 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        const question = questionsData.find((item) => item.question_id === id);
+        const question = questionsData.find((item) => Number(pickValue(item, 'question_id', 'questionId')) === id);
         if (!question) {
             showToast('Selected question was not found.', 'error');
             return;
         }
 
-        const isEnabling = !question.is_active;
+        const isEnabling = !Boolean(pickValue(question, 'is_active', 'isActive'));
         const actionText = isEnabling ? 'enable' : 'disable';
 
         try {
