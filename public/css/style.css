@@ -6658,6 +6658,27 @@ button {
     min-width: 760px;
 }
 
+.eligibility-table {
+    min-width: 1820px;
+    table-layout: fixed;
+}
+
+.eligibility-table th,
+.eligibility-table td {
+    font-size: 13px;
+    padding: 12px 14px;
+    vertical-align: top;
+}
+
+.eligibility-table td .badge {
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.eligibility-table td.text-nowrap {
+    white-space: nowrap;
+}
+
 .questions-table {
     min-width: 1680px;
     table-layout: fixed;
