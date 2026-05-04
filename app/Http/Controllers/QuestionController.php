@@ -11,6 +11,10 @@ use Throwable;
 
 class QuestionController extends Controller
 {
+    private const QUESTION_TABLE = 'screening_questions';
+    private const RISK_LEVELS = ['safe', 'auto_reject', 'for_review', 'temporary_defer'];
+    private const DECISION_RISK_LEVELS = ['auto_reject', 'for_review', 'temporary_defer'];
+
     public function index()
     {
         return view('admin.eligibility.questions.index', [
@@ -49,7 +53,18 @@ class QuestionController extends Controller
         $query = DB::table($table);
 
         if ($searchTerm !== '') {
-            $query->where('question_text', 'like', '%'.$searchTerm.'%');
+            $query->where(function ($builder) use ($columns, $searchTerm): void {
+                $like = '%'.$searchTerm.'%';
+                $builder->where('question_text', 'like', $like);
+
+                if (in_array('followup_prompt', $columns, true)) {
+                    $builder->orWhere('followup_prompt', 'like', $like);
+                }
+
+                if (in_array('recommendation_message', $columns, true)) {
+                    $builder->orWhere('recommendation_message', 'like', $like);
+                }
+            });
         }
 
         if (in_array('is_active', $columns, true) && $isActive !== '' && $isActive !== null) {
@@ -67,6 +82,7 @@ class QuestionController extends Controller
         $rows = (clone $query)
             ->select($this->questionSelects($columns))
             ->orderBy($orderColumn)
+            ->orderBy('question_id')
             ->forPage($page, $perPage)
             ->get();
 
@@ -90,17 +106,12 @@ class QuestionController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'question_text'    => ['required', 'string', 'min:5', 'max:500'],
-            'followup_prompt'  => ['nullable', 'string', 'max:500'],
-            'followup_trigger' => ['nullable', Rule::in(['yes', 'no', ''])],
-            'question_order'   => ['required', 'integer', 'min:0', 'max:999'],
-        ]);
+        $validated = $this->validateQuestion($request);
 
         try {
             $table = $this->questionTable();
             if ($table === null) {
-                return response()->json(['message' => 'Question table is not available. Run the eligibility question migration first.'], 409);
+                return response()->json(['message' => 'The screening_questions table is not available.'], 409);
             }
 
             $columns = $this->questionColumns($table);
@@ -127,16 +138,11 @@ class QuestionController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $validated = $request->validate([
-            'question_text'    => ['required', 'string', 'min:5', 'max:500'],
-            'followup_prompt'  => ['nullable', 'string', 'max:500'],
-            'followup_trigger' => ['nullable', Rule::in(['yes', 'no', ''])],
-            'question_order'   => ['required', 'integer', 'min:0', 'max:999'],
-        ]);
+        $validated = $this->validateQuestion($request);
 
         $table = $this->questionTable();
         if ($table === null) {
-            return response()->json(['message' => 'Question table is not available. Run the eligibility question migration first.'], 409);
+            return response()->json(['message' => 'The screening_questions table is not available.'], 409);
         }
 
         $columns = $this->questionColumns($table);
@@ -174,7 +180,7 @@ class QuestionController extends Controller
     {
         $table = $this->questionTable();
         if ($table === null) {
-            return response()->json(['message' => 'Question table is not available. Run the eligibility question migration first.'], 409);
+            return response()->json(['message' => 'The screening_questions table is not available.'], 409);
         }
 
         $columns = $this->questionColumns($table);
@@ -215,35 +221,70 @@ class QuestionController extends Controller
         }
     }
 
+    private function validateQuestion(Request $request): array
+    {
+        return $request->validate([
+            'question_text' => ['required', 'string', 'max:500'],
+            'followup_prompt' => ['nullable', 'string', 'max:500'],
+            'followup_trigger' => ['nullable', Rule::in(['yes', 'no'])],
+            'question_order' => ['required', 'integer', 'min:1', 'max:999'],
+            'is_active' => ['nullable', 'boolean'],
+            'risk_level' => ['required', Rule::in(self::RISK_LEVELS)],
+            'trigger_answer' => [
+                'nullable',
+                Rule::in(['yes', 'no']),
+                Rule::requiredIf(fn (): bool => in_array((string) $request->input('risk_level'), self::DECISION_RISK_LEVELS, true)),
+            ],
+            'deferral_days' => [
+                Rule::requiredIf(fn (): bool => (string) $request->input('risk_level') === 'temporary_defer'),
+                'nullable',
+                'integer',
+                'min:1',
+            ],
+            'recommendation_message' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'trigger_answer.required' => 'Trigger answer is required when the risk level is not safe.',
+            'deferral_days.required' => 'Deferral days is required for temporary defer questions.',
+            'deferral_days.min' => 'Deferral days must be at least 1.',
+        ]);
+    }
+
     private function transformQuestion(object $q): array
     {
+        $riskLevel = (string) ($q->risk_level ?? 'safe');
+        if (! in_array($riskLevel, self::RISK_LEVELS, true)) {
+            $riskLevel = 'safe';
+        }
+
         return [
-            'question_id'      => (int) $q->question_id,
-            'question_text'    => (string) $q->question_text,
-            'followup_prompt'  => (string) ($q->followup_prompt ?? ''),
+            'question_id' => (int) $q->question_id,
+            'question_text' => (string) $q->question_text,
+            'followup_prompt' => (string) ($q->followup_prompt ?? ''),
             'followup_trigger' => (string) ($q->followup_trigger ?? ''),
-            'question_order'   => (int) ($q->question_order ?? 0),
-            'is_active'        => (bool) ($q->is_active ?? true),
+            'question_order' => (int) ($q->question_order ?? 0),
+            'is_active' => (bool) ($q->is_active ?? true),
+            'risk_level' => $riskLevel,
+            'trigger_answer' => (string) ($q->trigger_answer ?? ''),
+            'deferral_days' => $q->deferral_days === null ? null : (int) $q->deferral_days,
+            'recommendation_message' => (string) ($q->recommendation_message ?? ''),
         ];
     }
 
     private function questionTable(): ?string
     {
-        foreach (['screening_questions', 'eligibility_questions'] as $table) {
-            try {
-                if (
-                    Schema::hasTable($table)
-                    && Schema::hasColumn($table, 'question_id')
-                    && Schema::hasColumn($table, 'question_text')
-                ) {
-                    return $table;
-                }
-            } catch (Throwable $e) {
-                logger()->warning('Question table check failed.', [
-                    'table' => $table,
-                    'error' => $e->getMessage(),
-                ]);
+        try {
+            if (
+                Schema::hasTable(self::QUESTION_TABLE)
+                && Schema::hasColumn(self::QUESTION_TABLE, 'question_id')
+                && Schema::hasColumn(self::QUESTION_TABLE, 'question_text')
+            ) {
+                return self::QUESTION_TABLE;
             }
+        } catch (Throwable $e) {
+            logger()->warning('Question table check failed.', [
+                'table' => self::QUESTION_TABLE,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return null;
@@ -265,15 +306,7 @@ class QuestionController extends Controller
 
     private function questionOrderColumn(array $columns): string
     {
-        if (in_array('question_order', $columns, true)) {
-            return 'question_order';
-        }
-
-        if (in_array('sort_order', $columns, true)) {
-            return 'sort_order';
-        }
-
-        return 'question_id';
+        return in_array('question_order', $columns, true) ? 'question_order' : 'question_id';
     }
 
     private function questionSelects(array $columns): array
@@ -283,43 +316,58 @@ class QuestionController extends Controller
         return [
             'question_id',
             'question_text',
-            in_array('followup_prompt', $columns, true) ? 'followup_prompt' : DB::raw("'' as followup_prompt"),
-            in_array('followup_trigger', $columns, true) ? 'followup_trigger' : DB::raw("'' as followup_trigger"),
+            in_array('followup_prompt', $columns, true) ? 'followup_prompt' : DB::raw('NULL as followup_prompt'),
+            in_array('followup_trigger', $columns, true) ? 'followup_trigger' : DB::raw('NULL as followup_trigger'),
             "{$orderColumn} as question_order",
             in_array('is_active', $columns, true) ? 'is_active' : DB::raw('1 as is_active'),
+            in_array('risk_level', $columns, true) ? 'risk_level' : DB::raw("'safe' as risk_level"),
+            in_array('trigger_answer', $columns, true) ? 'trigger_answer' : DB::raw('NULL as trigger_answer'),
+            in_array('deferral_days', $columns, true) ? 'deferral_days' : DB::raw('NULL as deferral_days'),
+            in_array('recommendation_message', $columns, true) ? 'recommendation_message' : DB::raw('NULL as recommendation_message'),
         ];
     }
 
     private function questionWritePayload(array $validated, array $columns, bool $isCreate): array
     {
+        $riskLevel = (string) ($validated['risk_level'] ?? 'safe');
         $payload = [
             'question_text' => trim($validated['question_text']),
         ];
 
         if (in_array('followup_prompt', $columns, true)) {
-            $payload['followup_prompt'] = trim((string) ($validated['followup_prompt'] ?? ''));
+            $payload['followup_prompt'] = $this->nullableString($validated['followup_prompt'] ?? null);
         }
 
         if (in_array('followup_trigger', $columns, true)) {
-            $payload['followup_trigger'] = trim((string) ($validated['followup_trigger'] ?? ''));
+            $payload['followup_trigger'] = $this->nullableString($validated['followup_trigger'] ?? null);
         }
 
         if (in_array('question_order', $columns, true)) {
-            $payload['question_order'] = $validated['question_order'];
-        } elseif (in_array('sort_order', $columns, true)) {
-            $payload['sort_order'] = $validated['question_order'];
+            $payload['question_order'] = (int) $validated['question_order'];
         }
 
-        if ($isCreate && in_array('question_type', $columns, true)) {
-            $payload['question_type'] = 'yes_no';
+        if (in_array('is_active', $columns, true) && ($isCreate || array_key_exists('is_active', $validated))) {
+            $payload['is_active'] = filter_var($validated['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN);
         }
 
-        if ($isCreate && in_array('is_disqualifying', $columns, true)) {
-            $payload['is_disqualifying'] = false;
+        if (in_array('risk_level', $columns, true)) {
+            $payload['risk_level'] = $riskLevel;
         }
 
-        if ($isCreate && in_array('is_active', $columns, true)) {
-            $payload['is_active'] = true;
+        if (in_array('trigger_answer', $columns, true)) {
+            $payload['trigger_answer'] = $riskLevel === 'safe'
+                ? null
+                : $this->nullableString($validated['trigger_answer'] ?? null);
+        }
+
+        if (in_array('deferral_days', $columns, true)) {
+            $payload['deferral_days'] = $riskLevel === 'temporary_defer'
+                ? (int) $validated['deferral_days']
+                : null;
+        }
+
+        if (in_array('recommendation_message', $columns, true)) {
+            $payload['recommendation_message'] = $this->nullableString($validated['recommendation_message'] ?? null);
         }
 
         if ($isCreate && in_array('created_at', $columns, true)) {
@@ -331,6 +379,13 @@ class QuestionController extends Controller
         }
 
         return $payload;
+    }
+
+    private function nullableString(mixed $value): ?string
+    {
+        $value = trim((string) ($value ?? ''));
+
+        return $value === '' ? null : $value;
     }
 
     private function emptyQuestionPayload(int $page, int $perPage): array
@@ -378,7 +433,7 @@ class QuestionController extends Controller
                 'actor_role'   => $actorRole,
                 'action_type'  => $actionType,
                 'module_type'  => 'eligibility',
-                'target_table' => $this->questionTable() ?? 'eligibility_questions',
+                'target_table' => self::QUESTION_TABLE,
                 'target_id'    => $questionId,
                 'description'  => $description,
                 'ip_address'   => $request->ip(),

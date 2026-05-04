@@ -19,11 +19,16 @@ class EligibilityQuestion extends Model
         'question_order',
         'is_active',
         'extra_data',
+        'risk_level',
+        'trigger_answer',
+        'deferral_days',
+        'recommendation_message',
     ];
 
     protected $casts = [
         'is_active'      => 'boolean',
         'question_order' => 'integer',
+        'deferral_days'  => 'integer',
     ];
 
     public function answers()

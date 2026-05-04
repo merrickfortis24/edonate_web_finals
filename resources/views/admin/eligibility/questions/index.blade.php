@@ -101,15 +101,19 @@
                     <tr>
                         <th scope="col" style="width: 80px;">Order</th>
                         <th scope="col">Question</th>
-                        <th scope="col">Follow-up Trigger</th>
                         <th scope="col">Follow-up Prompt</th>
+                        <th scope="col">Follow-up Trigger</th>
+                        <th scope="col">Risk Level</th>
+                        <th scope="col">Trigger Answer</th>
+                        <th scope="col">Deferral Days</th>
+                        <th scope="col">Recommendation</th>
                         <th scope="col" style="width: 100px;">Status</th>
                         <th scope="col" style="width: 150px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="questionsTableBody">
                     <tr>
-                        <td colspan="6" class="text-center text-muted py-4">Loading questions...</td>
+                        <td colspan="10" class="text-center text-muted py-4">Loading questions...</td>
                     </tr>
                 </tbody>
             </table>
@@ -156,7 +160,7 @@
                             <input type="number" id="questionOrderField" class="form-control" min="1" max="999" value="1" required>
                             <div class="invalid-feedback" id="questionOrderError">Please enter a valid order number.</div>
                         </div>
-                        <div class="col-md-8 mb-3">
+                        <div class="col-md-4 mb-3">
                             <label for="followupTriggerField" class="form-label">Follow-up Trigger Answer</label>
                             <select id="followupTriggerField" class="form-select">
                                 <option value="">None (No follow-up needed)</option>
@@ -164,12 +168,57 @@
                                 <option value="no">When answer is 'No'</option>
                             </select>
                         </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="questionActiveField" class="form-label">Status</label>
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" role="switch" id="questionActiveField" checked>
+                                <label class="form-check-label" for="questionActiveField">Active</label>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mb-3" id="followupPromptWrapper">
                         <label for="followupPromptField" class="form-label">Follow-up Prompt</label>
                         <textarea id="followupPromptField" class="form-control" rows="2" placeholder="e.g. Could you please describe why..."></textarea>
                         <div class="form-text">This prompt will be shown to the donor if they select the trigger answer.</div>
+                    </div>
+
+                    <div class="border-top pt-3 mt-3">
+                        <h6 class="fw-semibold mb-3">Eligibility Decision Logic</h6>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="riskLevelField" class="form-label">Risk Level *</label>
+                                <select id="riskLevelField" class="form-select" required>
+                                    <option value="safe">Safe</option>
+                                    <option value="auto_reject">Auto Reject</option>
+                                    <option value="for_review">For Review</option>
+                                    <option value="temporary_defer">Temporary Defer</option>
+                                </select>
+                                <div class="invalid-feedback" id="riskLevelError">Please select a valid risk level.</div>
+                            </div>
+
+                            <div class="col-md-4 mb-3">
+                                <label for="triggerAnswerField" class="form-label">Trigger Answer</label>
+                                <select id="triggerAnswerField" class="form-select">
+                                    <option value="">None</option>
+                                    <option value="yes">Yes</option>
+                                    <option value="no">No</option>
+                                </select>
+                                <div class="invalid-feedback" id="triggerAnswerError">Trigger answer is required when risk level is not safe.</div>
+                            </div>
+
+                            <div class="col-md-4 mb-3">
+                                <label for="deferralDaysField" class="form-label">Deferral Days</label>
+                                <input type="number" id="deferralDaysField" class="form-control" min="1" step="1" placeholder="e.g. 7">
+                                <div class="invalid-feedback" id="deferralDaysError">Temporary defer requires at least 1 deferral day.</div>
+                            </div>
+                        </div>
+
+                        <div class="mb-0">
+                            <label for="recommendationMessageField" class="form-label">Recommendation Message</label>
+                            <textarea id="recommendationMessageField" class="form-control" rows="3" placeholder="Message shown or stored when this decision is triggered."></textarea>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">

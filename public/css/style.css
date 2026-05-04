@@ -6659,7 +6659,19 @@ button {
 }
 
 .questions-table {
-    min-width: 980px;
+    min-width: 1500px;
+}
+
+.questions-table__question {
+    max-width: 320px;
+}
+
+.questions-table__prompt {
+    max-width: 240px;
+}
+
+.questions-table__recommendation {
+    max-width: 280px;
 }
 
 .admin-eligibility-page .modal-dialog,

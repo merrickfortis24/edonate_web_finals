@@ -6,6 +6,13 @@ document.addEventListener('DOMContentLoaded', function () {
         isLoading: false,
     };
 
+    const riskLabels = {
+        safe: 'Safe',
+        auto_reject: 'Auto Reject',
+        for_review: 'For Review',
+        temporary_defer: 'Temporary Defer',
+    };
+
     const selectors = {
         searchInput: '#questionsSearchInput',
         statusFilter: '#questionsStatusFilter',
@@ -14,22 +21,24 @@ document.addEventListener('DOMContentLoaded', function () {
         paginationInfo: '#questionsPaginationInfo',
         prevBtn: '#questionsPrevBtn',
         nextBtn: '#questionsNextBtn',
-        
+
         modal: '#questionFormModal',
         form: '#questionForm',
         modalLabel: '#questionFormLabel',
         submitBtn: '#questionSubmitBtn',
-        
+
         idField: '#questionIdField',
         textField: '#questionTextField',
         orderField: '#questionOrderField',
-        triggerField: '#followupTriggerField',
+        activeField: '#questionActiveField',
+        followupTriggerField: '#followupTriggerField',
         promptField: '#followupPromptField',
         promptWrapper: '#followupPromptWrapper',
-        
-        textError: '#questionTextError',
-        orderError: '#questionOrderError',
-        
+        riskField: '#riskLevelField',
+        triggerAnswerField: '#triggerAnswerField',
+        deferralDaysField: '#deferralDaysField',
+        recommendationField: '#recommendationMessageField',
+
         statTotal: '#questionsStatTotal',
         statActive: '#questionsStatActive',
         statInactive: '#questionsStatInactive',
@@ -41,10 +50,25 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     let questionsData = [];
+    let searchTimer = null;
+    let paginationMeta = {
+        current_page: 1,
+        last_page: 1,
+        total: 0,
+        from: 0,
+        to: 0,
+    };
 
-    // ── Utilities ────────────────────────────────────────────────────────────
+    function getElement(selector) {
+        return document.querySelector(selector);
+    }
 
     function showToast(message, type = 'info') {
+        if (typeof Swal === 'undefined') {
+            window.alert(message);
+            return;
+        }
+
         const Toast = Swal.mixin({
             toast: true,
             position: 'bottom-end',
@@ -54,29 +78,30 @@ document.addEventListener('DOMContentLoaded', function () {
             didOpen: (toast) => {
                 toast.addEventListener('mouseenter', Swal.stopTimer);
                 toast.addEventListener('mouseleave', Swal.resumeTimer);
-            }
+            },
         });
+
         Toast.fire({
             icon: type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info'),
-            title: message
+            title: message,
         });
     }
 
-    function escapeHtml(text) {
-        if (!text) return '';
+    function escapeHtml(value) {
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = value == null ? '' : String(value);
         return div.innerHTML;
     }
 
     function setLoading(loading) {
         config.isLoading = loading;
-        const btn = document.querySelector(selectors.refreshBtn);
-        if (btn) btn.disabled = loading;
-        const prevBtn = document.querySelector(selectors.prevBtn);
-        const nextBtn = document.querySelector(selectors.nextBtn);
-        if (prevBtn) prevBtn.disabled = loading;
-        if (nextBtn) nextBtn.disabled = loading;
+
+        const refreshBtn = getElement(selectors.refreshBtn);
+        if (refreshBtn) {
+            refreshBtn.disabled = loading;
+        }
+
+        updatePagination(paginationMeta);
     }
 
     function getStatusBadge(isActive) {
@@ -85,36 +110,70 @@ document.addEventListener('DOMContentLoaded', function () {
             : '<span class="badge bg-secondary text-white">Inactive</span>';
     }
 
-    function getTriggerBadge(trigger) {
-        if (!trigger || trigger === '') return '<span class="text-muted small">None</span>';
-        return `<span class="badge bg-info text-dark">If '${trigger.toUpperCase()}'</span>`;
+    function getRiskBadge(riskLevel) {
+        const risk = riskLabels[riskLevel] ? riskLevel : 'safe';
+        const classMap = {
+            safe: 'bg-success text-white',
+            auto_reject: 'bg-danger text-white',
+            for_review: 'bg-warning text-dark',
+            temporary_defer: 'bg-info text-dark',
+        };
+
+        return `<span class="badge ${classMap[risk]}">${riskLabels[risk]}</span>`;
     }
 
-    // ── Stats ────────────────────────────────────────────────────────────────
+    function getAnswerBadge(answer) {
+        if (!answer) {
+            return '<span class="text-muted small">None</span>';
+        }
+
+        return `<span class="badge bg-light text-dark border">${String(answer).toUpperCase()}</span>`;
+    }
+
+    function getFollowupBadge(trigger) {
+        if (!trigger) {
+            return '<span class="text-muted small">None</span>';
+        }
+
+        return `<span class="badge bg-info text-dark">If ${String(trigger).toUpperCase()}</span>`;
+    }
+
+    function getDeferralText(days) {
+        const value = Number(days || 0);
+        if (!Number.isFinite(value) || value < 1) {
+            return '<span class="text-muted small">None</span>';
+        }
+
+        return `${value} day${value === 1 ? '' : 's'}`;
+    }
 
     function updateStats(stats) {
-        if (!stats) return;
-        document.querySelector(selectors.statTotal).textContent = stats.total || 0;
-        document.querySelector(selectors.statActive).textContent = stats.active || 0;
-        document.querySelector(selectors.statInactive).textContent = stats.inactive || 0;
+        if (!stats) {
+            return;
+        }
+
+        getElement(selectors.statTotal).textContent = stats.total || 0;
+        getElement(selectors.statActive).textContent = stats.active || 0;
+        getElement(selectors.statInactive).textContent = stats.inactive || 0;
     }
 
-    // ── Data loading ─────────────────────────────────────────────────────────
-
     async function loadQuestions() {
-        if (config.isLoading) return;
+        if (config.isLoading) {
+            return;
+        }
+
         setLoading(true);
 
         const urls = apiUrls();
         if (!urls.listUrl) {
-            showToast('API configuration missing', 'error');
+            showToast('Question API configuration is missing.', 'error');
             setLoading(false);
             return;
         }
 
         try {
-            const searchTerm = document.querySelector(selectors.searchInput)?.value || '';
-            const status = document.querySelector(selectors.statusFilter)?.value || '';
+            const searchTerm = getElement(selectors.searchInput)?.value || '';
+            const status = getElement(selectors.statusFilter)?.value || '';
 
             const params = new URLSearchParams({
                 page: config.currentPage,
@@ -124,7 +183,9 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             const response = await fetch(`${urls.listUrl}?${params}`);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
 
             const json = await response.json();
             questionsData = json.data || [];
@@ -133,212 +194,331 @@ document.addEventListener('DOMContentLoaded', function () {
             updateStats(json.stats || {});
         } catch (error) {
             console.error('Failed to load questions:', error);
-            showToast('Failed to load questions', 'error');
+            showToast('Failed to load questions.', 'error');
             renderTable([]);
         } finally {
             setLoading(false);
         }
     }
 
-    // ── Table rendering ──────────────────────────────────────────────────────
-
     function renderTable(rows) {
-        const tbody = document.querySelector(selectors.tableBody);
-        if (!tbody) return;
-
-        if (rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No questions found</td></tr>';
+        const tbody = getElement(selectors.tableBody);
+        if (!tbody) {
             return;
         }
 
-        tbody.innerHTML = rows.map(row => {
-            return `
-                <tr>
-                    <td class="text-center fw-semibold">${row.question_order}</td>
-                    <td><div class="text-break" style="max-width: 400px;">${escapeHtml(row.question_text)}</div></td>
-                    <td>${getTriggerBadge(row.followup_trigger)}</td>
-                    <td><div class="text-break text-muted small" style="max-width: 250px;">${escapeHtml(row.followup_prompt || '—')}</div></td>
-                    <td>${getStatusBadge(row.is_active)}</td>
-                    <td class="text-nowrap">
-                        <button type="button" class="btn btn-sm btn-outline-primary edit-btn me-1" data-id="${row.question_id}">Edit</button>
-                        <button type="button" class="btn btn-sm ${row.is_active ? 'btn-outline-danger' : 'btn-outline-success'} toggle-btn" data-id="${row.question_id}">
-                            ${row.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        if (rows.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">No questions found</td></tr>';
+            return;
+        }
 
-        // Attach event listeners
-        tbody.querySelectorAll('.edit-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = parseInt(e.currentTarget.dataset.id);
-                openEditModal(id);
+        tbody.innerHTML = rows.map((row) => `
+            <tr>
+                <td class="text-center fw-semibold">${escapeHtml(row.question_order)}</td>
+                <td><div class="questions-table__question text-break">${escapeHtml(row.question_text)}</div></td>
+                <td><div class="questions-table__prompt text-break text-muted small">${escapeHtml(row.followup_prompt || '') || '<span class="text-muted">None</span>'}</div></td>
+                <td>${getFollowupBadge(row.followup_trigger)}</td>
+                <td>${getRiskBadge(row.risk_level)}</td>
+                <td>${getAnswerBadge(row.trigger_answer)}</td>
+                <td>${getDeferralText(row.deferral_days)}</td>
+                <td><div class="questions-table__recommendation text-break text-muted small">${escapeHtml(row.recommendation_message || '') || '<span class="text-muted">None</span>'}</div></td>
+                <td>${getStatusBadge(row.is_active)}</td>
+                <td class="text-nowrap">
+                    <button type="button" class="btn btn-sm btn-outline-primary edit-btn me-1" data-id="${row.question_id}">Edit</button>
+                    <button type="button" class="btn btn-sm ${row.is_active ? 'btn-outline-danger' : 'btn-outline-success'} toggle-btn" data-id="${row.question_id}">
+                        ${row.is_active ? 'Disable' : 'Enable'}
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        tbody.querySelectorAll('.edit-btn').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                openEditModal(Number(event.currentTarget.dataset.id));
             });
         });
 
-        tbody.querySelectorAll('.toggle-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = parseInt(e.currentTarget.dataset.id);
-                toggleQuestion(id);
+        tbody.querySelectorAll('.toggle-btn').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                toggleQuestion(Number(event.currentTarget.dataset.id));
             });
         });
     }
 
     function updatePagination(meta) {
-        config.totalRecords = meta.total || 0;
-        const info = document.querySelector(selectors.paginationInfo);
+        const currentPage = Number(meta.current_page || config.currentPage || 1);
+        const lastPage = Number(meta.last_page || 1);
+        const total = Number(meta.total || 0);
+        const from = Number(meta.from || 0);
+        const to = Number(meta.to || 0);
+
+        paginationMeta = {
+            current_page: currentPage,
+            last_page: lastPage,
+            total,
+            from,
+            to,
+        };
+        config.currentPage = currentPage;
+        config.totalRecords = total;
+
+        const info = getElement(selectors.paginationInfo);
         if (info) {
-            info.textContent = `Showing ${meta.from || 0} to ${meta.to || 0} of ${meta.total || 0} questions`;
+            info.textContent = `Showing ${from} to ${to} of ${total} questions`;
         }
 
-        const prevBtn = document.querySelector(selectors.prevBtn);
-        const nextBtn = document.querySelector(selectors.nextBtn);
-        if (prevBtn) prevBtn.disabled = config.currentPage === 1;
-        if (nextBtn) nextBtn.disabled = config.currentPage >= (meta.last_page || 1);
+        const prevBtn = getElement(selectors.prevBtn);
+        const nextBtn = getElement(selectors.nextBtn);
+        if (prevBtn) {
+            prevBtn.disabled = config.isLoading || currentPage === 1;
+        }
+        if (nextBtn) {
+            nextBtn.disabled = config.isLoading || currentPage >= lastPage;
+        }
     }
 
-    // ── Form Modal ───────────────────────────────────────────────────────────
+    function clearValidationState() {
+        [
+            selectors.textField,
+            selectors.orderField,
+            selectors.riskField,
+            selectors.triggerAnswerField,
+            selectors.deferralDaysField,
+        ].forEach((selector) => {
+            getElement(selector)?.classList.remove('is-invalid');
+        });
+    }
 
     function resetForm() {
-        const form = document.querySelector(selectors.form);
+        const form = getElement(selectors.form);
         form.reset();
         form.classList.remove('was-validated');
-        
-        document.querySelector(selectors.idField).value = '';
-        document.querySelector(selectors.textField).classList.remove('is-invalid');
-        document.querySelector(selectors.orderField).classList.remove('is-invalid');
-        
-        // Defaults
-        document.querySelector(selectors.orderField).value = (questionsData.length > 0 ? Math.max(...questionsData.map(q => q.question_order)) + 1 : 1);
-        document.querySelector(selectors.triggerField).value = '';
-        document.querySelector(selectors.promptField).value = '';
-        
+        clearValidationState();
+
+        getElement(selectors.idField).value = '';
+        getElement(selectors.orderField).value = questionsData.length > 0
+            ? Math.max(...questionsData.map((question) => Number(question.question_order) || 0)) + 1
+            : 1;
+        getElement(selectors.activeField).checked = true;
+        getElement(selectors.followupTriggerField).value = '';
+        getElement(selectors.promptField).value = '';
+        getElement(selectors.riskField).value = 'safe';
+        getElement(selectors.triggerAnswerField).value = '';
+        getElement(selectors.deferralDaysField).value = '';
+        getElement(selectors.recommendationField).value = '';
+
         toggleFollowupPrompt();
+        updateDecisionFields();
     }
 
     function toggleFollowupPrompt() {
-        const trigger = document.querySelector(selectors.triggerField).value;
-        const wrapper = document.querySelector(selectors.promptWrapper);
+        const trigger = getElement(selectors.followupTriggerField).value;
+        const wrapper = getElement(selectors.promptWrapper);
+
+        if (!wrapper) {
+            return;
+        }
+
         if (trigger) {
             wrapper.classList.remove('d-none');
         } else {
             wrapper.classList.add('d-none');
-            document.querySelector(selectors.promptField).value = '';
+            getElement(selectors.promptField).value = '';
+        }
+    }
+
+    function updateDecisionFields() {
+        const risk = getElement(selectors.riskField).value || 'safe';
+        const triggerField = getElement(selectors.triggerAnswerField);
+        const deferralField = getElement(selectors.deferralDaysField);
+
+        const requiresTrigger = risk !== 'safe';
+        triggerField.required = requiresTrigger;
+        if (!requiresTrigger) {
+            triggerField.value = '';
+            triggerField.classList.remove('is-invalid');
+        }
+
+        const requiresDeferral = risk === 'temporary_defer';
+        deferralField.required = requiresDeferral;
+        deferralField.disabled = !requiresDeferral;
+        if (!requiresDeferral) {
+            deferralField.value = '';
+            deferralField.classList.remove('is-invalid');
         }
     }
 
     function openAddModal() {
         resetForm();
-        document.querySelector(selectors.modalLabel).textContent = 'Add Question';
-        document.querySelector(selectors.submitBtn).textContent = 'Add Question';
-        
-        const modal = bootstrap.Modal.getOrCreateInstance(document.querySelector(selectors.modal));
+        getElement(selectors.modalLabel).textContent = 'Add Question';
+        getElement(selectors.submitBtn).textContent = 'Add Question';
+
+        const modal = bootstrap.Modal.getOrCreateInstance(getElement(selectors.modal));
         modal.show();
     }
 
     function openEditModal(id) {
-        const question = questionsData.find(q => q.question_id === id);
-        if (!question) return;
+        const question = questionsData.find((item) => item.question_id === id);
+        if (!question) {
+            showToast('Selected question was not found.', 'error');
+            return;
+        }
 
         resetForm();
-        document.querySelector(selectors.modalLabel).textContent = 'Edit Question';
-        document.querySelector(selectors.submitBtn).textContent = 'Save Changes';
-        
-        document.querySelector(selectors.idField).value = question.question_id;
-        document.querySelector(selectors.textField).value = question.question_text;
-        document.querySelector(selectors.orderField).value = question.question_order;
-        document.querySelector(selectors.triggerField).value = question.followup_trigger || '';
-        document.querySelector(selectors.promptField).value = question.followup_prompt || '';
-        
+        getElement(selectors.modalLabel).textContent = 'Edit Question';
+        getElement(selectors.submitBtn).textContent = 'Save Changes';
+
+        getElement(selectors.idField).value = question.question_id;
+        getElement(selectors.textField).value = question.question_text || '';
+        getElement(selectors.orderField).value = question.question_order || 1;
+        getElement(selectors.activeField).checked = Boolean(question.is_active);
+        getElement(selectors.followupTriggerField).value = question.followup_trigger || '';
+        getElement(selectors.promptField).value = question.followup_prompt || '';
+        getElement(selectors.riskField).value = riskLabels[question.risk_level] ? question.risk_level : 'safe';
+        getElement(selectors.triggerAnswerField).value = question.trigger_answer || '';
+        getElement(selectors.deferralDaysField).value = question.deferral_days || '';
+        getElement(selectors.recommendationField).value = question.recommendation_message || '';
+
         toggleFollowupPrompt();
-        
-        const modal = bootstrap.Modal.getOrCreateInstance(document.querySelector(selectors.modal));
+        updateDecisionFields();
+
+        const modal = bootstrap.Modal.getOrCreateInstance(getElement(selectors.modal));
         modal.show();
     }
 
-    async function submitForm(e) {
-        e.preventDefault();
-        
-        const form = document.querySelector(selectors.form);
-        const textInput = document.querySelector(selectors.textField);
-        const orderInput = document.querySelector(selectors.orderField);
-        
+    function validateForm() {
+        clearValidationState();
+        updateDecisionFields();
+
+        const textInput = getElement(selectors.textField);
+        const orderInput = getElement(selectors.orderField);
+        const riskInput = getElement(selectors.riskField);
+        const triggerAnswerInput = getElement(selectors.triggerAnswerField);
+        const deferralInput = getElement(selectors.deferralDaysField);
+
         let isValid = true;
-        
-        if (!textInput.value.trim() || textInput.value.trim().length < 5) {
+
+        if (!textInput.value.trim()) {
             textInput.classList.add('is-invalid');
             isValid = false;
-        } else {
-            textInput.classList.remove('is-invalid');
         }
-        
-        if (!orderInput.value || parseInt(orderInput.value) < 1) {
+
+        const order = Number(orderInput.value);
+        if (!Number.isInteger(order) || order < 1) {
             orderInput.classList.add('is-invalid');
             isValid = false;
-        } else {
-            orderInput.classList.remove('is-invalid');
         }
 
-        if (!isValid) return;
+        if (!riskLabels[riskInput.value]) {
+            riskInput.classList.add('is-invalid');
+            isValid = false;
+        }
 
-        const id = document.querySelector(selectors.idField).value;
+        if (riskInput.value !== 'safe' && !triggerAnswerInput.value) {
+            triggerAnswerInput.classList.add('is-invalid');
+            isValid = false;
+        }
+
+        const deferralDays = Number(deferralInput.value);
+        if (riskInput.value === 'temporary_defer' && (!Number.isInteger(deferralDays) || deferralDays < 1)) {
+            deferralInput.classList.add('is-invalid');
+            isValid = false;
+        }
+
+        return isValid;
+    }
+
+    async function readErrorMessage(response) {
+        try {
+            const payload = await response.json();
+            if (payload && payload.errors) {
+                const firstError = Object.values(payload.errors).flat().find(Boolean);
+                if (firstError) {
+                    return firstError;
+                }
+            }
+
+            return (payload && payload.message) || 'Request failed.';
+        } catch (error) {
+            return 'Request failed.';
+        }
+    }
+
+    async function submitForm(event) {
+        event.preventDefault();
+
+        if (!validateForm()) {
+            return;
+        }
+
+        const id = getElement(selectors.idField).value;
         const isEdit = id !== '';
-        
         const urls = apiUrls();
         const url = isEdit ? `${urls.updateUrl}/${id}` : urls.storeUrl;
         const method = isEdit ? 'PUT' : 'POST';
+        const riskLevel = getElement(selectors.riskField).value;
 
-        const submitBtn = document.querySelector(selectors.submitBtn);
+        if (!url) {
+            showToast('Question save route is not configured.', 'error');
+            return;
+        }
+
+        const submitBtn = getElement(selectors.submitBtn);
         const originalText = submitBtn.textContent;
         submitBtn.disabled = true;
         submitBtn.textContent = 'Saving...';
 
         try {
             const response = await fetch(url, {
-                method: method,
+                method,
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                 },
                 body: JSON.stringify({
-                    question_text: textInput.value.trim(),
-                    question_order: parseInt(orderInput.value),
-                    followup_trigger: document.querySelector(selectors.triggerField).value,
-                    followup_prompt: document.querySelector(selectors.promptField).value.trim(),
+                    question_text: getElement(selectors.textField).value.trim(),
+                    question_order: Number(getElement(selectors.orderField).value),
+                    is_active: getElement(selectors.activeField).checked,
+                    followup_trigger: getElement(selectors.followupTriggerField).value || null,
+                    followup_prompt: getElement(selectors.promptField).value.trim() || null,
+                    risk_level: riskLevel,
+                    trigger_answer: riskLevel === 'safe' ? null : getElement(selectors.triggerAnswerField).value,
+                    deferral_days: riskLevel === 'temporary_defer' ? Number(getElement(selectors.deferralDaysField).value) : null,
+                    recommendation_message: getElement(selectors.recommendationField).value.trim() || null,
                 }),
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || 'Failed to save question');
+                throw new Error(await readErrorMessage(response));
             }
 
-            const modal = bootstrap.Modal.getInstance(document.querySelector(selectors.modal));
-            modal.hide();
-
-            showToast(`Question successfully ${isEdit ? 'updated' : 'created'}`, 'success');
+            bootstrap.Modal.getInstance(getElement(selectors.modal))?.hide();
+            showToast(`Question successfully ${isEdit ? 'updated' : 'created'}.`, 'success');
             loadQuestions();
         } catch (error) {
             console.error('Save failed:', error);
-            showToast(error.message || 'Failed to save question', 'error');
+            showToast(error.message || 'Failed to save question.', 'error');
         } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = originalText;
         }
     }
 
-    // ── Toggle Active Status ─────────────────────────────────────────────────
-
     async function toggleQuestion(id) {
         const urls = apiUrls();
-        if (!urls.toggleUrl) return;
+        if (!urls.toggleUrl) {
+            showToast('Question status route is not configured.', 'error');
+            return;
+        }
 
-        const question = questionsData.find(q => q.question_id === id);
-        if (!question) return;
+        const question = questionsData.find((item) => item.question_id === id);
+        if (!question) {
+            showToast('Selected question was not found.', 'error');
+            return;
+        }
 
-        const isActivating = !question.is_active;
-        const actionText = isActivating ? 'activate' : 'deactivate';
+        const isEnabling = !question.is_active;
+        const actionText = isEnabling ? 'enable' : 'disable';
 
         try {
             const response = await fetch(`${urls.toggleUrl}/${id}/toggle`, {
@@ -346,57 +526,55 @@ document.addEventListener('DOMContentLoaded', function () {
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                }
+                },
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.message || `Failed to ${actionText} question`);
+                throw new Error(await readErrorMessage(response));
             }
 
-            showToast(`Question successfully ${isActivating ? 'activated' : 'deactivated'}`, 'success');
+            showToast(`Question successfully ${isEnabling ? 'enabled' : 'disabled'}.`, 'success');
             loadQuestions();
         } catch (error) {
             console.error('Toggle failed:', error);
-            showToast(error.message || `Failed to ${actionText} question`, 'error');
+            showToast(error.message || `Failed to ${actionText} question.`, 'error');
         }
     }
 
-    // ── Event listeners ──────────────────────────────────────────────────────
-
-    document.querySelector(selectors.refreshBtn)?.addEventListener('click', () => {
+    getElement(selectors.refreshBtn)?.addEventListener('click', () => {
         config.currentPage = 1;
         loadQuestions();
     });
 
-    document.querySelector(selectors.prevBtn)?.addEventListener('click', () => {
+    getElement(selectors.prevBtn)?.addEventListener('click', () => {
         if (config.currentPage > 1) {
             config.currentPage--;
             loadQuestions();
         }
     });
 
-    document.querySelector(selectors.nextBtn)?.addEventListener('click', () => {
+    getElement(selectors.nextBtn)?.addEventListener('click', () => {
         config.currentPage++;
         loadQuestions();
     });
 
-    document.querySelector(selectors.searchInput)?.addEventListener('input', () => {
-        config.currentPage = 1;
-        loadQuestions();
+    getElement(selectors.searchInput)?.addEventListener('input', () => {
+        window.clearTimeout(searchTimer);
+        searchTimer = window.setTimeout(() => {
+            config.currentPage = 1;
+            loadQuestions();
+        }, 250);
     });
 
-    document.querySelector(selectors.statusFilter)?.addEventListener('change', () => {
+    getElement(selectors.statusFilter)?.addEventListener('change', () => {
         config.currentPage = 1;
         loadQuestions();
     });
 
     document.querySelector('#addQuestionBtn')?.addEventListener('click', openAddModal);
-    
-    document.querySelector(selectors.triggerField)?.addEventListener('change', toggleFollowupPrompt);
+    getElement(selectors.followupTriggerField)?.addEventListener('change', toggleFollowupPrompt);
+    getElement(selectors.riskField)?.addEventListener('change', updateDecisionFields);
+    getElement(selectors.form)?.addEventListener('submit', submitForm);
 
-    document.querySelector(selectors.form)?.addEventListener('submit', submitForm);
-
-    // ── Initial load ─────────────────────────────────────────────────────────
     loadQuestions();
 });

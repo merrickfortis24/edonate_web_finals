@@ -153,6 +153,12 @@ class EligibilityController extends Controller
         }
 
         // Screening answers for this eligibility record
+        $questionColumns = Schema::hasTable('screening_questions')
+            ? Schema::getColumnListing('screening_questions')
+            : [];
+        $usesDecisionLogic = in_array('risk_level', $questionColumns, true)
+            && in_array('trigger_answer', $questionColumns, true);
+
         $answers = DB::table('donor_screening_answers as dsa')
             ->join('screening_questions as sq', 'sq.question_id', '=', 'dsa.question_id')
             ->where('dsa.eligibility_id', $id)
@@ -161,18 +167,30 @@ class EligibilityController extends Controller
                 'sq.question_text',
                 'sq.followup_prompt',
                 'sq.followup_trigger',
+                in_array('risk_level', $questionColumns, true) ? 'sq.risk_level' : DB::raw("'safe' as risk_level"),
+                in_array('trigger_answer', $questionColumns, true) ? 'sq.trigger_answer' : DB::raw('NULL as trigger_answer'),
+                in_array('deferral_days', $questionColumns, true) ? 'sq.deferral_days' : DB::raw('NULL as deferral_days'),
+                in_array('recommendation_message', $questionColumns, true) ? 'sq.recommendation_message' : DB::raw('NULL as recommendation_message'),
                 'dsa.answer',
                 'dsa.followup_answer',
             ])
             ->get()
-            ->map(function (object $a) {
-                $isFlag = ($a->answer === 'yes' && $a->followup_trigger === 'yes')
-                       || ($a->answer === 'no'  && $a->followup_trigger === 'no');
+            ->map(function (object $a) use ($usesDecisionLogic) {
+                $riskLevel = (string) ($a->risk_level ?? 'safe');
+                $triggerAnswer = (string) ($a->trigger_answer ?? '');
+                $isFlag = $usesDecisionLogic
+                    ? $riskLevel !== 'safe' && $triggerAnswer !== '' && (string) $a->answer === $triggerAnswer
+                    : (($a->answer === 'yes' && $a->followup_trigger === 'yes')
+                        || ($a->answer === 'no' && $a->followup_trigger === 'no'));
 
                 return [
                     'question'        => (string) $a->question_text,
                     'answer'          => (string) $a->answer,
                     'followup_answer' => (string) ($a->followup_answer ?? ''),
+                    'risk_level'      => $riskLevel,
+                    'trigger_answer'  => $triggerAnswer,
+                    'deferral_days'   => $a->deferral_days === null ? null : (int) $a->deferral_days,
+                    'recommendation_message' => (string) ($a->recommendation_message ?? ''),
                     'is_flag'         => $isFlag,
                 ];
             })
