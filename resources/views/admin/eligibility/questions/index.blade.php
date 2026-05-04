@@ -99,16 +99,16 @@
             <table class="questions-table table table-hover" role="grid" aria-label="Questions table">
                 <thead>
                     <tr>
-                        <th scope="col" style="width: 80px;">Order</th>
-                        <th scope="col">Question</th>
-                        <th scope="col">Follow-up Prompt</th>
-                        <th scope="col">Follow-up Trigger</th>
-                        <th scope="col">Risk Level</th>
-                        <th scope="col">Trigger Answer</th>
-                        <th scope="col">Deferral Days</th>
-                        <th scope="col">Recommendation</th>
-                        <th scope="col" style="width: 100px;">Status</th>
-                        <th scope="col" style="width: 150px;">Actions</th>
+                        <th scope="col" class="questions-col-order">Order</th>
+                        <th scope="col" class="questions-col-question">Question</th>
+                        <th scope="col" class="questions-col-followup-prompt">Follow-up Prompt</th>
+                        <th scope="col" class="questions-col-followup-trigger">Follow-up Trigger</th>
+                        <th scope="col" class="questions-col-risk">Risk Level</th>
+                        <th scope="col" class="questions-col-trigger-answer">Trigger Answer</th>
+                        <th scope="col" class="questions-col-deferral">Deferral Days</th>
+                        <th scope="col" class="questions-col-recommendation">Recommendation</th>
+                        <th scope="col" class="questions-col-status">Status</th>
+                        <th scope="col" class="questions-col-actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="questionsTableBody">
@@ -226,6 +226,20 @@
                     <button type="submit" class="btn btn-primary" id="questionSubmitBtn">Add Question</button>
                 </div>
             </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="questionTextPreviewModal" tabindex="-1" aria-labelledby="questionTextPreviewLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="questionTextPreviewLabel">Text Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="questionTextPreviewContent"></p>
+            </div>
         </div>
     </div>
 </div>

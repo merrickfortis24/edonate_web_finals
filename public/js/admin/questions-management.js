@@ -38,6 +38,9 @@ document.addEventListener('DOMContentLoaded', function () {
         triggerAnswerField: '#triggerAnswerField',
         deferralDaysField: '#deferralDaysField',
         recommendationField: '#recommendationMessageField',
+        previewModal: '#questionTextPreviewModal',
+        previewLabel: '#questionTextPreviewLabel',
+        previewContent: '#questionTextPreviewContent',
 
         statTotal: '#questionsStatTotal',
         statActive: '#questionsStatActive',
@@ -124,7 +127,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function getAnswerBadge(answer) {
         if (!answer) {
-            return '<span class="text-muted small">None</span>';
+            return '<span class="text-muted small">—</span>';
         }
 
         return `<span class="badge bg-light text-dark border">${String(answer).toUpperCase()}</span>`;
@@ -141,10 +144,29 @@ document.addEventListener('DOMContentLoaded', function () {
     function getDeferralText(days) {
         const value = Number(days || 0);
         if (!Number.isFinite(value) || value < 1) {
-            return '<span class="text-muted small">None</span>';
+            return '<span class="text-muted small">—</span>';
         }
 
         return `${value} day${value === 1 ? '' : 's'}`;
+    }
+
+    function safeText(value) {
+        return String(value == null ? '' : value).trim();
+    }
+
+    function renderTextCell(text, type) {
+        const normalized = safeText(text);
+        const fallback = type === 'recommendation' ? 'No recommendation set' : '—';
+        const resolved = normalized === '' ? fallback : normalized;
+        const encoded = encodeURIComponent(resolved);
+        const shouldShowView = resolved.length > 100;
+
+        return `
+            <div class="questions-cell">
+                <span class="questions-cell__text questions-cell__text--${type}" title="${escapeHtml(resolved)}">${escapeHtml(resolved)}</span>
+                ${shouldShowView ? `<button type="button" class="btn btn-link btn-sm questions-cell__view view-text-btn" data-type="${type}" data-text="${encoded}">View</button>` : ''}
+            </div>
+        `;
     }
 
     function updateStats(stats) {
@@ -215,13 +237,13 @@ document.addEventListener('DOMContentLoaded', function () {
         tbody.innerHTML = rows.map((row) => `
             <tr>
                 <td class="text-center fw-semibold">${escapeHtml(row.question_order)}</td>
-                <td><div class="questions-table__question text-break">${escapeHtml(row.question_text)}</div></td>
-                <td><div class="questions-table__prompt text-break text-muted small">${escapeHtml(row.followup_prompt || '') || '<span class="text-muted">None</span>'}</div></td>
+                <td>${renderTextCell(row.question_text, 'question')}</td>
+                <td>${renderTextCell(row.followup_prompt, 'followup')}</td>
                 <td>${getFollowupBadge(row.followup_trigger)}</td>
                 <td>${getRiskBadge(row.risk_level)}</td>
                 <td>${getAnswerBadge(row.trigger_answer)}</td>
                 <td>${getDeferralText(row.deferral_days)}</td>
-                <td><div class="questions-table__recommendation text-break text-muted small">${escapeHtml(row.recommendation_message || '') || '<span class="text-muted">None</span>'}</div></td>
+                <td>${renderTextCell(row.recommendation_message, 'recommendation')}</td>
                 <td>${getStatusBadge(row.is_active)}</td>
                 <td class="text-nowrap">
                     <button type="button" class="btn btn-sm btn-outline-primary edit-btn me-1" data-id="${row.question_id}">Edit</button>
@@ -243,6 +265,35 @@ document.addEventListener('DOMContentLoaded', function () {
                 toggleQuestion(Number(event.currentTarget.dataset.id));
             });
         });
+
+        tbody.querySelectorAll('.view-text-btn').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                const target = event.currentTarget;
+                const type = String(target.dataset.type || 'Text');
+                const text = decodeURIComponent(String(target.dataset.text || ''));
+                openTextPreviewModal(type, text);
+            });
+        });
+    }
+
+    function openTextPreviewModal(type, text) {
+        const modalLabel = getElement(selectors.previewLabel);
+        const modalContent = getElement(selectors.previewContent);
+        const modalElement = getElement(selectors.previewModal);
+        if (!modalLabel || !modalContent || !modalElement) {
+            return;
+        }
+
+        const labelMap = {
+            question: 'Question',
+            followup: 'Follow-up Prompt',
+            recommendation: 'Recommendation Message',
+        };
+
+        modalLabel.textContent = labelMap[type] || 'Text Preview';
+        modalContent.textContent = text || '—';
+
+        bootstrap.Modal.getOrCreateInstance(modalElement).show();
     }
 
     function updatePagination(meta) {

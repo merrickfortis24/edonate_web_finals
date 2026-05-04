@@ -6659,19 +6659,69 @@ button {
 }
 
 .questions-table {
-    min-width: 1500px;
+    min-width: 1680px;
+    table-layout: fixed;
 }
 
-.questions-table__question {
-    max-width: 320px;
+.questions-table th,
+.questions-table td {
+    font-size: 13px;
+    padding: 12px 14px;
+    vertical-align: top;
 }
 
-.questions-table__prompt {
-    max-width: 240px;
+.questions-col-order { width: 72px; min-width: 72px; }
+.questions-col-question { width: 300px; min-width: 300px; }
+.questions-col-followup-prompt { width: 240px; min-width: 240px; }
+.questions-col-followup-trigger { width: 120px; min-width: 120px; }
+.questions-col-risk { width: 130px; min-width: 130px; }
+.questions-col-trigger-answer { width: 130px; min-width: 130px; }
+.questions-col-deferral { width: 110px; min-width: 110px; }
+.questions-col-recommendation { width: 320px; min-width: 320px; }
+.questions-col-status { width: 110px; min-width: 110px; }
+.questions-col-actions { width: 160px; min-width: 160px; }
+
+.questions-cell {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
 }
 
-.questions-table__recommendation {
-    max-width: 280px;
+.questions-cell__text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+}
+
+.questions-cell__text--question {
+    -webkit-line-clamp: 3;
+    font-weight: 500;
+}
+
+.questions-cell__text--followup {
+    -webkit-line-clamp: 3;
+    color: #666;
+}
+
+.questions-cell__text--recommendation {
+    -webkit-line-clamp: 3;
+    color: #4b5563;
+}
+
+.questions-cell__view {
+    padding: 0;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+
+.questions-table td.text-nowrap {
+    white-space: nowrap !important;
 }
 
 .admin-eligibility-page .modal-dialog,
