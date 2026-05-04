@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Models\DonationRecord;
 use App\Models\EligibilityStatus;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 class DonationRecordObserver
@@ -65,14 +66,31 @@ class DonationRecordObserver
         $lastDonationDate = Carbon::parse($record->donation_date);
         $nextEligibleDate = $lastDonationDate->copy()->addMonths(3);
         $status = Carbon::now()->greaterThanOrEqualTo($nextEligibleDate) ? 'eligible' : 'not_eligible';
+        $payload = [
+            'last_donation_date' => $lastDonationDate->toDateString(),
+            'next_eligible_date' => $nextEligibleDate->toDateString(),
+            'status' => $status,
+        ];
+
+        if (Schema::hasColumn('eligibility_status', 'source')) {
+            $payload['source'] = 'auto';
+        }
+
+        if (Schema::hasColumn('eligibility_status', 'result_reason')) {
+            $payload['result_reason'] = $status === 'eligible'
+                ? 'Donation interval requirement has been met.'
+                : 'Recent donation requires waiting until the next eligible date.';
+        }
+
+        if (Schema::hasColumn('eligibility_status', 'recommendation_message')) {
+            $payload['recommendation_message'] = $status === 'eligible'
+                ? 'You may proceed with eligibility screening before your next donation.'
+                : 'Please wait until your next eligible date before donating again.';
+        }
 
         EligibilityStatus::updateOrCreate(
             ['donor_id' => $record->donor_id],
-            [
-                'last_donation_date' => $lastDonationDate->toDateString(),
-                'next_eligible_date' => $nextEligibleDate->toDateString(),
-                'status' => $status
-            ]
+            $payload
         );
     }
 }

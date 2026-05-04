@@ -6,15 +6,21 @@ use App\Models\Appointment;
 use App\Models\BloodType;
 use App\Models\DonationRecord;
 use App\Models\Donor;
+use App\Models\DonorScreeningAnswer;
+use App\Models\EligibilityQuestion;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Models\Notification;
 use App\Services\AdminNotificationService;
+use App\Services\EligibilityEvaluator;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
+use Throwable;
 
 class DonorPortalController extends Controller
 {
@@ -160,7 +166,131 @@ class DonorPortalController extends Controller
             'latestEligibility' => $latestEligibility,
             'latestDonationDate' => $latestDonationDate,
             'nextEligibleDate' => $nextEligibleDate,
+            'screeningQuestions' => $this->activeScreeningQuestions(),
         ]);
+    }
+
+    public function submitEligibility(Request $request, EligibilityEvaluator $evaluator): RedirectResponse
+    {
+        $context = $this->buildContext($request, 'eligibility');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        $questions = $this->activeScreeningQuestions();
+        if ($questions->isEmpty()) {
+            return redirect()
+                ->route('donor.check-eligibility')
+                ->with('error', 'No active screening questions are available right now.');
+        }
+
+        $rules = [
+            'answers' => ['required', 'array'],
+            'followups' => ['nullable', 'array'],
+        ];
+
+        foreach ($questions as $question) {
+            $questionId = (int) $question->question_id;
+            $rules["answers.{$questionId}"] = ['required', 'string', Rule::in(['yes', 'no'])];
+            $rules["followups.{$questionId}"] = ['nullable', 'string', 'max:1000'];
+        }
+
+        $validated = $request->validate($rules, [
+            'answers.required' => 'Please answer all screening questions before submitting.',
+            'answers.*.required' => 'Please answer all screening questions before submitting.',
+            'answers.*.in' => 'Please choose Yes or No for every screening question.',
+        ]);
+
+        $answers = $validated['answers'] ?? [];
+        $followups = $validated['followups'] ?? [];
+        $result = $evaluator->evaluate($answers);
+        $donorId = (int) $context['donor']->donor_id;
+        $latestDonationDate = DonationRecord::query()
+            ->where('donor_id', $donorId)
+            ->max('donation_date');
+
+        $eligibility = null;
+
+        DB::transaction(function () use (
+            $answers,
+            $followups,
+            $questions,
+            $result,
+            $donorId,
+            $latestDonationDate,
+            &$eligibility
+        ): void {
+            $eligibility = EligibilityStatus::query()
+                ->where('donor_id', $donorId)
+                ->orderByDesc('eligibility_id')
+                ->lockForUpdate()
+                ->first();
+
+            $payload = $this->buildEligibilityStatusPayload($result, $latestDonationDate);
+
+            if ($eligibility instanceof EligibilityStatus) {
+                $eligibility->fill($payload);
+                $eligibility->save();
+            } else {
+                $eligibility = EligibilityStatus::query()->create(['donor_id' => $donorId] + $payload);
+            }
+
+            foreach ($questions as $question) {
+                $questionId = (int) $question->question_id;
+                $answer = strtolower(trim((string) ($answers[$questionId] ?? '')));
+
+                if (! in_array($answer, ['yes', 'no'], true)) {
+                    continue;
+                }
+
+                $followupAnswer = trim((string) ($followups[$questionId] ?? ''));
+                $answerPayload = [
+                    'answer' => $answer,
+                    'followup_answer' => $followupAnswer !== '' ? $followupAnswer : null,
+                ];
+
+                $existingAnswer = DonorScreeningAnswer::query()
+                    ->where('eligibility_id', $eligibility->eligibility_id)
+                    ->where('question_id', $questionId)
+                    ->first();
+
+                if ($existingAnswer instanceof DonorScreeningAnswer) {
+                    DonorScreeningAnswer::query()
+                        ->where('eligibility_id', $eligibility->eligibility_id)
+                        ->where('question_id', $questionId)
+                        ->update($answerPayload);
+                } else {
+                    DonorScreeningAnswer::query()->create([
+                        'eligibility_id' => $eligibility->eligibility_id,
+                        'question_id' => $questionId,
+                    ] + $answerPayload);
+                }
+            }
+        });
+
+        $eligibilityId = $eligibility instanceof EligibilityStatus ? (int) $eligibility->eligibility_id : null;
+        $this->writeEligibilityAudit($request, $result, $eligibilityId);
+
+        if ($result['status'] === 'for_review' && $eligibilityId !== null) {
+            $donorName = trim((string) $context['donor']->first_name . ' ' . (string) $context['donor']->last_name);
+            app(AdminNotificationService::class)->createAdminEvent(
+                'eligibility_submitted',
+                'Eligibility Review Submitted',
+                "{$donorName} submitted eligibility answers that require review.",
+                'eligibility',
+                $eligibilityId
+            );
+        }
+
+        $this->createDonorNotification(
+            $donorId,
+            'eligibility_submitted',
+            $this->eligibilityResultMessage($result)
+        );
+
+        return redirect()
+            ->route('donor.check-eligibility')
+            ->with('success', $this->eligibilityResultMessage($result));
     }
 
     public function history(Request $request)
@@ -295,5 +425,126 @@ class DonorPortalController extends Controller
         }
 
         return $query;
+    }
+
+    private function activeScreeningQuestions()
+    {
+        return EligibilityQuestion::query()
+            ->where('is_active', true)
+            ->orderBy('question_order')
+            ->orderBy('question_id')
+            ->get();
+    }
+
+    private function buildEligibilityStatusPayload(array $result, ?string $latestDonationDate): array
+    {
+        $payload = [
+            'last_donation_date' => $latestDonationDate,
+            'next_eligible_date' => $result['next_eligible_date'] ?? null,
+            'status' => $result['status'],
+        ];
+
+        foreach (['result_reason', 'recommendation_message', 'source'] as $column) {
+            if (Schema::hasColumn('eligibility_status', $column)) {
+                $payload[$column] = $result[$column] ?? null;
+            }
+        }
+
+        if (Schema::hasColumn('eligibility_status', 'reviewed_by_admin_id')) {
+            $payload['reviewed_by_admin_id'] = null;
+        }
+
+        if (Schema::hasColumn('eligibility_status', 'reviewed_at')) {
+            $payload['reviewed_at'] = null;
+        }
+
+        if (Schema::hasColumn('eligibility_status', 'review_notes')) {
+            $payload['review_notes'] = null;
+        }
+
+        return $payload;
+    }
+
+    private function eligibilityResultMessage(array $result): string
+    {
+        return match ($result['status'] ?? '') {
+            'eligible' => 'You are initially eligible to donate blood. Please proceed to the next step.',
+            'temporary_deferred' => 'Your donation is temporarily deferred. Please review your next eligible date and recommendation.',
+            'not_eligible' => 'Your answers indicate that you are not eligible to donate blood at this time.',
+            'for_review' => 'Your screening submission is pending review by authorized personnel.',
+            default => 'Your eligibility screening has been submitted.',
+        };
+    }
+
+    private function createDonorNotification(int $donorId, string $type, string $message): void
+    {
+        if ($donorId <= 0 || ! Schema::hasTable('notifications')) {
+            return;
+        }
+
+        try {
+            $payload = [
+                'donor_id' => $donorId,
+                'message' => $message,
+                'notification_type' => $type,
+                'is_read' => 0,
+                'created_at' => now(),
+            ];
+
+            if (Schema::hasColumn('notifications', 'push_sent')) {
+                $payload['push_sent'] = 0;
+            }
+
+            DB::table('notifications')->insert($payload);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to create donor eligibility notification.', [
+                'donor_id' => $donorId,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function writeEligibilityAudit(Request $request, array $result, ?int $eligibilityId): void
+    {
+        $description = 'Automatic eligibility result: ' . ($result['status'] ?? 'unknown');
+
+        try {
+            $donorName = trim((string) $request->session()->get('donor_name', 'Donor'));
+            $metadata = [
+                'donor_id' => is_numeric($request->session()->get('donor_id')) ? (int) $request->session()->get('donor_id') : null,
+                'status' => $result['status'] ?? null,
+                'source' => $result['source'] ?? 'auto',
+                'result_reason' => $result['result_reason'] ?? null,
+                'matched_question_ids' => array_map(
+                    fn (array $match): ?int => isset($match['question_id']) ? (int) $match['question_id'] : null,
+                    $result['matched_questions'] ?? []
+                ),
+            ];
+
+            if (! Schema::hasTable('audit_logs')) {
+                logger()->info($description, $metadata);
+                return;
+            }
+
+            DB::table('audit_logs')->insert([
+                'actor_admin_id' => null,
+                'actor_name' => $donorName !== '' ? $donorName : 'Donor',
+                'actor_role' => 'Donor',
+                'action_type' => 'eligibility_auto_evaluated',
+                'module_type' => 'eligibility',
+                'target_table' => 'eligibility_status',
+                'target_id' => $eligibilityId,
+                'description' => $description,
+                'ip_address' => $request->ip(),
+                'result' => 'success',
+                'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to write donor eligibility audit.', [
+                'eligibility_id' => $eligibilityId,
+                'error' => $exception->getMessage(),
+            ]);
+        }
     }
 }

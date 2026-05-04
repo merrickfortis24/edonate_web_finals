@@ -92,6 +92,9 @@ Artisan::command('firebase:sync-mirror', function () {
             'last_donation_date' => (string) $eligibility->last_donation_date,
             'next_eligible_date' => (string) $eligibility->next_eligible_date,
             'status' => $eligibility->status,
+            'result_reason' => (string) ($eligibility->result_reason ?? ''),
+            'recommendation_message' => (string) ($eligibility->recommendation_message ?? ''),
+            'source' => (string) ($eligibility->source ?? 'auto'),
         ]);
     }
 

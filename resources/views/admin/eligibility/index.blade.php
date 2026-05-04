@@ -38,28 +38,34 @@
         <section class="content eligibility-content container-fluid py-3" aria-label="Eligibility content">
             <!-- Stats Cards -->
             <div class="eligibility-stats row g-3" aria-label="Eligibility summary">
-                <div class="col-6 col-xl-3">
+                <div class="col-6 col-xl">
                     <article class="stat-card eligibility-stat eligibility-stat--total h-100">
                         <p class="eligibility-stat__label">Total Submissions</p>
                         <p class="eligibility-stat__value" id="eligibilityStatTotal">0</p>
                     </article>
                 </div>
-                <div class="col-6 col-xl-3">
+                <div class="col-6 col-xl">
                     <article class="stat-card eligibility-stat eligibility-stat--pending h-100">
-                        <p class="eligibility-stat__label">Pending Review</p>
-                        <p class="eligibility-stat__value" id="eligibilityStatPending">0</p>
+                        <p class="eligibility-stat__label">For Review</p>
+                        <p class="eligibility-stat__value" id="eligibilityStatForReview">0</p>
                     </article>
                 </div>
-                <div class="col-6 col-xl-3">
+                <div class="col-6 col-xl">
                     <article class="stat-card eligibility-stat eligibility-stat--approved h-100">
-                        <p class="eligibility-stat__label">Approved</p>
-                        <p class="eligibility-stat__value" id="eligibilityStatApproved">0</p>
+                        <p class="eligibility-stat__label">Eligible</p>
+                        <p class="eligibility-stat__value" id="eligibilityStatEligible">0</p>
                     </article>
                 </div>
-                <div class="col-6 col-xl-3">
+                <div class="col-6 col-xl">
+                    <article class="stat-card eligibility-stat eligibility-stat--pending h-100">
+                        <p class="eligibility-stat__label">Deferred</p>
+                        <p class="eligibility-stat__value" id="eligibilityStatDeferred">0</p>
+                    </article>
+                </div>
+                <div class="col-6 col-xl">
                     <article class="stat-card eligibility-stat eligibility-stat--declined h-100">
-                        <p class="eligibility-stat__label">Declined</p>
-                        <p class="eligibility-stat__value" id="eligibilityStatDeclined">0</p>
+                        <p class="eligibility-stat__label">Not Eligible</p>
+                        <p class="eligibility-stat__value" id="eligibilityStatNotEligible">0</p>
                     </article>
                 </div>
             </div>
@@ -82,9 +88,10 @@
                     <select id="eligibilityStatusFilter" class="eligibility-filter__select form-select"
                         aria-label="Filter by status" name="status">
                         <option value="">All Statuses</option>
-                        <option value="pending">Pending</option>
-                        <option value="approved">Approved</option>
-                        <option value="declined">Declined</option>
+                        <option value="for_review">For Review</option>
+                        <option value="eligible">Eligible</option>
+                        <option value="temporary_deferred">Temporarily Deferred</option>
+                        <option value="not_eligible">Not Eligible</option>
                     </select>
                 </div>
 
@@ -190,5 +197,5 @@
 @endsection
 
 @push('admin_scripts')
-    <script src="{{ asset('js/admin/eligibility-review.js') }}"></script>
+    <script src="{{ asset('js/admin/eligibility-review.js') }}?v={{ file_exists(public_path('js/admin/eligibility-review.js')) ? filemtime(public_path('js/admin/eligibility-review.js')) : time() }}"></script>
 @endpush

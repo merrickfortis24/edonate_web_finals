@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
         perPage: 10,
         totalRecords: 0,
         selectedId: null,
-        pendingAction: null, // 'approved' or 'declined'
+        pendingAction: null, // 'eligible' or 'not_eligible'
         isLoading: false,
     };
 
@@ -28,9 +28,10 @@ document.addEventListener('DOMContentLoaded', function () {
         notesField: '#reviewNotesField',
         confirmBtn: '#reviewConfirmBtn',
         statTotal: '#eligibilityStatTotal',
-        statPending: '#eligibilityStatPending',
-        statApproved: '#eligibilityStatApproved',
-        statDeclined: '#eligibilityStatDeclined',
+        statForReview: '#eligibilityStatForReview',
+        statEligible: '#eligibilityStatEligible',
+        statDeferred: '#eligibilityStatDeferred',
+        statNotEligible: '#eligibilityStatNotEligible',
     };
 
     const apiUrls = () => {
@@ -118,14 +119,20 @@ document.addEventListener('DOMContentLoaded', function () {
         const normalizedStatus = normalizeStatus(status);
 
         switch (normalizedStatus) {
+            case 'for_review':
+            case 'for review':
             case 'pending':
-                return '<span class="badge bg-warning text-dark">Pending</span>';
+                return '<span class="badge bg-warning text-dark">For Review</span>';
             case 'approved':
             case 'eligible':
-                return '<span class="badge bg-success text-white">Approved</span>';
+                return '<span class="badge bg-success text-white">Eligible</span>';
+            case 'temporary_deferred':
+            case 'temporary deferred':
+                return '<span class="badge bg-info text-dark">Temporarily Deferred</span>';
             case 'declined':
+            case 'not_eligible':
             case 'not eligible':
-                return '<span class="badge bg-danger text-white">Declined</span>';
+                return '<span class="badge bg-danger text-white">Not Eligible</span>';
             default:
                 return '<span class="badge bg-secondary text-white">' + escapeHtml(formatStatusLabel(status)) + '</span>';
         }
@@ -143,9 +150,10 @@ document.addEventListener('DOMContentLoaded', function () {
     function updateStats(stats) {
         const safeStats = stats && typeof stats === 'object' ? stats : {};
         setText(selectors.statTotal, safeStats.total || 0);
-        setText(selectors.statPending, safeStats.pending || 0);
-        setText(selectors.statApproved, safeStats.approved || 0);
-        setText(selectors.statDeclined, safeStats.declined || 0);
+        setText(selectors.statForReview, safeStats.for_review || 0);
+        setText(selectors.statEligible, safeStats.eligible || 0);
+        setText(selectors.statDeferred, safeStats.temporary_deferred || 0);
+        setText(selectors.statNotEligible, safeStats.not_eligible || 0);
     }
 
     // ── Data loading ─────────────────────────────────────────────────────────
@@ -233,17 +241,21 @@ document.addEventListener('DOMContentLoaded', function () {
             const lastDonationDate = submission.last_donation_date;
             const nextEligibleDate = submission.next_eligible_date;
             const contactNumber = submission.contact_number;
+            const source = normalizeStatus(submission.source || 'auto');
             const escapedEligibilityId = escapeHtml(eligibilityId);
             const donorMeta = [
                 donorCode ? escapeHtml(donorCode) : null,
                 donorId ? `Donor #${escapeHtml(donorId)}` : null,
             ].filter(Boolean).join(' | ');
             const contactText = contactNumber ? `Contact: ${escapeHtml(contactNumber)}` : 'Contact: -';
-            const isPending = normalizeStatus(status) === 'pending';
-            const actionButtons = isPending
+            const isReviewable = submission.is_reviewable === true || ['for_review', 'for review', 'pending'].includes(normalizeStatus(status));
+            const sourceBadge = source === 'admin_review'
+                ? '<span class="badge bg-light text-dark border ms-1">Admin Review</span>'
+                : '<span class="badge bg-light text-dark border ms-1">Auto Decision</span>';
+            const actionButtons = isReviewable
                 ? `<button type="button" class="btn btn-sm btn-outline-primary view-btn me-1" data-id="${escapedEligibilityId}">View</button>
                    <button type="button" class="btn btn-sm btn-success approve-btn me-1" data-id="${escapedEligibilityId}">Approve</button>
-                   <button type="button" class="btn btn-sm btn-danger decline-btn" data-id="${escapedEligibilityId}">Decline</button>`
+                   <button type="button" class="btn btn-sm btn-danger decline-btn" data-id="${escapedEligibilityId}">Reject</button>`
                 : `<button type="button" class="btn btn-sm btn-outline-primary view-btn" data-id="${escapedEligibilityId}">View</button>`;
 
             return `
@@ -254,7 +266,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         <small class="text-muted d-block">${contactText}</small>
                     </td>
                     <td><span class="badge bg-light text-dark border">${escapeHtml(bloodType)}</span></td>
-                    <td>${getStatusBadge(status)}</td>
+                    <td>${getStatusBadge(status)}${sourceBadge}</td>
                     <td>${formatDate(lastDonationDate)}</td>
                     <td>${formatDate(nextEligibleDate)}</td>
                     <td class="text-nowrap">${actionButtons}</td>
@@ -273,14 +285,14 @@ document.addEventListener('DOMContentLoaded', function () {
         tbody.querySelectorAll('.approve-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = parseInt(e.currentTarget.dataset.id);
-                openConfirmModal(id, 'approved');
+                openConfirmModal(id, 'eligible');
             });
         });
 
         tbody.querySelectorAll('.decline-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const id = parseInt(e.currentTarget.dataset.id);
-                openConfirmModal(id, 'declined');
+                openConfirmModal(id, 'not_eligible');
             });
         });
     }
@@ -342,6 +354,9 @@ document.addEventListener('DOMContentLoaded', function () {
         const contactNumber = donor.contact_number || safeSubmission.contact_number;
         const lastDonationDate = donor.last_donation_date || safeSubmission.last_donation_date;
         const nextEligibleDate = donor.next_eligible_date || safeSubmission.next_eligible_date;
+        const source = safeSubmission.source || 'auto';
+        const resultReason = safeSubmission.result_reason || '';
+        const recommendationMessage = safeSubmission.recommendation_message || '';
         donor.contact_number = contactNumber;
         safeSubmission.donor = donor;
         safeSubmission.answers = answers;
@@ -359,10 +374,32 @@ document.addEventListener('DOMContentLoaded', function () {
                 <div class="col-md-6">
                     <h6 class="text-muted mb-2">Eligibility Information</h6>
                     <p class="mb-1">Status: ${getStatusBadge(safeSubmission.status)}</p>
+                    <p class="small mb-1">Decision Source: <strong>${escapeHtml(formatStatusLabel(source))}</strong></p>
                     <p class="small mb-1">Last Donation: <strong>${formatDate(lastDonationDate)}</strong></p>
                     <p class="small mb-0">Next Eligible: <strong>${formatDate(nextEligibleDate)}</strong></p>
                 </div>
             </div>
+
+            ${(resultReason || recommendationMessage) ? `
+                <div class="row g-3 mb-3">
+                    ${resultReason ? `
+                        <div class="col-md-6">
+                            <div class="rounded border bg-light p-3">
+                                <h6 class="text-muted mb-2">Result Reason</h6>
+                                <p class="small mb-0">${escapeHtml(resultReason)}</p>
+                            </div>
+                        </div>
+                    ` : ''}
+                    ${recommendationMessage ? `
+                        <div class="col-md-6">
+                            <div class="rounded border bg-light p-3">
+                                <h6 class="text-muted mb-2">Recommendation</h6>
+                                <p class="small mb-0">${escapeHtml(recommendationMessage)}</p>
+                            </div>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : ''}
 
             ${submission.answers && submission.answers.length > 0 ? `
                 <hr>
@@ -415,8 +452,8 @@ document.addEventListener('DOMContentLoaded', function () {
         config.selectedId = id;
         config.pendingAction = action;
 
-        const isApprove = action === 'approved';
-        const label = isApprove ? 'Approve' : 'Decline';
+        const isApprove = action === 'eligible';
+        const label = isApprove ? 'Approve' : 'Reject';
         const colorClass = isApprove ? 'success' : 'danger';
 
         const modalContent = document.querySelector(selectors.modalContent);
@@ -432,7 +469,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.querySelector(selectors.actionText).textContent =
             isApprove
                 ? '✓ You are about to APPROVE this donor\'s eligibility.'
-                : '✗ You are about to DECLINE this donor\'s eligibility.';
+                : '✗ You are about to REJECT this donor\'s eligibility.';
 
         document.querySelector(selectors.notesWrapper).classList.remove('d-none');
         document.querySelector(selectors.notesField).value = '';
@@ -493,14 +530,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const modalEl = document.querySelector(selectors.modal);
             bootstrap.Modal.getInstance(modalEl)?.hide();
 
-            const label = config.pendingAction === 'approved' ? 'approved' : 'declined';
+            const label = config.pendingAction === 'eligible' ? 'approved as eligible' : 'rejected as not eligible';
             showToast(`Submission successfully ${label}`, 'success');
             loadSubmissions();
         } catch (error) {
             console.error('Failed to submit decision:', error);
             showToast(error.message || 'Failed to submit decision', 'error');
             confirmBtn.disabled = false;
-            confirmBtn.textContent = config.pendingAction === 'approved' ? 'Confirm Approve' : 'Confirm Decline';
+            confirmBtn.textContent = config.pendingAction === 'eligible' ? 'Confirm Approve' : 'Confirm Reject';
         }
     }
 

@@ -30,6 +30,7 @@ Route::get('/dashboard', [DonorDashboardController::class, 'index'])->name('dono
 Route::get('/appointments/book', [DonorPortalController::class, 'bookAppointment'])->name('donor.book-appointment');
 Route::post('/appointments/book', [DonorPortalController::class, 'storeAppointment'])->name('donor.book-appointment.store');
 Route::get('/eligibility', [DonorPortalController::class, 'checkEligibility'])->name('donor.check-eligibility');
+Route::post('/eligibility', [DonorPortalController::class, 'submitEligibility'])->name('donor.check-eligibility.submit');
 Route::get('/history', [DonorPortalController::class, 'history'])->name('donor.history');
 Route::get('/alerts', [DonorPortalController::class, 'alerts'])->name('donor.alerts');
 Route::post('/profile/complete', [DonorDashboardController::class, 'completeProfile'])->name('donor.profile.complete');

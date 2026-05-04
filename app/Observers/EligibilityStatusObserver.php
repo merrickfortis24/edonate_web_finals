@@ -21,6 +21,9 @@ class EligibilityStatusObserver
                 'last_donation_date' => (string) $status->last_donation_date,
                 'next_eligible_date' => (string) $status->next_eligible_date,
                 'status' => $status->status,
+                'result_reason' => (string) ($status->result_reason ?? ''),
+                'recommendation_message' => (string) ($status->recommendation_message ?? ''),
+                'source' => (string) ($status->source ?? 'auto'),
             ]);
         } catch (Throwable $exception) {
             report($exception);

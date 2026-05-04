@@ -708,12 +708,26 @@ class AdminAuthController extends BaseController
 
                 if ($latestEligibility instanceof EligibilityStatus) {
                     $latestEligibility->status = $this->userManagementStatusDatabaseValue($normalizedRequestedStatus);
+                    if (Schema::hasColumn('eligibility_status', 'source')) {
+                        $latestEligibility->source = 'admin_review';
+                    }
+                    if (Schema::hasColumn('eligibility_status', 'result_reason')) {
+                        $latestEligibility->result_reason = 'Updated by admin from user management.';
+                    }
                     $latestEligibility->save();
                 } elseif ($normalizedRequestedStatus !== $currentDerivedStatus) {
-                    EligibilityStatus::query()->create([
+                    $eligibilityPayload = [
                         'donor_id' => $targetDonor->donor_id,
                         'status' => $this->userManagementStatusDatabaseValue($normalizedRequestedStatus),
-                    ]);
+                    ];
+                    if (Schema::hasColumn('eligibility_status', 'source')) {
+                        $eligibilityPayload['source'] = 'admin_review';
+                    }
+                    if (Schema::hasColumn('eligibility_status', 'result_reason')) {
+                        $eligibilityPayload['result_reason'] = 'Updated by admin from user management.';
+                    }
+
+                    EligibilityStatus::query()->create($eligibilityPayload);
                 }
             }
         });
@@ -3863,7 +3877,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
                 ->leftJoin('donors as d', 'd.donor_id', '=', 'es.donor_id')
                 ->where(function ($query): void {
                     $query->whereNull('es.status')
-                        ->orWhere('es.status', 'pending');
+                        ->orWhereIn('es.status', ['for_review', 'for review', 'pending']);
                 })
                 ->orderByDesc('es.eligibility_id')
                 ->limit(5)
@@ -4063,7 +4077,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
     {
         return "CASE
             WHEN LOWER(COALESCE(es.status, '')) IN ('eligible', 'qualified', 'ready', 'approved') THEN 'eligible'
-            WHEN LOWER(COALESCE(es.status, '')) IN ('not eligible', 'not_eligible', 'deferred', 'ineligible', 'declined') THEN 'not_eligible'
+            WHEN LOWER(COALESCE(es.status, '')) IN ('not eligible', 'not_eligible', 'temporary deferred', 'temporary_deferred', 'for review', 'for_review', 'deferred', 'ineligible', 'declined') THEN 'not_eligible'
             WHEN drs.last_donation_date IS NULL THEN 'eligible'
             WHEN drs.last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 56 DAY) THEN 'eligible'
             ELSE 'not_eligible'
@@ -4284,8 +4298,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'com
     private function userManagementStatusDatabaseValue(string $status): string
     {
         return $this->normalizeUserManagementStatusValue($status) === 'not_eligible'
-            ? 'declined'
-            : 'approved';
+            ? 'not_eligible'
+            : 'eligible';
     }
 
     /**

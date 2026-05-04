@@ -20,6 +20,16 @@ class EligibilityStatus extends Model
         'last_donation_date',
         'next_eligible_date',
         'status',
+        'result_reason',
+        'recommendation_message',
+        'source',
+        'reviewed_by_admin_id',
+        'reviewed_at',
+        'review_notes',
+    ];
+
+    protected $casts = [
+        'reviewed_at' => 'datetime',
     ];
 
     public function donor()
