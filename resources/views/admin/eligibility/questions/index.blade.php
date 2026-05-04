@@ -250,5 +250,5 @@
 @endsection
 
 @push('admin_scripts')
-<script src="{{ asset('js/admin/questions-management.js') }}?v={{ time() }}"></script>
+<script src="{{ asset('js/admin/questions-management.js') }}?v={{ file_exists(public_path('js/admin/questions-management.js')) ? filemtime(public_path('js/admin/questions-management.js')) : time() }}"></script>
 @endpush

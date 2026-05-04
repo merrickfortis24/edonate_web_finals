@@ -194,5 +194,5 @@
 @endsection
 
 @push('admin_scripts')
-	<script src="{{ asset('js/admin/notification-center.js') }}"></script>
+	<script src="{{ asset('js/admin/notification-center.js') }}?v={{ file_exists(public_path('js/admin/notification-center.js')) ? filemtime(public_path('js/admin/notification-center.js')) : time() }}"></script>
 @endpush
