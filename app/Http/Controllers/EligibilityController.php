@@ -14,12 +14,11 @@ use Throwable;
 
 class EligibilityController extends Controller
 {
-    private const REVIEWABLE_STATUSES = ['for_review', 'for review', 'pending'];
     private const STATUS_FILTERS = [
         'eligible' => ['eligible', 'approved', 'qualified', 'ready'],
-        'not_eligible' => ['not_eligible', 'not eligible', 'declined', 'ineligible'],
-        'temporary_deferred' => ['temporary_deferred', 'temporary deferred', 'deferred'],
-        'for_review' => ['for_review', 'for review', 'pending'],
+        'not_eligible' => ['not_eligible', 'not eligible', 'declined', 'ineligible', 'rejected'],
+        'temporary_deferred' => ['temporary_deferred', 'temporary deferred', 'temporary_defer', 'temporarily deferred', 'deferred'],
+        'for_review' => ['for_review', 'for review', 'pending review', 'pending'],
         'approved' => ['approved', 'eligible'],
         'declined' => ['declined', 'not_eligible', 'not eligible'],
         'pending' => ['pending', 'for_review', 'for review'],
@@ -27,6 +26,7 @@ class EligibilityController extends Controller
     private const SOURCE_FILTERS = [
         'auto' => ['auto'],
         'admin_review' => ['admin_review'],
+        'legacy' => ['legacy'],
     ];
 
     public function index(Request $request)
@@ -49,7 +49,7 @@ class EligibilityController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
             'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible', 'temporary_deferred', 'for_review', 'pending', 'approved', 'declined'])],
-            'source' => ['nullable', 'string', Rule::in(['', 'auto', 'admin_review'])],
+            'source' => ['nullable', 'string', Rule::in(['', 'auto', 'admin_review', 'legacy'])],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
@@ -77,22 +77,22 @@ class EligibilityController extends Controller
         }
 
         if ($status !== '') {
-            $base->whereIn(DB::raw("LOWER(COALESCE(es.status, ''))"), self::STATUS_FILTERS[$status] ?? [$status]);
+            $base->whereIn(DB::raw("LOWER(TRIM(COALESCE(es.status, '')))"), self::STATUS_FILTERS[$status] ?? [$status]);
         }
 
         if ($source !== '' && Schema::hasColumn('eligibility_status', 'source')) {
-            $base->whereIn(DB::raw("LOWER(COALESCE(es.source, ''))"), self::SOURCE_FILTERS[$source] ?? [$source]);
+            if ($source === 'legacy') {
+                $base->where(function ($q): void {
+                    $q->whereNull('es.source')
+                        ->orWhereRaw("TRIM(COALESCE(es.source, '')) = ''")
+                        ->orWhereIn(DB::raw("LOWER(TRIM(COALESCE(es.source, '')))"), self::SOURCE_FILTERS['legacy']);
+                });
+            } else {
+                $base->whereIn(DB::raw("LOWER(TRIM(COALESCE(es.source, '')))"), self::SOURCE_FILTERS[$source] ?? [$source]);
+            }
         }
 
-        $statsRow = DB::table('eligibility_status')
-            ->selectRaw("
-                COUNT(*) as total,
-                SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('for_review','for review','pending') OR status IS NULL THEN 1 ELSE 0 END) AS for_review,
-                SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('eligible','approved','qualified','ready') THEN 1 ELSE 0 END) AS eligible,
-                SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('temporary_deferred','temporary deferred','deferred') THEN 1 ELSE 0 END) AS temporary_deferred,
-                SUM(CASE WHEN LOWER(COALESCE(status, '')) IN ('not_eligible','not eligible','declined','ineligible') THEN 1 ELSE 0 END) AS not_eligible
-            ")
-            ->first();
+        $stats = $this->eligibilityStats();
 
         $total = (clone $base)->count();
         $lastPage = max(1, (int) ceil($total / $perPage));
@@ -101,7 +101,7 @@ class EligibilityController extends Controller
 
         $rows = (clone $base)
             ->select($this->listSelectColumns())
-            ->orderByRaw("CASE WHEN LOWER(COALESCE(es.status, '')) IN ('for_review','for review','pending') OR es.status IS NULL THEN 0 ELSE 1 END")
+            ->orderByRaw("CASE WHEN LOWER(TRIM(COALESCE(es.status, ''))) IN ('for_review','for review','pending review','pending') OR es.status IS NULL THEN 0 ELSE 1 END")
             ->orderByDesc('es.eligibility_id')
             ->forPage($page, $perPage)
             ->get();
@@ -117,11 +117,11 @@ class EligibilityController extends Controller
                 'to' => $to,
             ],
             'stats' => [
-                'total' => (int) ($statsRow->total ?? 0),
-                'for_review' => (int) ($statsRow->for_review ?? 0),
-                'eligible' => (int) ($statsRow->eligible ?? 0),
-                'temporary_deferred' => (int) ($statsRow->temporary_deferred ?? 0),
-                'not_eligible' => (int) ($statsRow->not_eligible ?? 0),
+                'total' => $stats['total'],
+                'for_review' => $stats['for_review'],
+                'eligible' => $stats['eligible'],
+                'temporary_deferred' => $stats['temporary_deferred'],
+                'not_eligible' => $stats['not_eligible'],
             ],
         ]);
     }
@@ -197,16 +197,19 @@ class EligibilityController extends Controller
 
         return response()->json([
             'eligibility_id' => (int) $row->eligibility_id,
+            'raw_status' => $row->status,
             'status' => $this->normalizeStatus((string) ($row->status ?? 'for_review')),
-            'source' => $this->normalizeSource((string) ($row->source ?? 'auto')),
-            'result_reason' => (string) ($row->result_reason ?? ''),
-            'recommendation_message' => (string) ($row->recommendation_message ?? ''),
+            'status_label' => $this->statusLabel($this->normalizeStatus((string) ($row->status ?? 'for_review'))),
+            'source' => $this->normalizeSource($row->source ?? null),
+            'source_label' => $this->sourceLabel($this->normalizeSource($row->source ?? null)),
+            'result_reason' => $this->fallbackText($row->result_reason ?? null, 'No recorded eligibility reason.'),
+            'recommendation_message' => $this->fallbackText($row->recommendation_message ?? null, 'No recommendation recorded.'),
             'next_eligible_date' => $row->next_eligible_date,
             'reviewed_by_admin_id' => $row->reviewed_by_admin_id === null ? null : (int) $row->reviewed_by_admin_id,
             'reviewed_by_name' => (string) ($row->reviewed_by_name ?? ''),
             'reviewed_at' => $row->reviewed_at,
             'review_notes' => (string) ($row->review_notes ?? ''),
-            'admin_is_reviewable' => $this->isReviewableStatus((string) ($row->status ?? '')),
+            'admin_is_reviewable' => $this->normalizeStatus((string) ($row->status ?? 'for_review')) === 'for_review',
             'donor' => [
                 'donor_id' => (int) $row->donor_id,
                 'donor_code' => (string) $row->donor_code,
@@ -340,7 +343,9 @@ class EligibilityController extends Controller
 
     private function transformRow(object $row): array
     {
-        $status = $this->normalizeStatus((string) ($row->status ?? 'for_review'));
+        $rawStatus = $row->status ?? null;
+        $status = $this->normalizeStatus((string) ($rawStatus ?? 'for_review'));
+        $source = $this->normalizeSource($row->source ?? null);
 
         return [
             'eligibility_id' => (int) $row->eligibility_id,
@@ -350,18 +355,21 @@ class EligibilityController extends Controller
             'donor_email' => (string) ($row->donor_email ?? ''),
             'contact_number' => (string) ($row->contact_number ?? ''),
             'blood_type' => (string) ($row->blood_type ?? ''),
+            'raw_status' => $rawStatus,
             'status' => $status,
-            'source' => $this->normalizeSource((string) ($row->source ?? 'auto')),
-            'result_reason' => (string) ($row->result_reason ?? ''),
-            'recommendation_message' => (string) ($row->recommendation_message ?? ''),
+            'status_label' => $this->statusLabel($status),
+            'source' => $source,
+            'source_label' => $this->sourceLabel($source),
+            'result_reason' => $this->fallbackText($row->result_reason ?? null, 'No recorded eligibility reason.'),
+            'recommendation_message' => $this->fallbackText($row->recommendation_message ?? null, 'No recommendation recorded.'),
             'last_donation_date' => $row->last_donation_date,
             'next_eligible_date' => $row->next_eligible_date,
             'reviewed_by_admin_id' => $row->reviewed_by_admin_id === null ? null : (int) $row->reviewed_by_admin_id,
             'reviewed_by_name' => (string) ($row->reviewed_by_name ?? ''),
             'reviewed_at' => $row->reviewed_at,
             'review_notes' => (string) ($row->review_notes ?? ''),
-            'admin_is_reviewable' => $this->isReviewableStatus((string) ($row->status ?? '')),
-            'is_reviewable' => $this->isReviewableStatus((string) ($row->status ?? '')),
+            'admin_is_reviewable' => $status === 'for_review',
+            'is_reviewable' => $status === 'for_review',
         ];
     }
 
@@ -381,7 +389,7 @@ class EligibilityController extends Controller
             'es.last_donation_date',
             'es.next_eligible_date',
             $hasDonorAuth ? DB::raw("COALESCE(da.email, '') as donor_email") : DB::raw("'' as donor_email"),
-            Schema::hasColumn('eligibility_status', 'source') ? 'es.source' : DB::raw("'auto' as source"),
+            Schema::hasColumn('eligibility_status', 'source') ? 'es.source' : DB::raw("'legacy' as source"),
             Schema::hasColumn('eligibility_status', 'result_reason') ? 'es.result_reason' : DB::raw("'' as result_reason"),
             Schema::hasColumn('eligibility_status', 'recommendation_message') ? 'es.recommendation_message' : DB::raw("'' as recommendation_message"),
             Schema::hasColumn('eligibility_status', 'reviewed_by_admin_id') ? 'es.reviewed_by_admin_id' : DB::raw('NULL as reviewed_by_admin_id'),
@@ -409,7 +417,7 @@ class EligibilityController extends Controller
             'es.status',
             'es.last_donation_date',
             'es.next_eligible_date',
-            Schema::hasColumn('eligibility_status', 'source') ? 'es.source' : DB::raw("'auto' as source"),
+            Schema::hasColumn('eligibility_status', 'source') ? 'es.source' : DB::raw("'legacy' as source"),
             Schema::hasColumn('eligibility_status', 'result_reason') ? 'es.result_reason' : DB::raw("'' as result_reason"),
             Schema::hasColumn('eligibility_status', 'recommendation_message') ? 'es.recommendation_message' : DB::raw("'' as recommendation_message"),
             Schema::hasColumn('eligibility_status', 'reviewed_by_admin_id') ? 'es.reviewed_by_admin_id' : DB::raw('NULL as reviewed_by_admin_id'),
@@ -452,28 +460,28 @@ class EligibilityController extends Controller
         if (in_array($value, ['approved', 'eligible', 'qualified', 'ready'], true)) {
             return 'eligible';
         }
-        if (in_array($value, ['declined', 'not_eligible', 'not eligible', 'ineligible'], true)) {
+        if (in_array($value, ['declined', 'not_eligible', 'not eligible', 'ineligible', 'rejected'], true)) {
             return 'not_eligible';
         }
-        if (in_array($value, ['temporary_deferred', 'temporary deferred', 'deferred'], true)) {
+        if (in_array($value, ['temporary_deferred', 'temporary deferred', 'temporary_defer', 'temporarily deferred', 'deferred'], true)) {
             return 'temporary_deferred';
         }
-        if (in_array($value, ['for_review', 'for review', 'pending'], true)) {
+        if (in_array($value, ['for_review', 'for review', 'pending review', 'pending'], true)) {
             return 'for_review';
         }
 
         return $value !== '' ? $value : 'for_review';
     }
 
-    private function normalizeSource(string $source): string
+    private function normalizeSource(?string $source): string
     {
-        $value = Str::lower(trim($source));
-        return in_array($value, ['auto', 'admin_review'], true) ? $value : 'auto';
+        $value = Str::lower(trim((string) $source));
+        return in_array($value, ['auto', 'admin_review'], true) ? $value : 'legacy';
     }
 
     private function isReviewableStatus(string $status): bool
     {
-        return in_array(Str::lower(trim($status)), self::REVIEWABLE_STATUSES, true);
+        return $this->normalizeStatus($status) === 'for_review';
     }
 
     private function statusLabel(string $status): string
@@ -481,9 +489,47 @@ class EligibilityController extends Controller
         return match ($status) {
             'eligible' => 'Eligible',
             'not_eligible' => 'Not Eligible',
-            'temporary_deferred' => 'Temporarily Deferred',
+            'temporary_deferred' => 'Temporary Deferred',
             default => 'For Review',
         };
+    }
+
+    private function sourceLabel(string $source): string
+    {
+        return match ($source) {
+            'auto' => 'Auto',
+            'admin_review' => 'Admin Review',
+            default => 'Legacy',
+        };
+    }
+
+    private function fallbackText(?string $value, string $fallback): string
+    {
+        $text = trim((string) $value);
+        return $text !== '' ? $text : $fallback;
+    }
+
+    private function eligibilityStats(): array
+    {
+        $stats = [
+            'total' => 0,
+            'for_review' => 0,
+            'eligible' => 0,
+            'temporary_deferred' => 0,
+            'not_eligible' => 0,
+        ];
+
+        DB::table('eligibility_status')
+            ->pluck('status')
+            ->each(function ($rawStatus) use (&$stats): void {
+                $stats['total']++;
+                $status = $this->normalizeStatus((string) ($rawStatus ?? 'for_review'));
+                if (array_key_exists($status, $stats)) {
+                    $stats[$status]++;
+                }
+            });
+
+        return $stats;
     }
 
     private function specificReviewActionType(string $status): string

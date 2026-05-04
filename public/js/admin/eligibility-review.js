@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const sourceBadges = {
         auto: 'bg-secondary text-white',
         admin_review: 'bg-dark text-white',
+        legacy: 'bg-light text-dark border',
     };
 
     function getApiUrls() {
@@ -66,7 +67,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function normalizeSource(source) {
         const value = String(source || '').trim().toLowerCase();
-        return ['auto', 'admin_review'].includes(value) ? value : 'auto';
+        return ['auto', 'admin_review', 'legacy'].includes(value) ? value : 'legacy';
     }
 
     function formatLabel(value) {
@@ -585,4 +586,3 @@ document.addEventListener('DOMContentLoaded', function () {
     bindEvents();
     loadSubmissions();
 });
-
