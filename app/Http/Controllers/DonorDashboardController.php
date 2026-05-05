@@ -6,6 +6,7 @@ use App\Models\Appointment;
 use App\Models\BloodType;
 use App\Models\DonationRecord;
 use App\Models\Donor;
+use App\Models\DonorVerification;
 use App\Models\Location;
 use App\Models\Notification;
 use App\Services\GeocodingService;
@@ -71,6 +72,13 @@ class DonorDashboardController extends Controller
             ->where('is_read', 0)
             ->count();
 
+        $latestVerification = DonorVerification::query()
+            ->where('donor_id', $donor->donor_id)
+            ->orderByDesc('verification_id')
+            ->first();
+
+        $identityVerificationStatus = $this->verificationStatus($donor);
+
         $user = (object) [
             'first_name' => $donor->first_name,
             'last_name' => $donor->last_name,
@@ -82,6 +90,7 @@ class DonorDashboardController extends Controller
             ['key' => 'home', 'label' => 'Home', 'href' => route('donor.dashboard')],
             ['key' => 'book', 'label' => 'Book Appointment', 'href' => route('donor.book-appointment')],
             ['key' => 'eligibility', 'label' => 'Check Eligibility', 'href' => route('donor.check-eligibility')],
+            ['key' => 'verification', 'label' => 'Verify Identity', 'href' => route('donor.verification.index')],
             ['key' => 'history', 'label' => 'History', 'href' => route('donor.history')],
             ['key' => 'alerts', 'label' => 'Alerts', 'href' => route('donor.alerts')],
         ];
@@ -99,6 +108,8 @@ class DonorDashboardController extends Controller
             'activeNav' => 'home',
             'alertsCount' => $alertsCount,
             'bloodTypes' => BloodType::query()->orderBy('blood_type')->pluck('blood_type'),
+            'identityVerificationStatus' => $identityVerificationStatus,
+            'latestVerification' => $latestVerification,
         ]);
     }
 
@@ -206,6 +217,17 @@ class DonorDashboardController extends Controller
             && !empty($location->barangay_name)
             && !empty($location->city)
             && !empty($location->province);
+    }
+
+    private function verificationStatus(Donor $donor): string
+    {
+        if (! Schema::hasColumn('donors', 'verification_status')) {
+            return 'unverified';
+        }
+
+        $status = strtolower(trim((string) ($donor->verification_status ?? 'unverified')));
+
+        return in_array($status, ['unverified', 'pending', 'verified', 'rejected'], true) ? $status : 'unverified';
     }
 
     /**

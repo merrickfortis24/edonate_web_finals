@@ -90,6 +90,7 @@ class AdminNotificationService
             'report' => 'Report Generated',
             'eligibility_submitted' => 'Eligibility Review Submitted',
             'eligibility_reviewed' => 'Eligibility Review Updated',
+            'donor_verification_submitted' => 'Donor Verification Submitted',
             default => Str::headline(str_replace('_', ' ', $type ?: 'system')),
         };
     }

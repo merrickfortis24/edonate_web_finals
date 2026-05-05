@@ -31,6 +31,7 @@ class DonorPortalController extends Controller
             return $context;
         }
 
+        $canBookAppointment = $this->donorCanBookAppointment($context['donor']);
         $timeSlots = [
             '08:00',
             '09:00',
@@ -61,6 +62,8 @@ class DonorPortalController extends Controller
             'timeSlots' => $timeSlots,
             'availableDates' => $availableDates,
             'fullyBookedDates' => $fullyBookedDates,
+            'canBookAppointment' => $canBookAppointment,
+            'identityVerificationStatus' => $this->donorVerificationStatus($context['donor']),
         ]);
     }
 
@@ -69,6 +72,13 @@ class DonorPortalController extends Controller
         $context = $this->buildContext($request, 'book');
         if ($context instanceof RedirectResponse) {
             return $context;
+        }
+
+        if (! $this->donorCanBookAppointment($context['donor'])) {
+            return redirect()
+                ->route('donor.book-appointment')
+                ->withInput()
+                ->with('error', 'Please verify your identity before booking a donation appointment.');
         }
 
         $timeSlots = [
@@ -380,9 +390,26 @@ class DonorPortalController extends Controller
             ['key' => 'home', 'label' => 'Home', 'href' => route('donor.dashboard')],
             ['key' => 'book', 'label' => 'Book Appointment', 'href' => route('donor.book-appointment')],
             ['key' => 'eligibility', 'label' => 'Check Eligibility', 'href' => route('donor.check-eligibility')],
+            ['key' => 'verification', 'label' => 'Verify Identity', 'href' => route('donor.verification.index')],
             ['key' => 'history', 'label' => 'History', 'href' => route('donor.history')],
             ['key' => 'alerts', 'label' => 'Alerts', 'href' => route('donor.alerts')],
         ];
+    }
+
+    private function donorCanBookAppointment(Donor $donor): bool
+    {
+        return $this->donorVerificationStatus($donor) === 'verified';
+    }
+
+    private function donorVerificationStatus(Donor $donor): string
+    {
+        if (! Schema::hasColumn('donors', 'verification_status')) {
+            return 'unverified';
+        }
+
+        $status = strtolower(trim((string) ($donor->verification_status ?? 'unverified')));
+
+        return in_array($status, ['unverified', 'pending', 'verified', 'rejected'], true) ? $status : 'unverified';
     }
 
     private function buildCalendarAvailability(int $donorId, Carbon $startDate, int $days, int $maxPerDay): array

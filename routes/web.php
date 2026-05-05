@@ -1,11 +1,13 @@
 <?php
 
 use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorDashboardController;
 use App\Http\Controllers\DonorPortalController;
 use App\Http\Controllers\DonorSignupController;
+use App\Http\Controllers\DonorVerificationController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\EligibilityController;
 use App\Http\Controllers\QuestionController;
@@ -31,6 +33,8 @@ Route::get('/appointments/book', [DonorPortalController::class, 'bookAppointment
 Route::post('/appointments/book', [DonorPortalController::class, 'storeAppointment'])->name('donor.book-appointment.store');
 Route::get('/eligibility', [DonorPortalController::class, 'checkEligibility'])->name('donor.check-eligibility');
 Route::post('/eligibility', [DonorPortalController::class, 'submitEligibility'])->name('donor.check-eligibility.submit');
+Route::get('/verification', [DonorVerificationController::class, 'index'])->name('donor.verification.index');
+Route::post('/verification', [DonorVerificationController::class, 'store'])->name('donor.verification.store');
 Route::get('/history', [DonorPortalController::class, 'history'])->name('donor.history');
 Route::get('/alerts', [DonorPortalController::class, 'alerts'])->name('donor.alerts');
 Route::post('/profile/complete', [DonorDashboardController::class, 'completeProfile'])->name('donor.profile.complete');
@@ -110,6 +114,16 @@ Route::middleware('admin.auth')->group(function () {
         Route::delete('/admin/users/{donor}', [AdminAuthController::class, 'deleteUser'])
             ->whereNumber('donor')
             ->name('admin.users.delete');
+        Route::get('/admin/donor-verifications', [AdminDonorVerificationController::class, 'index'])->name('admin.donor-verifications.index');
+        Route::get('/admin/donor-verifications/{verification}/document', [AdminDonorVerificationController::class, 'document'])
+            ->whereNumber('verification')
+            ->name('admin.donor-verifications.document');
+        Route::patch('/admin/donor-verifications/{verification}/approve', [AdminDonorVerificationController::class, 'approve'])
+            ->whereNumber('verification')
+            ->name('admin.donor-verifications.approve');
+        Route::patch('/admin/donor-verifications/{verification}/reject', [AdminDonorVerificationController::class, 'reject'])
+            ->whereNumber('verification')
+            ->name('admin.donor-verifications.reject');
         Route::get('/admin/report-analytics', [AdminAuthController::class, 'reportAnalytics'])->name('admin.report-analytics');
         Route::get('/admin/rbac', [AdminAuthController::class, 'rbac'])->name('admin.rbac');
         Route::get('/admin/rbac/users', [AdminAuthController::class, 'listRbacUsers'])

@@ -24,6 +24,7 @@ class Donor extends Model
         'blood_type_id',
         'location_id',
         'date_registered',
+        'verification_status',
     ];
 
     public function bloodType()
@@ -34,5 +35,10 @@ class Donor extends Model
     public function location()
     {
         return $this->belongsTo(Location::class, 'location_id', 'location_id');
+    }
+
+    public function verifications()
+    {
+        return $this->hasMany(DonorVerification::class, 'donor_id', 'donor_id');
     }
 }

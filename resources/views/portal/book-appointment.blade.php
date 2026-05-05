@@ -95,6 +95,18 @@
 
     <form method="POST" action="{{ route('donor.book-appointment.store') }}" class="space-y-6 p-4 sm:p-6 lg:p-8">
         @csrf
+        @php
+            $bookingAllowed = $canBookAppointment ?? false;
+            $verificationStatusLabel = \Illuminate\Support\Str::headline(str_replace('_', ' ', $identityVerificationStatus ?? 'unverified'));
+        @endphp
+
+        @if (! $bookingAllowed)
+            <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Please verify your identity before booking a donation appointment.
+                Current status: <span class="font-semibold">{{ $verificationStatusLabel }}</span>.
+                <a href="{{ route('donor.verification.index') }}" class="font-semibold underline">Open verification</a>
+            </div>
+        @endif
 
         <div>
             <h3 class="text-base font-bold text-red-800 sm:text-lg">Schedule Your Donation</h3>
@@ -113,6 +125,7 @@
                     placeholder="Select Date"
                     class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
                     readonly
+                    {{ $bookingAllowed ? '' : 'disabled' }}
                 >
             </div>
             @error('donation_date')
@@ -123,7 +136,7 @@
         <section class="grid gap-4 md:grid-cols-2">
             <div>
                 <label for="donation_center" class="mb-1.5 block text-sm font-semibold text-slate-700">Donation Center</label>
-                <select id="donation_center" name="donation_center" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200">
+                <select id="donation_center" name="donation_center" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ $bookingAllowed ? '' : 'disabled' }}>
                     <option disabled {{ old('donation_center') ? '' : 'selected' }}>Choose Donation Center</option>
                     <option>{{ $location?->city ? $location->city . ' Blood Bank' : 'City Blood Bank' }}</option>
                     <option>Central Health Donor Hub</option>
@@ -136,7 +149,7 @@
 
             <div>
                 <label for="time_slot" class="mb-1.5 block text-sm font-semibold text-slate-700">Time Slot</label>
-                <select id="time_slot" name="time_slot" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ old('donation_date') ? '' : 'disabled' }}>
+                <select id="time_slot" name="time_slot" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ $bookingAllowed && old('donation_date') ? '' : 'disabled' }}>
                     <option disabled {{ old('time_slot') ? '' : 'selected' }}>Select date first</option>
                     @foreach ($timeSlots as $slot)
                         <option value="{{ $slot }}" {{ old('time_slot') === $slot ? 'selected' : '' }}>{{ \Carbon\Carbon::createFromFormat('H:i', $slot)->format('g:i A') }}</option>
@@ -149,7 +162,7 @@
         </section>
 
         <div class="pt-1">
-            <button type="submit" class="w-full rounded-xl bg-red-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-900 sm:mx-auto sm:block sm:w-auto sm:min-w-60">
+            <button type="submit" class="w-full rounded-xl bg-red-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-900 disabled:cursor-not-allowed disabled:bg-slate-400 sm:mx-auto sm:block sm:w-auto sm:min-w-60" {{ $bookingAllowed ? '' : 'disabled' }}>
                 Confirm Booking
             </button>
         </div>
@@ -209,6 +222,10 @@
         const enabledDates = @json($availableDates ?? []);
         const fullyBookedDates = @json($fullyBookedDates ?? []);
         const timeSlotSelect = document.getElementById('time_slot');
+
+        if (!@json($canBookAppointment ?? false)) {
+            return;
+        }
 
         flatpickr('#donation_date', {
             inline: true,

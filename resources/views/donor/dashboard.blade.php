@@ -52,6 +52,11 @@
                             <p class="mt-1 text-sm text-slate-500">Schedule your next donation slot.</p>
                             <span class="mt-3 inline-block text-sm font-semibold text-red-700">Open booking</span>
                         </a>
+                        <a href="{{ route('donor.verification.index') }}" class="group rounded-xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-50">
+                            <p class="text-sm font-semibold text-slate-900">Verify Identity</p>
+                            <p class="mt-1 text-sm text-slate-500">Submit a valid ID for admin review.</p>
+                            <span class="mt-3 inline-block text-sm font-semibold text-red-700">Open verification</span>
+                        </a>
                         <a href="{{ route('donor.history') }}" class="group rounded-xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-red-300 hover:bg-red-50">
                             <p class="text-sm font-semibold text-slate-900">History</p>
                             <p class="mt-1 text-sm text-slate-500">View your previous donation records.</p>
@@ -220,6 +225,33 @@
                                 Thank you for being a hero in your community.
                             </p>
                         </div>
+                    </x-dashboard.card>
+
+                    <x-dashboard.card title="Identity Verification" subtitle="Required before appointment booking.">
+                        @php
+                            $identityStatus = $identityVerificationStatus ?? 'unverified';
+                            $identityLabel = match ($identityStatus) {
+                                'pending' => 'Pending Verification',
+                                'verified' => 'Verified',
+                                'rejected' => 'Rejected',
+                                default => 'Unverified',
+                            };
+                            $identityClass = match ($identityStatus) {
+                                'pending' => 'bg-amber-50 text-amber-700 ring-amber-200',
+                                'verified' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+                                'rejected' => 'bg-red-50 text-red-700 ring-red-200',
+                                default => 'bg-slate-100 text-slate-700 ring-slate-200',
+                            };
+                        @endphp
+                        <span class="inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 {{ $identityClass }}">{{ $identityLabel }}</span>
+                        @if (($latestVerification?->status ?? null) === 'rejected' && $latestVerification?->rejection_reason)
+                            <p class="mt-3 text-sm text-red-700">{{ $latestVerification->rejection_reason }}</p>
+                        @else
+                            <p class="mt-3 text-sm text-slate-600">Upload a valid ID after passing eligibility so admins can verify your donor account.</p>
+                        @endif
+                        <a href="{{ route('donor.verification.index') }}" class="mt-4 block w-full rounded-xl bg-red-700 px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:bg-red-800">
+                            Manage Verification
+                        </a>
                     </x-dashboard.card>
                 </div>
             </div>
