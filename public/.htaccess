@@ -1,9 +1,19 @@
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews -Indexes
-    </IfModule>
+Options -MultiViews -Indexes
 
+<IfModule mod_rewrite.c>
     RewriteEngine On
+
+    # Keep standard public well-known endpoints available for SSL/security tooling.
+    RewriteRule ^\.well-known/ - [L]
+
+    # Block hidden files, leaked environment files, dumps, archives, and keys.
+    RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L,NC]
+    RewriteRule \.(?:env|ini|log|sql|sqlite|bak|backup|old|orig|save|swp|zip|tar|tgz|gz|bz2|7z|rar|pem|key|crt|ya?ml|lock)$ - [F,L,NC]
+
+    # If internal Laravel folders are ever copied into public/, do not serve them.
+    RewriteRule ^(?:app|bootstrap|config|database|node_modules|resources|routes|scripts|storage|tests)(?:/|$) - [F,L,NC]
+    RewriteRule ^(?:artisan|composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit\.xml|vite\.config\.js|README(?:\.md)?|DEPLOY_HOSTINGER\.md|HOSTINGER_SECURITY_FIX\.md)$ - [F,L,NC]
+    RewriteRule ^vendor/.+\.(?:php|json|lock|md|txt|xml|dist|ini|ya?ml)$ - [F,L,NC]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .

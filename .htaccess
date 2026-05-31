@@ -1,0 +1,60 @@
+# Emergency hardening for Laravel projects accidentally served from public_html.
+# Permanent fix: keep only the contents of Laravel's public/ directory in public_html.
+
+Options -MultiViews -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Keep standard public well-known endpoints available for SSL/security tooling.
+    RewriteRule ^\.well-known/ - [L]
+
+    # Block .env and all other dotfiles/directories.
+    RewriteRule (^|/)\.(?!well-known(?:/|$)) - [F,L,NC]
+
+    # Block Laravel and build internals if the project root is web-accessible.
+    RewriteRule ^(?:app|bootstrap|config|database|node_modules|resources|routes|scripts|storage|tests)(?:/|$) - [F,L,NC]
+
+    # This app intentionally publishes Leaflet assets under public/vendor/leaflet.
+    # Allow only those static files, then deny the rest of Composer's vendor tree.
+    RewriteRule ^vendor/leaflet/.+\.(?:css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|eot)$ - [L,NC]
+    RewriteRule ^vendor(?:/|$) - [F,L,NC]
+
+    # Block config files, source control files, dumps, backups, archives, and keys.
+    RewriteRule ^(?:artisan|composer\.(?:json|lock)|package(?:-lock)?\.json|phpunit\.xml|vite\.config\.js|README(?:\.md)?|DEPLOY_HOSTINGER\.md|HOSTINGER_SECURITY_FIX\.md)$ - [F,L,NC]
+    RewriteRule \.(?:env|ini|log|sql|sqlite|bak|backup|old|orig|save|swp|zip|tar|tgz|gz|bz2|7z|rar|pem|key|crt|ya?ml|lock)$ - [F,L,NC]
+</IfModule>
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "(^\.|\.env$|\.env\.|composer\.(json|lock)$|package(-lock)?\.json$|phpunit\.xml$|vite\.config\.js$|artisan$|.*\.(env|ini|log|sql|sqlite|bak|backup|old|orig|save|swp|zip|tar|tgz|gz|bz2|7z|rar|pem|key|crt|ya?ml|lock)$)">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule !mod_authz_core.c>
+    <FilesMatch "(^\.|\.env$|\.env\.|composer\.(json|lock)$|package(-lock)?\.json$|phpunit\.xml$|vite\.config\.js$|artisan$|.*\.(env|ini|log|sql|sqlite|bak|backup|old|orig|save|swp|zip|tar|tgz|gz|bz2|7z|rar|pem|key|crt|ya?ml|lock)$)">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    # Preserve headers Laravel may need.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Redirect trailing slashes if the request is not a real directory.
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    # Route the domain root and Laravel routes to the real front controller.
+    RewriteRule ^$ public/index.php [L]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ public/index.php [L]
+</IfModule>

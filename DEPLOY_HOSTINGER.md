@@ -1,5 +1,18 @@
 # Hostinger Deployment Notes
 
+## Security Warning
+
+The current live structure described below is an emergency-compatible layout, not
+the safest Laravel production layout. If `public_html` contains `.env`, `app/`,
+`config/`, `vendor/`, SQL dumps, ZIP backups, or `.git/`, those files can become
+browser-accessible when `.htaccess` is missing or bypassed.
+
+Use `HOSTINGER_SECURITY_FIX.md` for the permanent structure:
+
+- Laravel project root: `~/domains/edonate.online/edonate_app`
+- Served web root: `~/domains/edonate.online/public_html`
+- `public_html` contains only the contents of Laravel's `public/` directory
+
 ## Current Live Structure
 
 For the current eDonate Hostinger setup:
