@@ -18,5 +18,11 @@ jobs:
           port: 65002
           script: |
             cd /home/u156729731/domains/edonate.online/public_html
-            git fetch origin main
-            git reset --hard origin/main
+            if [ ! -d ".git" ]; then
+              echo "No git repo found. Initializing clone..."
+              git clone https://github.com/merrickfortis24/edonate_web_finals.git .
+            else
+              echo "Git repo exists. Pulling latest code..."
+              git fetch origin main
+              git reset --hard origin/main
+            fi
