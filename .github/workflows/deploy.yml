@@ -17,6 +17,6 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: 65002
           script: |
-            cd /home/u734866278/domains/edonate.online/public_html
+            cd /home/u156729731/domains/edonate.online/public_html
             git fetch origin main
             git reset --hard origin/main
