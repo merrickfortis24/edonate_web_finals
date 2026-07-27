@@ -18,11 +18,18 @@ jobs:
           port: 65002
           script: |
             cd /home/u156729731/domains/edonate.online/public_html
-            if [ ! -d ".git" ]; then
-              echo "No git repo found. Initializing clone..."
-              git clone https://github.com/merrickfortis24/edonate_web_finals.git .
-            else
+            REPO_URL="https://github.com/merrickfortis24/edonate_web_finals.git"
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
               echo "Git repo exists. Pulling latest code..."
-              git fetch origin main
-              git reset --hard origin/main
+            else
+              echo "No git repo found. Initializing repository..."
+              rm -rf .git
+              git init
             fi
+            if git remote get-url origin >/dev/null 2>&1; then
+              git remote set-url origin "$REPO_URL"
+            else
+              git remote add origin "$REPO_URL"
+            fi
+            git fetch origin main
+            git reset --hard origin/main
