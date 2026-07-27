@@ -18,18 +18,18 @@ jobs:
           port: 65002
           script: |
             cd /home/u156729731/domains/edonate.online/public_html
-            REPO_URL="https://github.com/merrickfortis24/edonate_web_finals.git"
-            if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-              echo "Git repo exists. Pulling latest code..."
+            REPO_URL="git@github.com:merrickfortis24/edonate_web_finals.git"
+            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git fsck --no-progress >/dev/null 2>&1; then
+              echo "Valid git repo detected."
             else
-              echo "No git repo found. Initializing repository..."
+              echo "Git repo missing, corrupt, or incomplete. Reinitializing repository..."
               rm -rf .git
               git init
             fi
             if git remote get-url origin >/dev/null 2>&1; then
-              git remote set-url origin "$REPO_URL"
-            else
-              git remote add origin "$REPO_URL"
+              git remote remove origin
             fi
-            git fetch origin main
+            git remote add origin "$REPO_URL"
+            git fetch --prune origin main
             git reset --hard origin/main
