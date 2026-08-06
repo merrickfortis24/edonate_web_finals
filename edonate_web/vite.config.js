@@ -6,6 +6,8 @@ export default defineConfig({
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/css/admin.css', 'resources/js/app.js'],
+            publicDirectory: '../public_html',
+            buildDirectory: 'build',
             refresh: true,
         }),
         tailwindcss(),
@@ -14,5 +16,8 @@ export default defineConfig({
         watch: {
             ignored: ['**/storage/framework/views/**'],
         },
+    },
+    build: {
+        emptyOutDir: true,
     },
 });

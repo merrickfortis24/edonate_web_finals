@@ -14,8 +14,8 @@ chdir($projectRoot);
 $options = parseOptions($argv);
 $dryRun = isset($options['dry-run']);
 $skipCache = isset($options['skip-cache-clear']);
-$laravelPublic = $projectRoot . DIRECTORY_SEPARATOR . 'public';
 $webRoot = resolveWebRoot($projectRoot, $options);
+$laravelPublic = resolveLaravelPublic($projectRoot, $webRoot);
 
 if (! is_dir($laravelPublic)) {
     fail("Laravel public directory not found: {$laravelPublic}");
@@ -130,6 +130,20 @@ function resolveWebRoot(string $projectRoot, array $options): ?string
     }
 
     return null;
+}
+
+function resolveLaravelPublic(string $projectRoot, ?string $webRoot): string
+{
+    $defaultPublic = $projectRoot . DIRECTORY_SEPARATOR . 'public';
+    if (is_dir($defaultPublic)) {
+        return $defaultPublic;
+    }
+
+    if ($webRoot !== null) {
+        return $webRoot;
+    }
+
+    return $defaultPublic;
 }
 
 function syncDirectory(string $source, string $destination, bool $dryRun): array
