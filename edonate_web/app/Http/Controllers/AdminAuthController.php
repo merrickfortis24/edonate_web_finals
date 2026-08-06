@@ -9,6 +9,7 @@ use App\Models\DonorAuthentication;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
+use App\Services\DonationProcessingService;
 use App\Services\GeocodingService;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -27,6 +28,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 use PragmaRX\Google2FA\Google2FA;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -866,7 +868,7 @@ class AdminAuthController extends BaseController
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
             'center' => ['nullable', 'string', 'max:150'],
-            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'no_show'])],
+            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'])],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
@@ -940,6 +942,7 @@ class AdminAuthController extends BaseController
                 'rescheduled' => (int) ($statusCounts['rescheduled'] ?? 0),
                 'checked_in' => (int) ($statusCounts['checked_in'] ?? 0),
                 'completed' => (int) ($statusCounts['completed'] ?? 0),
+                'deferred_on_site' => (int) ($statusCounts['deferred_on_site'] ?? 0),
                 'no_show' => (int) ($statusCounts['no_show'] ?? 0),
             ],
             'filters' => [
@@ -1109,74 +1112,55 @@ class AdminAuthController extends BaseController
         return response()->json(['message' => 'Appointment rescheduled.']);
     }
 
+    public function checkInAppointment(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
+    {
+        $result = $service->checkIn($appointment, $this->currentAdminId($request), $request);
+
+        return response()->json([
+            'message' => $result['already'] ?? false
+                ? 'This appointment has already been checked in.'
+                : 'Appointment checked in.',
+        ]);
+    }
+
     /**
-     * Complete a confirmed appointment and create a donation record.
+     * Complete a checked-in appointment and create exactly one donation record.
      */
-    public function completeAppointment(Request $request, int $appointment): JsonResponse
+    public function completeAppointment(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
     {
         $validated = $request->validate([
-            'blood_units' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'donation_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'blood_units' => ['required', 'integer', 'min:1', 'max:10'],
+            'verified_blood_type_id' => ['nullable', 'integer', 'exists:blood_types,blood_type_id'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (!$row) {
-            return response()->json(['message' => 'Appointment not found.'], 404);
-        }
+        $result = $service->completeDonation($appointment, $this->currentAdminId($request), $validated, $request);
 
-        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
-        if ($normalized !== 'confirmed') {
-            return response()->json(['message' => 'Only confirmed appointments can be marked as completed.'], 422);
-        }
+        return response()->json([
+            'message' => $result['already'] ?? false
+                ? 'This appointment already has a completed donation record.'
+                : 'Donation completed and record created.',
+            'donation_id' => $result['record']->donation_id ?? null,
+        ]);
+    }
 
-        $actorAdminId = is_numeric($request->session()->get('admin_id'))
-            ? (int) $request->session()->get('admin_id')
-            : null;
-
-        $bloodUnits = isset($validated['blood_units']) && is_numeric($validated['blood_units'])
-            ? (int) $validated['blood_units']
-            : null;
-
-        DB::transaction(function () use ($row, $appointment, $actorAdminId, $bloodUnits) {
-            DB::table('appointments')->where('appointment_id', $appointment)->update([
-                'status'       => 'completed',
-                'completed_at' => now(),
-                'admin_id'     => $actorAdminId,
-            ]);
-
-            DB::table('donation_records')->insert([
-                'donor_id'       => $row->donor_id,
-                'appointment_id' => $row->appointment_id,
-                'donation_date'  => $row->appointment_date,
-                'blood_units'    => $bloodUnits,
-                'remarks'        => null,
-            ]);
-        });
-
-        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
-
-        $this->createDonorNotification(
-            $donorId,
-            'appointment_completed',
-            "Your appointment {$appointmentCode} has been marked as completed. Thank you for your donation!"
-        );
-        app(AdminNotificationService::class)->createAdminEvent(
-            'donation_completed',
-            'Donation Completed',
-            "Appointment {$appointmentCode} has been completed and a donation record was created.",
-            'appointment',
-            $appointment
-        );
-
-        $this->logAppointmentAudit($request, 'appointment_completed', "Completed appointment {$appointmentCode}.", $appointment, [
-            'appointment_id' => $appointment,
-            'donor_id'       => $donorId,
-            'blood_units'    => $bloodUnits,
-            'previous_status'=> $row->status ?? null,
-            'new_status'     => 'completed',
+    public function deferAppointmentOnSite(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'deferred_reason' => ['required', 'string', 'min:8', 'max:1000'],
+            'next_eligible_date' => ['nullable', 'date', 'after_or_equal:today'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        return response()->json(['message' => 'Appointment completed and donation record created.']);
+        $result = $service->deferOnSite($appointment, $this->currentAdminId($request), $validated, $request);
+
+        return response()->json([
+            'message' => $result['already'] ?? false
+                ? 'This appointment already has a deferred donation record.'
+                : 'Donation deferred on site.',
+            'donation_id' => $result['record']->donation_id ?? null,
+        ]);
     }
 
     public function cancelAppointment(Request $request, int $appointment): JsonResponse
@@ -1191,7 +1175,7 @@ class AdminAuthController extends BaseController
         }
 
         $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
-        if (in_array($normalized, ['cancelled', 'completed', 'no_show'], true)) {
+        if (in_array($normalized, ['cancelled', 'completed', 'checked_in', 'deferred_on_site', 'no_show'], true)) {
             return response()->json(['message' => 'This appointment can no longer be cancelled.'], 422);
         }
 
@@ -1227,46 +1211,15 @@ class AdminAuthController extends BaseController
         return response()->json(['message' => 'Appointment cancelled.']);
     }
 
-    public function markNoShowAppointment(Request $request, int $appointment): JsonResponse
+    public function markNoShowAppointment(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
     {
-        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (!$row) {
-            return response()->json(['message' => 'Appointment not found.'], 404);
-        }
+        $result = $service->markNoShow($appointment, $this->currentAdminId($request), $request);
 
-        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
-        if (! in_array($normalized, ['confirmed', 'rescheduled', 'checked_in'], true)) {
-            return response()->json(['message' => 'Only active appointments can be marked as no-show.'], 422);
-        }
-
-        $actorAdminId = is_numeric($request->session()->get('admin_id'))
-            ? (int) $request->session()->get('admin_id')
-            : null;
-
-        DB::table('appointments')->where('appointment_id', $appointment)->update([
-            'status' => 'no_show',
-            'admin_id' => $actorAdminId,
+        return response()->json([
+            'message' => $result['already'] ?? false
+                ? 'This appointment was already marked as no-show.'
+                : 'Appointment marked as no-show.',
         ]);
-
-        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
-
-        $this->createDonorNotification($donorId, 'appointment_no_show', "Your appointment {$appointmentCode} was marked as no-show.");
-        app(AdminNotificationService::class)->createAdminEvent(
-            'appointment_no_show',
-            'Appointment No-Show',
-            "Appointment {$appointmentCode} was marked as no-show.",
-            'appointment',
-            $appointment
-        );
-        $this->logAppointmentAudit($request, 'appointment_no_show', "Marked appointment {$appointmentCode} as no-show.", $appointment, [
-            'appointment_id' => $appointment,
-            'donor_id' => $donorId,
-            'previous_status' => $row->status ?? null,
-            'new_status' => 'no_show',
-        ]);
-
-        return response()->json(['message' => 'Appointment marked as no-show.']);
     }
 
     /**
@@ -1278,16 +1231,22 @@ class AdminAuthController extends BaseController
             'donationRecordsPayload' => [
                 'api' => [
                     'listUrl' => route('admin.donation-records.data'),
+                    'checkInUrlTemplate' => route('admin.appointments.check-in', ['appointment' => '__ID__']),
+                    'completeUrlTemplate' => route('admin.appointments.complete', ['appointment' => '__ID__']),
+                    'deferUrlTemplate' => route('admin.appointments.defer', ['appointment' => '__ID__']),
+                    'noShowUrlTemplate' => route('admin.appointments.no-show', ['appointment' => '__ID__']),
                 ],
                 'filters' => [
                     'bloodTypes' => $this->userManagementBloodTypeOptions(),
+                    'events' => $this->donationProcessingEventOptions(),
+                    'centers' => $this->donationProcessingCenterOptions(),
                 ],
             ],
         ]);
     }
 
     /**
-     * Return paginated donation record list for donation records page.
+     * Return paginated donation processing rows for the Donation Records / Check-in page.
      */
     public function listDonationRecordsData(Request $request): JsonResponse
     {
@@ -1296,16 +1255,23 @@ class AdminAuthController extends BaseController
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
             'blood_type' => ['nullable', 'string', 'max:10'],
-            'status' => ['nullable', 'string', Rule::in(['', 'completed', 'pending', 'deferred'])],
+            'event_id' => ['nullable', 'integer', 'min:1'],
+            'center' => ['nullable', 'string', 'max:150'],
+            'date' => ['nullable', 'date'],
+            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'checked_in', 'completed', 'deferred_on_site', 'no_show', 'cancelled'])],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
-        $perPage = (int) ($validated['per_page'] ?? 9);
+        $perPage = (int) ($validated['per_page'] ?? 10);
         $searchTerm = trim((string) ($validated['search'] ?? ''));
         $bloodType = trim((string) ($validated['blood_type'] ?? ''));
+        $eventId = isset($validated['event_id']) ? (int) $validated['event_id'] : null;
+        $center = trim((string) ($validated['center'] ?? ''));
+        $date = trim((string) ($validated['date'] ?? ''));
         $status = Str::lower(trim((string) ($validated['status'] ?? '')));
 
-        $query = $this->donationRecordsBaseQuery();
+        $query = $this->donationProcessingBaseQuery();
+        $statusExpression = $this->appointmentStatusExpression('ap');
 
         if ($searchTerm !== '') {
             $likeTerm = '%' . $searchTerm . '%';
@@ -1318,12 +1284,16 @@ class AdminAuthController extends BaseController
             $query->where(function ($builder) use ($likeTerm, $numericSearch): void {
                 $builder->whereRaw("CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, '')) like ?", [$likeTerm])
                     ->orWhere('da.email', 'like', $likeTerm)
-                    ->orWhere('dr.remarks', 'like', $likeTerm);
+                    ->orWhere('de.title', 'like', $likeTerm)
+                    ->orWhere('ap.donation_center', 'like', $likeTerm)
+                    ->orWhere('dr.remarks', 'like', $likeTerm)
+                    ->orWhere('dr.deferred_reason', 'like', $likeTerm);
 
                 if ($numericSearch !== null && $numericSearch > 0) {
-                    $builder->orWhere('dr.donation_id', $numericSearch)
-                        ->orWhere('dr.donor_id', $numericSearch)
-                        ->orWhere('dr.appointment_id', $numericSearch);
+                    $builder->orWhere('ap.appointment_id', $numericSearch)
+                        ->orWhere('ap.donor_id', $numericSearch)
+                        ->orWhere('ap.event_id', $numericSearch)
+                        ->orWhere('dr.donation_id', $numericSearch);
                 }
             });
         }
@@ -1332,37 +1302,56 @@ class AdminAuthController extends BaseController
             $query->whereRaw("LOWER(COALESCE(bt.blood_type, '')) = ?", [Str::lower($bloodType)]);
         }
 
+        if ($eventId !== null && $eventId > 0) {
+            $query->where('ap.event_id', $eventId);
+        }
+
+        if ($center !== '') {
+            $query->whereRaw("LOWER(COALESCE(NULLIF(ap.donation_center, ''), NULLIF(de.location_name, ''), '')) = ?", [Str::lower($center)]);
+        }
+
+        if ($date !== '') {
+            $query->whereDate('ap.appointment_date', Carbon::parse($date)->toDateString());
+        }
+
         if ($status !== '') {
-            $statusExpression = $this->donationRecordStatusExpression();
             $query->whereRaw('(' . $statusExpression . ') = ?', [$status]);
         }
 
         $paginator = $query
-            ->orderByDesc('dr.donation_date')
-            ->orderByDesc('dr.donation_id')
+            ->orderByDesc('ap.appointment_date')
+            ->orderByDesc('ap.appointment_time')
+            ->orderByDesc('ap.appointment_id')
             ->paginate($perPage, ['*'], 'page', $page);
 
         $statusCounts = DB::query()
-            ->fromSub($this->donationRecordsBaseQuery(), 'donation_directory')
-            ->select('derived_status', DB::raw('COUNT(*) as total'))
-            ->groupBy('derived_status')
-            ->pluck('total', 'derived_status');
+            ->fromSub($this->donationProcessingBaseQuery(), 'donation_processing')
+            ->select('normalized_status', DB::raw('COUNT(*) as total'))
+            ->groupBy('normalized_status')
+            ->pluck('total', 'normalized_status');
 
-        $thisMonthCount = (int) DB::table('donation_records')
-            ->whereDate('donation_date', '>=', Carbon::now()->startOfMonth()->toDateString())
-            ->whereDate('donation_date', '<=', Carbon::now()->endOfMonth()->toDateString())
+        $today = Carbon::today()->toDateString();
+        $todayExpected = (int) DB::query()
+            ->fromSub($this->donationProcessingBaseQuery(), 'donation_processing')
+            ->where('appointment_date', $today)
+            ->where('normalized_status', 'confirmed')
             ->count();
 
-        $activeDonorsCount = (int) DB::table('donation_records')->distinct('donor_id')->count('donor_id');
+        $checkedInToday = (int) DB::query()
+            ->fromSub($this->donationProcessingBaseQuery(), 'donation_processing')
+            ->whereDate('checked_in_at', $today)
+            ->where('normalized_status', 'checked_in')
+            ->count();
 
-        $avgUnits = (float) DB::table('donation_records')
-            ->whereNotNull('blood_units')
-            ->avg('blood_units');
-        $avgVolumeMl = $avgUnits > 0 ? (int) round($avgUnits * 450) : 0;
+        $completedThisMonth = (int) DB::table('donation_records')
+            ->whereDate('donation_date', '>=', Carbon::now()->startOfMonth()->toDateString())
+            ->whereDate('donation_date', '<=', Carbon::now()->endOfMonth()->toDateString())
+            ->whereRaw("LOWER(COALESCE(donation_status, 'completed')) = ?", ['completed'])
+            ->count();
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn(object $entry): array => $this->transformDonationRecordRow($entry))
+                ->map(fn(object $entry): array => $this->transformDonationProcessingRow($entry))
                 ->values()
                 ->all(),
             'meta' => [
@@ -1374,23 +1363,19 @@ class AdminAuthController extends BaseController
                 'to' => $paginator->lastItem(),
             ],
             'stats' => [
-                'total_donations' => (int) DB::table('donation_records')->count(),
-                'this_month' => $thisMonthCount,
-                'active_donors' => $activeDonorsCount,
-                'average_volume_ml' => $avgVolumeMl,
-                'status_counts' => [
-                    'completed' => (int) ($statusCounts['completed'] ?? 0),
-                    'pending' => (int) ($statusCounts['pending'] ?? 0),
-                    'deferred' => (int) ($statusCounts['deferred'] ?? 0),
-                ],
+                'expected_today' => $todayExpected,
+                'checked_in_today' => $checkedInToday,
+                'completed_month' => $completedThisMonth,
+                'confirmed' => (int) ($statusCounts['confirmed'] ?? 0),
+                'checked_in' => (int) ($statusCounts['checked_in'] ?? 0),
+                'completed' => (int) ($statusCounts['completed'] ?? 0),
+                'deferred_on_site' => (int) ($statusCounts['deferred_on_site'] ?? 0),
+                'no_show' => (int) ($statusCounts['no_show'] ?? 0),
             ],
             'filters' => [
                 'blood_types' => $this->userManagementBloodTypeOptions(),
-                'statuses' => [
-                    ['value' => 'completed', 'label' => 'Completed'],
-                    ['value' => 'pending', 'label' => 'Pending'],
-                    ['value' => 'deferred', 'label' => 'Deferred'],
-                ],
+                'events' => $this->donationProcessingEventOptions(),
+                'centers' => $this->donationProcessingCenterOptions(),
             ],
         ]);
     }
@@ -3208,6 +3193,8 @@ WHEN LOWER(COALESCE({$appointmentsAlias}.status, ''))
 IN ('completed', 'complete', 'done') THEN 'completed'
 WHEN LOWER(COALESCE({$appointmentsAlias}.status, ''))
 IN ('checked_in', 'checked in') THEN 'checked_in'
+WHEN LOWER(COALESCE({$appointmentsAlias}.status, ''))
+IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on_site'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('pending', 'pending approval', 'for approval') THEN 'pending'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('cancelled', 'canceled', 'rejected', 'declined') THEN 'cancelled'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('no_show', 'no show', 'noshow') THEN 'no_show'
@@ -3231,6 +3218,9 @@ if (in_array($status, ['completed', 'complete', 'done'], true)) {
 }
         if (in_array($status, ['checked_in', 'checked in'], true)) {
             return 'checked_in';
+        }
+        if (in_array($status, ['deferred_on_site', 'deferred on site', 'onsite_deferred'], true)) {
+            return 'deferred_on_site';
         }
         if (in_array($status, ['pending', 'pending approval', 'for approval'], true)) {
             return 'pending';
@@ -3291,7 +3281,7 @@ if (in_array($status, ['completed', 'complete', 'done'], true)) {
         }
 
         $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
-if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'no_show'], true)) {
+if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'], true)) {
     $status = 'pending';
 }
 
@@ -3310,6 +3300,158 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 : 'N/A',
             'status' => $status,
         ];
+    }
+
+    private function donationProcessingBaseQuery()
+    {
+        $statusExpression = $this->appointmentStatusExpression('ap');
+
+        return DB::table('appointments as ap')
+            ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
+            ->leftJoin('donation_events as de', 'de.event_id', '=', 'ap.event_id')
+            ->leftJoin('donation_records as dr', 'dr.appointment_id', '=', 'ap.appointment_id')
+            ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
+                $join->on('da_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('donor_authentication as da', 'da.auth_id', '=', 'da_latest.latest_auth_id')
+            ->leftJoinSub($this->userManagementLatestEligibilityQuery(), 'es_latest', function ($join): void {
+                $join->on('es_latest.donor_id', '=', 'd.donor_id');
+            })
+            ->leftJoin('eligibility_status as es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
+            ->leftJoin('admins as recorder', 'recorder.admin_id', '=', 'dr.recorded_by_admin_id')
+            ->select([
+                'ap.appointment_id',
+                'ap.donor_id',
+                'ap.event_id',
+                'ap.appointment_date',
+                'ap.appointment_time',
+                'ap.status',
+                'ap.checked_in_at',
+                'ap.completed_at',
+                'ap.cancellation_reason',
+                'ap.created_at as booked_at',
+                'ap.donation_center',
+                'd.first_name',
+                'd.last_name',
+                'd.verification_status',
+                'da.email',
+                'bt.blood_type',
+                'de.title as event_title',
+                'de.location_name as event_location_name',
+                'es.status as eligibility_status',
+                'es.next_eligible_date',
+                'dr.donation_id',
+                'dr.donation_date',
+                'dr.donation_status',
+                'dr.blood_units',
+                'dr.remarks',
+                'dr.deferred_reason',
+                'dr.recorded_by_admin_id',
+                'recorder.full_name as recorded_by_name',
+                'recorder.username as recorded_by_username',
+            ])
+            ->selectRaw('(' . $statusExpression . ') as normalized_status')
+            ->whereRaw('(' . $statusExpression . ') IN (?, ?, ?, ?, ?, ?)', [
+                'confirmed',
+                'checked_in',
+                'completed',
+                'deferred_on_site',
+                'no_show',
+                'cancelled',
+            ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function transformDonationProcessingRow(object $entry): array
+    {
+        $donorName = trim((string) ($entry->first_name ?? '') . ' ' . (string) ($entry->last_name ?? ''));
+        $donorName = $donorName !== '' ? $donorName : 'Unknown Donor';
+        $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
+        $center = trim((string) ($entry->donation_center ?? ''));
+        $center = $center !== '' ? $center : trim((string) ($entry->event_location_name ?? ''));
+        $recordedBy = trim((string) ($entry->recorded_by_name ?? ''));
+        $recordedBy = $recordedBy !== '' ? $recordedBy : trim((string) ($entry->recorded_by_username ?? ''));
+
+        return [
+            'appointment_id' => (int) ($entry->appointment_id ?? 0),
+            'appointment_code' => 'AP' . str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donation_id' => isset($entry->donation_id) ? (int) $entry->donation_id : null,
+            'donation_code' => isset($entry->donation_id) ? 'DR' . str_pad((string) ((int) $entry->donation_id), 3, '0', STR_PAD_LEFT) : null,
+            'donor_id' => (int) ($entry->donor_id ?? 0),
+            'donor_name' => $donorName,
+            'donor_email' => trim((string) ($entry->email ?? '')),
+            'blood_type' => trim((string) ($entry->blood_type ?? '')),
+            'event_id' => isset($entry->event_id) ? (int) $entry->event_id : null,
+            'event_title' => trim((string) ($entry->event_title ?? 'Legacy appointment')),
+            'appointment_date' => !empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
+            'appointment_time' => !empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
+            'center_label' => $center !== '' ? $center : 'N/A',
+            'status' => $status,
+            'checked_in_at' => !empty($entry->checked_in_at) ? (string) $entry->checked_in_at : null,
+            'completed_at' => !empty($entry->completed_at) ? (string) $entry->completed_at : null,
+            'booked_at' => !empty($entry->booked_at) ? (string) $entry->booked_at : null,
+            'verification_status' => Str::lower(trim((string) ($entry->verification_status ?? 'unverified'))),
+            'eligibility_status' => Str::lower(trim((string) ($entry->eligibility_status ?? 'unknown'))),
+            'next_eligible_date' => !empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
+            'donation_status' => $entry->donation_status ? Str::lower((string) $entry->donation_status) : null,
+            'blood_units' => is_numeric($entry->blood_units ?? null) ? (int) $entry->blood_units : null,
+            'remarks' => $entry->remarks,
+            'deferred_reason' => $entry->deferred_reason,
+            'recorded_by' => $recordedBy !== '' ? $recordedBy : null,
+            'actions' => [
+                'can_check_in' => $status === 'confirmed',
+                'can_complete' => $status === 'checked_in',
+                'can_defer' => $status === 'checked_in',
+                'can_no_show' => $status === 'confirmed',
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function donationProcessingEventOptions(): array
+    {
+        if (!Schema::hasTable('donation_events')) {
+            return [];
+        }
+
+        return DB::table('donation_events')
+            ->orderByDesc('event_date')
+            ->limit(100)
+            ->get(['event_id', 'title', 'event_date'])
+            ->map(fn(object $event): array => [
+                'event_id' => (int) $event->event_id,
+                'title' => trim((string) $event->title),
+                'event_date' => (string) $event->event_date,
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function donationProcessingCenterOptions(): array
+    {
+        return DB::table('appointments')
+            ->select('donation_center')
+            ->whereNotNull('donation_center')
+            ->distinct()
+            ->orderBy('donation_center')
+            ->pluck('donation_center')
+            ->merge(
+                Schema::hasTable('donation_events')
+                    ? DB::table('donation_events')->whereNotNull('location_name')->distinct()->pluck('location_name')
+                    : collect()
+            )
+            ->map(fn($value): string => trim((string) $value))
+            ->filter(fn(string $value): bool => $value !== '')
+            ->unique(fn(string $value): string => Str::lower($value))
+            ->values()
+            ->all();
     }
 
     /**
@@ -3355,6 +3497,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
     private function donationRecordStatusExpression(string $donationsAlias = 'dr'): string
     {
         return "CASE
+            WHEN LOWER(COALESCE({$donationsAlias}.donation_status, '')) IN ('completed', 'deferred', 'failed') THEN LOWER({$donationsAlias}.donation_status)
             WHEN {$donationsAlias}.donation_date IS NOT NULL THEN 'completed'
             WHEN LOWER(COALESCE({$donationsAlias}.remarks, '')) LIKE '%defer%' THEN 'deferred'
             ELSE 'pending'
@@ -4682,6 +4825,19 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         }
 
         return $displayName;
+    }
+
+    private function currentAdminId(Request $request): int
+    {
+        $adminId = $request->session()->get('admin_id');
+
+        if (is_numeric($adminId) && (int) $adminId > 0) {
+            return (int) $adminId;
+        }
+
+        throw ValidationException::withMessages([
+            'admin' => 'An authenticated admin session is required.',
+        ]);
     }
 
     /**

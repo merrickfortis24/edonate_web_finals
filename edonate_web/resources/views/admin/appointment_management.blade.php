@@ -122,6 +122,7 @@
                     <option value="rescheduled">Rescheduled</option>
                     <option value="checked_in">Checked In</option>
                     <option value="completed">Completed</option>
+                    <option value="deferred_on_site">Deferred On Site</option>
                     <option value="no_show">No Show</option>
                 </select>
                 <span class="appointment-filter__chevron" aria-hidden="true">
@@ -411,7 +412,7 @@
 
         function normalizeStatus(value) {
             var status = String(value || '').toLowerCase();
-            if (['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'no_show'].indexOf(status) !== -1) {
+            if (['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'].indexOf(status) !== -1) {
                 return status;
             }
             return 'pending';
@@ -433,6 +434,9 @@
             }
             if (status === 'checked_in') {
                 return 'Checked In';
+            }
+            if (status === 'deferred_on_site') {
+                return 'Deferred On Site';
             }
             if (status === 'no_show') {
                 return 'No Show';
@@ -461,9 +465,9 @@
 
             if (normalizedStatus === 'confirmed') {
                 return ''
-                    + '<button class="appointment-btn appointment-btn--complete" data-action="complete" type="button">'
+                    + '<button class="appointment-btn appointment-btn--approve" data-action="check-in" type="button">'
                     + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
-                    + 'Complete'
+                    + 'Check In'
                     + '</button>'
                     + '<button class="appointment-btn appointment-btn--reschedule" data-action="reschedule" type="button">'
                     + '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10a6 6 0 1 1 1.76 4.24" stroke="#0063aa" stroke-width="1.6" stroke-linecap="round"></path><polyline points="4 14 4 10 8 10" stroke="#0063aa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>'
@@ -471,7 +475,15 @@
                     + '</button>';
             }
 
-            if (normalizedStatus === 'completed') {
+            if (normalizedStatus === 'checked_in') {
+                return ''
+                    + '<button class="appointment-btn appointment-btn--complete" data-action="complete" type="button">'
+                    + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
+                    + 'Complete'
+                    + '</button>';
+            }
+
+            if (normalizedStatus === 'completed' || normalizedStatus === 'deferred_on_site') {
                 return '<span class="text-muted" style="font-size:13px;">—</span>';
             }
 
@@ -863,6 +875,26 @@
                             Swal.fire({
                                 title: 'Approved!',
                                 text: 'Appointment has been confirmed.',
+                                icon: 'success',
+                                timer: 2000,
+                                showConfirmButton: false
+                            });
+                        })
+                        .catch(function (error) {
+                            Swal.fire('Error', error && error.message ? error.message : 'Action failed.', 'error');
+                        })
+                        .then(function () { actionButton.disabled = false; });
+                    return;
+                }
+
+                if (action === 'check-in') {
+                    actionButton.disabled = true;
+                    performAppointmentAction(appointmentId, action, null)
+                        .then(function () {
+                            loadAppointments();
+                            Swal.fire({
+                                title: 'Checked In',
+                                text: 'The donor is ready for on-site donation processing.',
                                 icon: 'success',
                                 timer: 2000,
                                 showConfirmButton: false

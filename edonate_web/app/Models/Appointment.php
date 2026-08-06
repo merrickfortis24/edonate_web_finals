@@ -47,4 +47,9 @@ class Appointment extends Model
     {
         return $this->belongsTo(DonationEvent::class, 'event_id', 'event_id');
     }
+
+    public function donationRecord()
+    {
+        return $this->hasOne(DonationRecord::class, 'appointment_id', 'appointment_id');
+    }
 }

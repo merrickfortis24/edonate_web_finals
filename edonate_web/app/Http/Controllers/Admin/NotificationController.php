@@ -291,7 +291,7 @@ class NotificationController extends Controller
                 $builder->where('notification_type', 'appointment')
                     ->orWhere('notification_type', 'like', 'appointment_%');
             }) : $query,
-            'donation' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['donation', 'donation_completed', 'appointment_completed']) : $query,
+            'donation' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['donation', 'donation_completed', 'donation_deferred', 'appointment_completed', 'appointment_deferred_on_site']) : $query,
             'blood_stock_alert' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['blood_stock_alert', 'low_blood_stock_alert']) : $query,
             'report' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['report', 'monthly_report_generated', 'report_generated']) : $query,
             'system' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['system', 'admin', 'announcement']) : $query,

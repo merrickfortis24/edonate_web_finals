@@ -86,6 +86,8 @@ class AdminNotificationService
             'appointment_rescheduled' => 'Appointment Rescheduled',
             'appointment_approved' => 'Appointment Approved',
             'appointment_no_show' => 'Appointment No-Show',
+            'appointment_checked_in' => 'Appointment Checked In',
+            'appointment_deferred_on_site', 'donation_deferred' => 'Donation Deferred',
             'appointment_completed', 'donation_completed' => 'Donation Completed',
             'donation_event_open', 'donation_event_closed', 'donation_event_completed', 'donation_event_cancelled' => 'Donation Event Updated',
             'blood_stock_alert' => 'Low Blood Stock Alert',

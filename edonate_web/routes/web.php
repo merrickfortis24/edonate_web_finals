@@ -77,9 +77,15 @@ Route::middleware('admin.auth')->group(function () {
         Route::patch('/admin/appointments/{appointment}/reschedule', [AdminAuthController::class, 'rescheduleAppointment'])
             ->whereNumber('appointment')
             ->name('admin.appointments.reschedule');
+        Route::patch('/admin/appointments/{appointment}/check-in', [AdminAuthController::class, 'checkInAppointment'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.check-in');
         Route::patch('/admin/appointments/{appointment}/complete', [AdminAuthController::class, 'completeAppointment'])
             ->whereNumber('appointment')
             ->name('admin.appointments.complete');
+        Route::patch('/admin/appointments/{appointment}/defer', [AdminAuthController::class, 'deferAppointmentOnSite'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.defer');
         Route::patch('/admin/appointments/{appointment}/cancel', [AdminAuthController::class, 'cancelAppointment'])
             ->whereNumber('appointment')
             ->name('admin.appointments.cancel');

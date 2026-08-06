@@ -1,6 +1,6 @@
 @extends('layouts.admin')
 
-@section('title', 'eDonate - Donation Records')
+@section('title', 'eDonate - Donation Records / Check-in')
 @section('admin_page_class', 'admin-donor-records-page')
 @section('layout_wrapper_class', 'layout')
 @section('sidebar_link_mode', 'link')
@@ -8,8 +8,8 @@
 @section('sidebar_nav_aria_label', 'Main navigation')
 @section('render_default_hamburger', 'false')
 
-@section('header_title', 'Donation Records')
-@section('header_subtitle', 'View donation history and eligibility logs')
+@section('header_title', 'Donation Records / Check-in')
+@section('header_subtitle', 'Manage donor arrival, completion, on-site deferral, and no-show records')
 
 @section('header_slot')
   <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
@@ -19,25 +19,21 @@
   </button>
 @endsection
 
-@section('header_actions')
-  <button class="btn-export btn" type="button">
-    <svg class="btn-export__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <path d="M12 3v10M12 3l-3.5 3.5M12 3l3.5 3.5" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M5 17v2a1 1 0 001 1h12a1 1 0 001-1v-2" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-    </svg>
-    Export Records
-  </button>
-@endsection
-
 @section('admin_page_data')
 {!! json_encode([
   'page' => 'donation-records',
   'donationRecords' => $donationRecordsPayload ?? [
     'api' => [
       'listUrl' => '',
+      'checkInUrlTemplate' => '',
+      'completeUrlTemplate' => '',
+      'deferUrlTemplate' => '',
+      'noShowUrlTemplate' => '',
     ],
     'filters' => [
       'bloodTypes' => [],
+      'events' => [],
+      'centers' => [],
     ],
   ],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
@@ -46,532 +42,397 @@
 @section('main_content')
 @php
   $bloodTypeOptions = data_get($donationRecordsPayload ?? [], 'filters.bloodTypes', []);
+  $eventOptions = data_get($donationRecordsPayload ?? [], 'filters.events', []);
+  $centerOptions = data_get($donationRecordsPayload ?? [], 'filters.centers', []);
 @endphp
 
-  <!-- ======================== -->
-  <!-- MAIN                     -->
-  <!-- ======================== -->
-  <div class="main container-fluid px-0">
-
-    <!-- PAGE BODY -->
-    <main class="page-body container-fluid py-3">
-
-      <!-- STAT CARDS -->
-      <section class="stats-grid row g-3" aria-label="Statistics overview">
-
-        <!-- Total Donations -->
-        <div class="col-6 col-xl-3">
+<div class="main container-fluid px-0">
+  <main class="page-body container-fluid py-3">
+    <section class="stats-grid row g-3" aria-label="Donation processing overview">
+      <div class="col-6 col-xl-3">
         <div class="stat-card stat-card--red h-100">
-          <div class="stat-card__header">
-            <span class="stat-card__label">Total Donations</span>
-            <!-- Blood drop icon red -->
-            <svg class="stat-card__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M12 3 C12 3 5 11 5 16 C5 19.87 8.13 23 12 23 C15.87 23 19 19.87 19 16 C19 11 12 3 12 3Z" fill="#b60c0c"/>
-            </svg>
-          </div>
-          <div class="stat-card__value" id="donationStatTotalDonations">0</div>
-          <div class="stat-card__note">All time</div>
-        </div>
-        </div>
-
-        <!-- This Month -->
-        <div class="col-6 col-xl-3">
-        <div class="stat-card stat-card--green h-100">
-          <div class="stat-card__header">
-            <span class="stat-card__label">This Month</span>
-            <!-- Calendar icon -->
-            <svg class="stat-card__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <rect x="3" y="4" width="18" height="17" rx="2" stroke="#129800" stroke-width="1.5"/>
-              <path d="M3 9h18" stroke="#129800" stroke-width="1.5"/>
-              <path d="M8 2v4M16 2v4" stroke="#129800" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="stat-card__value" id="donationStatThisMonth">0</div>
-          <div class="stat-card__note">Current month</div>
-        </div>
-        </div>
-
-        <!-- Active Donors -->
-        <div class="col-6 col-xl-3">
-        <div class="stat-card stat-card--blue h-100">
-          <div class="stat-card__header">
-            <span class="stat-card__label">Active Donors</span>
-            <!-- Person icon -->
-            <svg class="stat-card__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <circle cx="12" cy="8" r="4" stroke="#0063aa" stroke-width="1.5"/>
-              <path d="M4 20c0-4 3.58-7 8-7s8 3 8 7" stroke="#0063aa" stroke-width="1.5" stroke-linecap="round"/>
-            </svg>
-          </div>
-          <div class="stat-card__value" id="donationStatActiveDonors">0</div>
-          <div class="stat-card__note">With donation history</div>
-        </div>
-        </div>
-
-        <!-- Average Volume -->
-        <div class="col-6 col-xl-3">
-        <div class="stat-card stat-card--gold h-100">
-          <div class="stat-card__header">
-            <span class="stat-card__label">Average Volume</span>
-            <!-- Blood drop gold -->
-            <svg class="stat-card__icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-              <path d="M12 3 C12 3 5 11 5 16 C5 19.87 8.13 23 12 23 C15.87 23 19 19.87 19 16 C19 11 12 3 12 3Z" fill="#ab9400"/>
-            </svg>
-          </div>
-          <div class="stat-card__value" id="donationStatAverageVolume">0 mL</div>
-          <div class="stat-card__note">Per donation</div>
-        </div>
-        </div>
-      </section>
-
-      <!-- FILTER BAR -->
-      <div class="filter-bar row g-3 align-items-center">
-        <!-- Search -->
-        <div class="filter-bar__search col-12 col-lg">
-          <svg class="filter-bar__search-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <circle cx="11" cy="11" r="7" stroke="#555" stroke-width="1.8"/>
-            <path d="M16.5 16.5L21 21" stroke="#555" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          <input id="donationRecordsSearchInput" class="form-control" type="search" placeholder="Search by donor name or record ID..." aria-label="Search by donor name or record ID" />
-        </div>
-
-        <!-- Blood Type filter -->
-        <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-3">
-          <svg class="filter-bar__select-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M12 3 C12 3 5 11 5 16 C5 19.87 8.13 23 12 23 C15.87 23 19 19.87 19 16 C19 11 12 3 12 3Z" fill="#b60c0c"/>
-          </svg>
-          <select id="donationRecordsBloodTypeFilter" class="filter-bar__select form-select" aria-label="Filter by blood type">
-            <option value="">All Blood Types</option>
-            @foreach ($bloodTypeOptions as $type)
-              <option value="{{ $type }}">{{ $type }}</option>
-            @endforeach
-          </select>
-          <svg class="filter-bar__chevron" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-
-        <!-- Status filter -->
-        <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-3">
-          <svg class="filter-bar__select-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M4 6h16M7 12h10M10 18h4" stroke="#555" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
-          <select id="donationRecordsStatusFilter" class="filter-bar__select form-select" aria-label="Filter by status">
-            <option value="">All Status</option>
-            <option value="completed">Completed</option>
-            <option value="pending">Pending</option>
-            <option value="deferred">Deferred</option>
-          </select>
-          <svg class="filter-bar__chevron" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <path d="M6 9l6 6 6-6" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <div class="stat-card__header"><span class="stat-card__label">Expected Today</span></div>
+          <div class="stat-card__value" id="processingStatExpected">0</div>
+          <div class="stat-card__note">Confirmed appointments</div>
         </div>
       </div>
-
-      <!-- RECORDS TABLE -->
-      <section class="records-section" aria-label="Donation records table">
-        <div class="records-table-wrap table-responsive">
-          <table class="records-table table align-middle mb-0">
-            <thead>
-              <tr>
-                <th scope="col">Record ID</th>
-                <th scope="col">Name</th>
-                <th scope="col">Blood Type</th>
-                <th scope="col">Date</th>
-                <th scope="col">Location</th>
-                <th scope="col">Volume</th>
-                <th scope="col">Status</th>
-                <th scope="col">Next Eligible</th>
-              </tr>
-            </thead>
-            <tbody id="donationRecordsTableBody">
-              <tr><td colspan="8">Loading...</td></tr>
-            </tbody>
-          </table>
+      <div class="col-6 col-xl-3">
+        <div class="stat-card stat-card--blue h-100">
+          <div class="stat-card__header"><span class="stat-card__label">Checked In</span></div>
+          <div class="stat-card__value" id="processingStatCheckedIn">0</div>
+          <div class="stat-card__note">Awaiting outcome today</div>
         </div>
-
-        <!-- FOOTER -->
-        <div class="records-footer">
-          <p class="records-footer__info" id="donationRecordsPaginationInfo">Showing 0 to 0 of 0 records</p>
-          <nav class="pagination" id="donationRecordsPaginationPages" aria-label="Table pagination"></nav>
+      </div>
+      <div class="col-6 col-xl-3">
+        <div class="stat-card stat-card--green h-100">
+          <div class="stat-card__header"><span class="stat-card__label">Completed</span></div>
+          <div class="stat-card__value" id="processingStatCompletedMonth">0</div>
+          <div class="stat-card__note">This month</div>
         </div>
-      </section>
+      </div>
+      <div class="col-6 col-xl-3">
+        <div class="stat-card stat-card--gold h-100">
+          <div class="stat-card__header"><span class="stat-card__label">No-shows</span></div>
+          <div class="stat-card__value" id="processingStatNoShows">0</div>
+          <div class="stat-card__note">Recorded appointments</div>
+        </div>
+      </div>
+    </section>
 
-    </main>
-  </div><!-- /.main -->
+    <div class="filter-bar row g-3 align-items-center">
+      <div class="filter-bar__search col-12 col-xl">
+        <input id="processingSearchInput" class="form-control" type="search" placeholder="Search donor, appointment, event, or remarks" aria-label="Search donation processing" />
+      </div>
+      <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-2">
+        <select id="processingStatusFilter" class="filter-bar__select form-select" aria-label="Filter by status">
+          <option value="">All Status</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="checked_in">Checked In</option>
+          <option value="completed">Completed</option>
+          <option value="deferred_on_site">Deferred On Site</option>
+          <option value="no_show">No-show</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-2">
+        <select id="processingBloodFilter" class="filter-bar__select form-select" aria-label="Filter by blood type">
+          <option value="">All Blood Types</option>
+          @foreach ($bloodTypeOptions as $type)
+            <option value="{{ $type }}">{{ $type }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-2">
+        <select id="processingEventFilter" class="filter-bar__select form-select" aria-label="Filter by event">
+          <option value="">All Events</option>
+          @foreach ($eventOptions as $event)
+            <option value="{{ $event['event_id'] }}">{{ $event['title'] }} - {{ $event['event_date'] }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-2">
+        <select id="processingCenterFilter" class="filter-bar__select form-select" aria-label="Filter by center">
+          <option value="">All Centers</option>
+          @foreach ($centerOptions as $center)
+            <option value="{{ $center }}">{{ $center }}</option>
+          @endforeach
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-xl-2">
+        <input id="processingDateFilter" class="form-control" type="date" aria-label="Filter by appointment date" />
+      </div>
+    </div>
+
+    <section class="records-section" aria-label="Donation processing table">
+      <div class="records-table-wrap table-responsive">
+        <table class="records-table table align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Appointment</th>
+              <th scope="col">Donor</th>
+              <th scope="col">Event / Center</th>
+              <th scope="col">Schedule</th>
+              <th scope="col">Eligibility</th>
+              <th scope="col">Donation Record</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="processingTableBody">
+            <tr><td colspan="8">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="records-footer">
+        <p class="records-footer__info" id="processingPaginationInfo">Showing 0 to 0 of 0 records</p>
+        <nav class="pagination" id="processingPaginationPages" aria-label="Table pagination"></nav>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="modal fade" id="completeDonationModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="completeDonationForm">
+      <div class="modal-header">
+        <h5 class="modal-title">Complete Donation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="completeAppointmentId" />
+        <div class="mb-3">
+          <label class="form-label" for="completeBloodUnits">Blood Units</label>
+          <input class="form-control" id="completeBloodUnits" type="number" min="1" max="10" value="1" required />
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="completeDonationDate">Donation Date</label>
+          <input class="form-control" id="completeDonationDate" type="date" />
+        </div>
+        <div>
+          <label class="form-label" for="completeRemarks">Remarks</label>
+          <textarea class="form-control" id="completeRemarks" rows="3" maxlength="1000"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Completion</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="deferDonationModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="deferDonationForm">
+      <div class="modal-header">
+        <h5 class="modal-title">Defer On Site</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="deferAppointmentId" />
+        <div class="mb-3">
+          <label class="form-label" for="deferReason">Deferral Reason</label>
+          <textarea class="form-control" id="deferReason" rows="3" minlength="8" maxlength="1000" required></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="deferNextEligibleDate">Next Eligible Date</label>
+          <input class="form-control" id="deferNextEligibleDate" type="date" />
+        </div>
+        <div>
+          <label class="form-label" for="deferRemarks">Remarks</label>
+          <textarea class="form-control" id="deferRemarks" rows="2" maxlength="1000"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-warning">Save Deferral</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 @push('admin_scripts')
 <script>
   (function () {
     'use strict';
 
-    var payload = window.AdminPageData || {};
-    var config = payload.donationRecords || {};
-    var listUrl = (config.api && config.api.listUrl) ? String(config.api.listUrl) : '';
+    var config = (window.AdminPageData && window.AdminPageData.donationRecords) || {};
+    var api = config.api || {};
+    var state = { page: 1, perPage: 10 };
+    var csrf = document.querySelector('meta[name="csrf-token"]');
+    var token = csrf ? csrf.getAttribute('content') : '';
+    var tableBody = document.getElementById('processingTableBody');
+    var paginationInfo = document.getElementById('processingPaginationInfo');
+    var paginationPages = document.getElementById('processingPaginationPages');
+    var completeModalElement = document.getElementById('completeDonationModal');
+    var deferModalElement = document.getElementById('deferDonationModal');
+    var completeModal = window.bootstrap && completeModalElement ? new window.bootstrap.Modal(completeModalElement) : null;
+    var deferModal = window.bootstrap && deferModalElement ? new window.bootstrap.Modal(deferModalElement) : null;
 
-    var statTotal = document.getElementById('donationStatTotalDonations');
-    var statMonth = document.getElementById('donationStatThisMonth');
-    var statActive = document.getElementById('donationStatActiveDonors');
-    var statAvg = document.getElementById('donationStatAverageVolume');
-
-    var searchInput = document.getElementById('donationRecordsSearchInput');
-    var bloodTypeFilter = document.getElementById('donationRecordsBloodTypeFilter');
-    var statusFilter = document.getElementById('donationRecordsStatusFilter');
-
-    var tableBody = document.getElementById('donationRecordsTableBody');
-    var paginationInfo = document.getElementById('donationRecordsPaginationInfo');
-    var paginationPages = document.getElementById('donationRecordsPaginationPages');
-
-    var state = {
-      page: 1,
-      perPage: 9,
-      search: '',
-      bloodType: '',
-      status: ''
-    };
-
-    var searchDebounceTimer = null;
-
-    function escapeHtml(value) {
-      return String(value || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-    }
-
-    function formatNumber(value) {
-      var num = Number(value || 0);
-      if (Number.isNaN(num)) {
-        num = 0;
-      }
-      return num.toLocaleString();
-    }
-
-    function normalizeStatus(value) {
-      var status = String(value || '').toLowerCase();
-      if (['completed', 'pending', 'deferred'].indexOf(status) !== -1) {
-        return status;
-      }
-      return 'pending';
-    }
-
-    function statusLabel(value) {
-      var status = normalizeStatus(value);
-      if (status === 'completed') {
-        return 'Completed';
-      }
-      if (status === 'deferred') {
-        return 'Deferred';
-      }
-      return 'Pending';
-    }
-
-    function badgeClass(value) {
-      return 'badge--' + normalizeStatus(value);
-    }
-
-    function formatDate(value) {
-      var raw = String(value || '').trim();
-      if (raw === '') {
-        return '-';
-      }
-
-      var date = new Date(raw + 'T00:00:00');
-      if (Number.isNaN(date.getTime())) {
-        return raw;
-      }
-
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
-
-    function formatVolume(volumeMl) {
-      var volume = Number(volumeMl || 0);
-      if (Number.isNaN(volume) || volume <= 0) {
-        return '-';
-      }
-      return Math.round(volume) + ' mL';
-    }
-
-    function setLoadingState() {
-      if (!tableBody) {
-        return;
-      }
-      tableBody.innerHTML = '<tr><td colspan="8">Loading...</td></tr>';
-    }
-
-    function buildRequestUrl() {
-      var url = new URL(listUrl, window.location.origin);
-      var params = url.searchParams;
-
-      params.set('page', String(state.page));
-      params.set('per_page', String(state.perPage));
-
-      if (state.search !== '') {
-        params.set('search', state.search);
-      }
-      if (state.bloodType !== '') {
-        params.set('blood_type', state.bloodType);
-      }
-      if (state.status !== '') {
-        params.set('status', state.status);
-      }
-
-      return url.toString();
-    }
-
-    function hydrateBloodTypeFilter(bloodTypes) {
-      if (!bloodTypeFilter || !Array.isArray(bloodTypes)) {
-        return;
-      }
-
-      var known = {};
-      Array.prototype.forEach.call(bloodTypeFilter.options, function (option) {
-        known[String(option.value)] = true;
-      });
-
-      bloodTypes.forEach(function (value) {
-        var type = String(value || '').trim();
-        if (type === '' || known[type]) {
-          return;
-        }
-
-        var option = document.createElement('option');
-        option.value = type;
-        option.textContent = type;
-        bloodTypeFilter.appendChild(option);
-        known[type] = true;
+    function qs(id) { return document.getElementById(id); }
+    function esc(value) {
+      return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char];
       });
     }
-
-    function updateStats(stats) {
-      if (statTotal) {
-        statTotal.textContent = formatNumber(stats.total_donations || 0);
-      }
-      if (statMonth) {
-        statMonth.textContent = formatNumber(stats.this_month || 0);
-      }
-      if (statActive) {
-        statActive.textContent = formatNumber(stats.active_donors || 0);
-      }
-      if (statAvg) {
-        statAvg.textContent = formatVolume(stats.average_volume_ml || 0);
-      }
+    function fmtDate(value) {
+      if (!value) return '-';
+      var date = new Date(String(value).replace(' ', 'T'));
+      return Number.isNaN(date.getTime()) ? esc(value) : date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
     }
-
+    function fmtTime(value) {
+      if (!value) return '-';
+      var parts = String(value).split(':');
+      return parts.length >= 2 ? parts[0] + ':' + parts[1] : esc(value);
+    }
+    function statusLabel(status) {
+      return {
+        confirmed: 'Confirmed',
+        checked_in: 'Checked In',
+        completed: 'Completed',
+        deferred_on_site: 'Deferred On Site',
+        no_show: 'No-show',
+        cancelled: 'Cancelled'
+      }[status] || 'Pending';
+    }
+    function statusClass(status) {
+      return {
+        confirmed: 'status-badge--warning',
+        checked_in: 'status-badge--info',
+        completed: 'status-badge--success',
+        deferred_on_site: 'status-badge--warning',
+        no_show: 'status-badge--danger',
+        cancelled: 'status-badge--muted'
+      }[status] || 'status-badge--muted';
+    }
+    function actionUrl(template, id) {
+      return String(template || '').replace('__ID__', encodeURIComponent(id));
+    }
+    function collectFilters() {
+      return {
+        page: state.page,
+        per_page: state.perPage,
+        search: qs('processingSearchInput').value.trim(),
+        status: qs('processingStatusFilter').value,
+        blood_type: qs('processingBloodFilter').value,
+        event_id: qs('processingEventFilter').value,
+        center: qs('processingCenterFilter').value,
+        date: qs('processingDateFilter').value
+      };
+    }
+    function setStats(stats) {
+      qs('processingStatExpected').textContent = stats.expected_today || 0;
+      qs('processingStatCheckedIn').textContent = stats.checked_in_today || 0;
+      qs('processingStatCompletedMonth').textContent = stats.completed_month || 0;
+      qs('processingStatNoShows').textContent = stats.no_show || 0;
+    }
+    function renderActions(row) {
+      var buttons = [];
+      if (row.actions && row.actions.can_check_in) {
+        buttons.push('<button class="btn btn-sm btn-primary" data-action="check-in" data-id="' + row.appointment_id + '">Check In</button>');
+      }
+      if (row.actions && row.actions.can_complete) {
+        buttons.push('<button class="btn btn-sm btn-success" data-action="complete" data-id="' + row.appointment_id + '">Complete</button>');
+      }
+      if (row.actions && row.actions.can_defer) {
+        buttons.push('<button class="btn btn-sm btn-warning" data-action="defer" data-id="' + row.appointment_id + '">Defer</button>');
+      }
+      if (row.actions && row.actions.can_no_show) {
+        buttons.push('<button class="btn btn-sm btn-outline-danger" data-action="no-show" data-id="' + row.appointment_id + '">No-show</button>');
+      }
+      return buttons.length ? buttons.join(' ') : '<span class="text-muted">No actions</span>';
+    }
     function renderRows(rows) {
-      if (!tableBody) {
+      if (!rows.length) {
+        tableBody.innerHTML = '<tr><td colspan="8">No matching appointments.</td></tr>';
         return;
       }
-
-      if (!Array.isArray(rows) || rows.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="8">No donation records found.</td></tr>';
-        return;
-      }
-
-      tableBody.innerHTML = rows.map(function (item) {
-        var recordCode = escapeHtml(item.record_code || '-');
-        var donorName = escapeHtml(item.donor_name || 'Unknown Donor');
-        var bloodType = escapeHtml(item.blood_type || '-');
-        var donationDate = escapeHtml(formatDate(item.donation_date));
-        var centerLabel = escapeHtml(item.center_label || 'N/A');
-        var volumeLabel = escapeHtml(formatVolume(item.volume_ml));
-        var badge = '<span class="badge ' + badgeClass(item.status) + '">' + escapeHtml(statusLabel(item.status)) + '</span>';
-        var nextEligible = escapeHtml(formatDate(item.next_eligible_date));
-
-        return ''
-          + '<tr>'
-          + '<td>' + recordCode + '</td>'
-          + '<td class="td-name">' + donorName + '</td>'
-          + '<td><div class="td-blood">'
-          + '<svg class="td-blood-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-          + '<path d="M12 3 C12 3 5 11 5 16 C5 19.87 8.13 23 12 23 C15.87 23 19 19.87 19 16 C19 11 12 3 12 3Z" fill="#b60c0c"/>'
-          + '</svg>'
-          + bloodType
-          + '</div></td>'
-          + '<td><div class="td-date">'
-          + '<svg class="td-date-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-          + '<rect x="3" y="4" width="18" height="17" rx="2" stroke="#333" stroke-width="1.5"/>'
-          + '<path d="M3 9h18" stroke="#333" stroke-width="1.5"/>'
-          + '<path d="M8 2v4M16 2v4" stroke="#333" stroke-width="1.5" stroke-linecap="round"/>'
-          + '</svg>'
-          + donationDate
-          + '</div></td>'
-          + '<td><div class="td-location">'
-          + '<svg class="td-location-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-          + '<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#555"/>'
-          + '<circle cx="12" cy="9" r="2.5" fill="white"/>'
-          + '</svg>'
-          + centerLabel
-          + '</div></td>'
-          + '<td>' + volumeLabel + '</td>'
-          + '<td>' + badge + '</td>'
-          + '<td><div class="td-date">'
-          + '<svg class="td-date-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-          + '<rect x="3" y="4" width="18" height="17" rx="2" stroke="#333" stroke-width="1.5"/>'
-          + '<path d="M3 9h18" stroke="#333" stroke-width="1.5"/>'
-          + '<path d="M8 2v4M16 2v4" stroke="#333" stroke-width="1.5" stroke-linecap="round"/>'
-          + '</svg>'
-          + nextEligible
-          + '</div></td>'
+      tableBody.innerHTML = rows.map(function (row) {
+        var record = row.donation_code
+          ? '<span class="fw-semibold">' + esc(row.donation_code) + '</span><span class="d-block text-muted small">' + esc(row.donation_status || '-') + (row.blood_units !== null ? ' · ' + esc(row.blood_units) + ' unit(s)' : '') + '</span>'
+          : '<span class="text-muted">Not recorded</span>';
+        var note = row.deferred_reason || row.remarks || '';
+        return '<tr>'
+          + '<td><span class="fw-semibold">' + esc(row.appointment_code) + '</span><span class="d-block text-muted small">Booked ' + fmtDate(row.booked_at) + '</span></td>'
+          + '<td><span class="fw-semibold">' + esc(row.donor_name) + '</span><span class="d-block text-muted small">' + esc(row.donor_email || '-') + '</span><span class="d-block text-muted small">' + esc(row.blood_type || '-') + '</span></td>'
+          + '<td><span class="fw-semibold">' + esc(row.event_title || 'Legacy appointment') + '</span><span class="d-block text-muted small">' + esc(row.center_label) + '</span></td>'
+          + '<td><span class="fw-semibold">' + fmtDate(row.appointment_date) + '</span><span class="d-block text-muted small">' + fmtTime(row.appointment_time) + '</span></td>'
+          + '<td><span class="d-block">' + esc(row.eligibility_status || 'unknown') + '</span><span class="d-block text-muted small">Verify: ' + esc(row.verification_status || 'unverified') + '</span><span class="d-block text-muted small">Next: ' + fmtDate(row.next_eligible_date) + '</span></td>'
+          + '<td>' + record + (note ? '<span class="d-block text-muted small">' + esc(note) + '</span>' : '') + '</td>'
+          + '<td><span class="status-badge ' + statusClass(row.status) + '">' + statusLabel(row.status) + '</span></td>'
+          + '<td class="text-end">' + renderActions(row) + '</td>'
           + '</tr>';
       }).join('');
     }
-
-    function createNavButton(direction, targetPage, disabled) {
-      var button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'pagination__btn';
-      button.setAttribute('aria-label', direction === 'prev' ? 'Previous page' : 'Next page');
-
-      button.innerHTML = direction === 'prev'
-        ? '<svg width="10" height="14" viewBox="0 0 10 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M8 1L2 7L8 13" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-        : '<svg width="10" height="14" viewBox="0 0 10 14" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M2 1L8 7L2 13" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
-      if (disabled) {
-        button.disabled = true;
-        button.setAttribute('aria-disabled', 'true');
-      } else {
-        button.dataset.page = String(targetPage);
-      }
-
-      return button;
-    }
-
-    function createPageButton(pageIndex, active) {
-      var button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'pagination__btn' + (active ? ' pagination__btn--active' : '');
-      button.textContent = String(pageIndex);
-      button.setAttribute('aria-label', 'Page ' + pageIndex);
-
-      if (active) {
-        button.setAttribute('aria-current', 'page');
-      } else {
-        button.dataset.page = String(pageIndex);
-      }
-
-      return button;
-    }
-
     function renderPagination(meta) {
-      if (!paginationInfo || !paginationPages) {
-        return;
+      paginationInfo.textContent = 'Showing ' + (meta.from || 0) + ' to ' + (meta.to || 0) + ' of ' + (meta.total || 0) + ' records';
+      var pages = [];
+      for (var i = 1; i <= (meta.last_page || 1); i += 1) {
+        pages.push('<button class="pagination__page ' + (i === meta.current_page ? 'is-active' : '') + '" data-page="' + i + '" type="button">' + i + '</button>');
       }
-
-      var total = Number(meta.total || 0);
-      var from = Number(meta.from || 0);
-      var to = Number(meta.to || 0);
-      var currentPage = Number(meta.current_page || 1);
-      var lastPage = Number(meta.last_page || 1);
-
-      paginationInfo.textContent = 'Showing ' + from + ' to ' + to + ' of ' + total + ' records';
-      paginationPages.innerHTML = '';
-
-      if (total <= 0) {
-        return;
-      }
-
-      paginationPages.appendChild(createNavButton('prev', Math.max(1, currentPage - 1), currentPage <= 1));
-
-      var start = Math.max(1, currentPage - 2);
-      var end = Math.min(lastPage, start + 4);
-      start = Math.max(1, end - 4);
-
-      for (var pageIndex = start; pageIndex <= end; pageIndex += 1) {
-        paginationPages.appendChild(createPageButton(pageIndex, pageIndex === currentPage));
-      }
-
-      paginationPages.appendChild(createNavButton('next', Math.min(lastPage, currentPage + 1), currentPage >= lastPage));
+      paginationPages.innerHTML = pages.join('');
     }
-
-    function loadRecords() {
-      if (!listUrl) {
-        renderRows([]);
-        return;
-      }
-
-      setLoadingState();
-
-      fetch(buildRequestUrl(), {
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      })
-        .then(function (response) {
-          if (!response.ok) {
-            throw new Error('Failed to load donation records.');
-          }
-          return response.json();
-        })
-        .then(function (responsePayload) {
-          updateStats(responsePayload.stats || {});
-          hydrateBloodTypeFilter((responsePayload.filters && responsePayload.filters.blood_types) || []);
-          renderRows(responsePayload.data || []);
-          renderPagination(responsePayload.meta || {});
+    function loadRows() {
+      if (!api.listUrl) return;
+      var params = new URLSearchParams(collectFilters());
+      fetch(api.listUrl + '?' + params.toString(), { headers: { Accept: 'application/json' } })
+        .then(function (response) { return response.json(); })
+        .then(function (payload) {
+          renderRows(payload.data || []);
+          renderPagination(payload.meta || {});
+          setStats(payload.stats || {});
         })
         .catch(function () {
-          renderRows([]);
-          if (paginationInfo) {
-            paginationInfo.textContent = 'Unable to load records right now.';
-          }
+          tableBody.innerHTML = '<tr><td colspan="8">Unable to load donation processing records.</td></tr>';
         });
     }
-
-    if (searchInput) {
-      searchInput.addEventListener('input', function () {
-        var nextValue = String(searchInput.value || '').trim();
-        clearTimeout(searchDebounceTimer);
-
-        searchDebounceTimer = setTimeout(function () {
-          state.search = nextValue;
-          state.page = 1;
-          loadRecords();
-        }, 300);
+    function sendPatch(url, payload) {
+      return fetch(url, {
+        method: 'PATCH',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': token
+        },
+        body: JSON.stringify(payload || {})
+      }).then(function (response) {
+        return response.json().then(function (body) {
+          if (!response.ok) throw body;
+          return body;
+        });
       });
     }
-
-    if (bloodTypeFilter) {
-      bloodTypeFilter.addEventListener('change', function () {
-        state.bloodType = String(bloodTypeFilter.value || '').trim();
+    function showError(error) {
+      var message = error && error.message ? error.message : 'The request could not be completed.';
+      if (error && error.errors) {
+        var firstKey = Object.keys(error.errors)[0];
+        if (firstKey && error.errors[firstKey][0]) message = error.errors[firstKey][0];
+      }
+      window.alert(message);
+    }
+    tableBody.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-action]');
+      if (!button) return;
+      var id = button.getAttribute('data-id');
+      var action = button.getAttribute('data-action');
+      if (action === 'check-in') {
+        sendPatch(actionUrl(api.checkInUrlTemplate, id)).then(loadRows).catch(showError);
+      } else if (action === 'complete') {
+        qs('completeAppointmentId').value = id;
+        qs('completeDonationDate').value = new Date().toISOString().slice(0, 10);
+        qs('completeBloodUnits').value = 1;
+        qs('completeRemarks').value = '';
+        completeModal ? completeModal.show() : null;
+      } else if (action === 'defer') {
+        qs('deferAppointmentId').value = id;
+        qs('deferReason').value = '';
+        qs('deferNextEligibleDate').value = '';
+        qs('deferRemarks').value = '';
+        deferModal ? deferModal.show() : null;
+      } else if (action === 'no-show' && window.confirm('Mark this appointment as no-show?')) {
+        sendPatch(actionUrl(api.noShowUrlTemplate, id)).then(loadRows).catch(showError);
+      }
+    });
+    qs('completeDonationForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var id = qs('completeAppointmentId').value;
+      sendPatch(actionUrl(api.completeUrlTemplate, id), {
+        blood_units: qs('completeBloodUnits').value,
+        donation_date: qs('completeDonationDate').value,
+        remarks: qs('completeRemarks').value
+      }).then(function () {
+        completeModal ? completeModal.hide() : null;
+        loadRows();
+      }).catch(showError);
+    });
+    qs('deferDonationForm').addEventListener('submit', function (event) {
+      event.preventDefault();
+      var id = qs('deferAppointmentId').value;
+      sendPatch(actionUrl(api.deferUrlTemplate, id), {
+        deferred_reason: qs('deferReason').value,
+        next_eligible_date: qs('deferNextEligibleDate').value,
+        remarks: qs('deferRemarks').value
+      }).then(function () {
+        deferModal ? deferModal.hide() : null;
+        loadRows();
+      }).catch(showError);
+    });
+    paginationPages.addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-page]');
+      if (!button) return;
+      state.page = parseInt(button.getAttribute('data-page'), 10) || 1;
+      loadRows();
+    });
+    ['processingSearchInput', 'processingStatusFilter', 'processingBloodFilter', 'processingEventFilter', 'processingCenterFilter', 'processingDateFilter'].forEach(function (id) {
+      var element = qs(id);
+      if (!element) return;
+      element.addEventListener(id === 'processingSearchInput' ? 'input' : 'change', function () {
         state.page = 1;
-        loadRecords();
+        window.clearTimeout(element._timer);
+        element._timer = window.setTimeout(loadRows, id === 'processingSearchInput' ? 250 : 0);
       });
-    }
-
-    if (statusFilter) {
-      statusFilter.addEventListener('change', function () {
-        state.status = String(statusFilter.value || '').trim();
-        state.page = 1;
-        loadRecords();
-      });
-    }
-
-    if (paginationPages) {
-      paginationPages.addEventListener('click', function (event) {
-        var target = event.target;
-        if (!target) {
-          return;
-        }
-
-        var button = target.closest('button[data-page]');
-        if (!button) {
-          return;
-        }
-
-        var nextPage = Number(button.dataset.page || '1');
-        if (Number.isNaN(nextPage) || nextPage <= 0 || nextPage === state.page) {
-          return;
-        }
-
-        state.page = nextPage;
-        loadRecords();
-      });
-    }
-
-    hydrateBloodTypeFilter((config.filters && config.filters.bloodTypes) || []);
-    loadRecords();
+    });
+    loadRows();
   })();
 </script>
 @endpush

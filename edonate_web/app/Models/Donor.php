@@ -47,6 +47,11 @@ class Donor extends Model
         return $this->hasMany(Appointment::class, 'donor_id', 'donor_id');
     }
 
+    public function donationRecords()
+    {
+        return $this->hasMany(DonationRecord::class, 'donor_id', 'donor_id');
+    }
+
     public function eligibilityStatuses()
     {
         return $this->hasMany(EligibilityStatus::class, 'donor_id', 'donor_id');

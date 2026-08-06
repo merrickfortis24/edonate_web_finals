@@ -292,13 +292,20 @@ class DonorPortalController extends Controller
         }
 
         $donationHistory = DonationRecord::query()
+            ->with(['appointment.event'])
             ->where('donor_id', $context['donor']->donor_id)
             ->orderByDesc('donation_date')
             ->limit(20)
             ->get();
 
+        $latestEligibility = EligibilityStatus::query()
+            ->where('donor_id', $context['donor']->donor_id)
+            ->orderByDesc('eligibility_id')
+            ->first();
+
         return view('portal.history', $context + [
             'donationHistory' => $donationHistory,
+            'latestEligibility' => $latestEligibility,
         ]);
     }
 
