@@ -1,92 +1,20 @@
 @component('layouts.donor-portal', [
     'pageTitle' => 'Book Appointment',
     'pageHeading' => 'Book Appointment',
-    'pageSubheading' => 'Reserve your preferred date and review your upcoming schedules.',
+    'pageSubheading' => 'Choose an available donation event and confirm your slot.',
     'navLinks' => $navLinks,
     'activeNav' => $activeNav,
     'user' => $user,
     'totalDonations' => $totalDonations,
 ])
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+@php
+    $bookingAllowed = $canBookAppointment ?? false;
+    $verificationStatusLabel = \Illuminate\Support\Str::headline(str_replace('_', ' ', $identityVerificationStatus ?? 'unverified'));
+@endphp
 
-<style>
-    .booking-calendar-shell .flatpickr-calendar {
-        width: 100%;
-        max-width: 100%;
-        box-shadow: none;
-        border: 1px solid #d9d9d9;
-        background: #e6e6e6;
-        border-radius: 16px;
-        padding: 10px;
-    }
-
-    .booking-calendar-shell .flatpickr-rContainer,
-    .booking-calendar-shell .flatpickr-days,
-    .booking-calendar-shell .dayContainer {
-        width: 100%;
-        min-width: 100%;
-        max-width: 100%;
-    }
-
-    .booking-calendar-shell .flatpickr-day {
-        border-radius: 10px;
-        border: 0;
-        height: 40px;
-        line-height: 40px;
-        max-width: 14.2857%;
-    }
-
-    .booking-calendar-shell .flatpickr-day.selected,
-    .booking-calendar-shell .flatpickr-day.startRange,
-    .booking-calendar-shell .flatpickr-day.endRange {
-        background: #2c2c2c;
-        border-color: #2c2c2c;
-        color: #f5f5f5;
-    }
-
-    .booking-calendar-shell .flatpickr-day.flatpickr-disabled,
-    .booking-calendar-shell .flatpickr-day.notAllowed {
-        color: #b3b3b3;
-    }
-
-    .booking-calendar-shell .flatpickr-day.booking-available {
-        box-shadow: inset 0 0 0 1px rgba(9, 141, 0, 0.35);
-        background: #f5fff5;
-    }
-
-    .booking-calendar-shell .flatpickr-day.booking-full {
-        box-shadow: inset 0 0 0 1px rgba(133, 0, 0, 0.2);
-        background: #f2f2f2;
-    }
-
-    .booking-calendar-shell .flatpickr-months {
-        margin-bottom: 6px;
-    }
-
-    .booking-calendar-shell .flatpickr-current-month {
-        font-size: 14px;
-    }
-
-    .booking-calendar-shell .flatpickr-weekday {
-        color: #757575;
-        font-weight: 500;
-    }
-
-    @media (min-width: 640px) {
-        .booking-calendar-shell .flatpickr-day {
-            height: 44px;
-            line-height: 44px;
-        }
-    }
-</style>
-
-<section class="mx-auto w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200/70">
+<section class="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200/70">
     <header class="flex min-h-16 items-center justify-between bg-red-800 px-4 py-3 text-white sm:px-6">
-        <a
-            href="{{ route('donor.dashboard') }}"
-            class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 text-xl leading-none transition hover:bg-white/10"
-            aria-label="Back to dashboard"
-        >
+        <a href="{{ route('donor.dashboard') }}" class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 text-xl leading-none transition hover:bg-white/10" aria-label="Back to dashboard">
             &larr;
         </a>
         <h2 class="text-center text-lg font-extrabold sm:text-xl">Book Appointment</h2>
@@ -95,118 +23,132 @@
 
     <form method="POST" action="{{ route('donor.book-appointment.store') }}" class="space-y-6 p-4 sm:p-6 lg:p-8">
         @csrf
-        @php
-            $bookingAllowed = $canBookAppointment ?? false;
-            $verificationStatusLabel = \Illuminate\Support\Str::headline(str_replace('_', ' ', $identityVerificationStatus ?? 'unverified'));
-        @endphp
 
         @if (! $bookingAllowed)
             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                Please verify your identity before booking a donation appointment.
-                Current status: <span class="font-semibold">{{ $verificationStatusLabel }}</span>.
+                Identity verification and eligibility clearance are required before booking.
+                Current verification status: <span class="font-semibold">{{ $verificationStatusLabel }}</span>.
                 <a href="{{ route('donor.verification.index') }}" class="font-semibold underline">Open verification</a>
             </div>
+
+            @foreach (($bookingReadiness['messages'] ?? []) as $message)
+                <p class="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{{ $message }}</p>
+            @endforeach
         @endif
 
         <div>
-            <h3 class="text-base font-bold text-red-800 sm:text-lg">Schedule Your Donation</h3>
-            <p class="mt-1 text-sm text-slate-500">Select your preferred date, time, and location for blood donation.</p>
+            <h3 class="text-base font-bold text-red-800 sm:text-lg">Available Donation Events</h3>
+            <p class="mt-1 text-sm text-slate-500">Your appointment date and donation center are copied from the selected event.</p>
         </div>
 
-        <section aria-labelledby="calendar-label" class="space-y-3">
-            <p id="calendar-label" class="text-sm font-semibold text-slate-600">Select Date</p>
+        @error('event_id')
+            <p class="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{{ $message }}</p>
+        @enderror
+        @error('appointment_time')
+            <p class="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{{ $message }}</p>
+        @enderror
 
-            <div class="booking-calendar-shell">
-                <input
-                    type="text"
-                    id="donation_date"
-                    name="donation_date"
-                    value="{{ old('donation_date') }}"
-                    placeholder="Select Date"
-                    class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
-                    readonly
-                    {{ $bookingAllowed ? '' : 'disabled' }}
-                >
+        @if ($eventOptions->isEmpty())
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+                No donation events are open for booking right now.
             </div>
-            @error('donation_date')
-                <p class="text-xs font-medium text-red-600">{{ $message }}</p>
-            @enderror
-        </section>
+        @else
+            <div class="grid gap-4">
+                @foreach ($eventOptions as $event)
+                    @php
+                        $eventId = (int) $event['event_id'];
+                        $selected = (string) old('event_id') === (string) $eventId || ($loop->first && ! old('event_id'));
+                    @endphp
+                    <label class="block rounded-xl border border-slate-200 p-4 shadow-sm transition has-[:checked]:border-red-700 has-[:checked]:ring-2 has-[:checked]:ring-red-100">
+                        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                            <div class="flex gap-3">
+                                <input
+                                    type="radio"
+                                    name="event_id"
+                                    value="{{ $eventId }}"
+                                    class="mt-1 h-4 w-4 border-slate-300 text-red-700 focus:ring-red-500"
+                                    data-start-time="{{ substr((string) ($event['start_time'] ?? ''), 0, 5) }}"
+                                    data-end-time="{{ substr((string) ($event['end_time'] ?? ''), 0, 5) }}"
+                                    @checked($selected)
+                                    {{ $bookingAllowed ? '' : 'disabled' }}
+                                >
+                                <div>
+                                    <p class="text-base font-bold text-slate-900">{{ $event['title'] }}</p>
+                                    <p class="mt-1 text-sm text-slate-600">
+                                        {{ \Carbon\Carbon::parse($event['event_date'])->format('F j, Y') }}
+                                        @if ($event['start_time'])
+                                            at {{ \Carbon\Carbon::parse($event['start_time'])->format('g:i A') }}
+                                        @endif
+                                        @if ($event['end_time'])
+                                            - {{ \Carbon\Carbon::parse($event['end_time'])->format('g:i A') }}
+                                        @endif
+                                    </p>
+                                    <p class="mt-1 text-sm text-slate-600">{{ $event['location_name'] }}</p>
+                                    @if (! empty($event['address']))
+                                        <p class="mt-1 text-xs text-slate-500">{{ $event['address'] }}</p>
+                                    @endif
+                                </div>
+                            </div>
+                            <div class="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                                {{ number_format($event['remaining_slots']) }} slots left
+                            </div>
+                        </div>
+                    </label>
+                @endforeach
+            </div>
 
-        <section class="grid gap-4 md:grid-cols-2">
             <div>
-                <label for="donation_center" class="mb-1.5 block text-sm font-semibold text-slate-700">Donation Center</label>
-                <select id="donation_center" name="donation_center" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ $bookingAllowed ? '' : 'disabled' }}>
-                    <option disabled {{ old('donation_center') ? '' : 'selected' }}>Choose Donation Center</option>
-                    <option>{{ $location?->city ? $location->city . ' Blood Bank' : 'City Blood Bank' }}</option>
-                    <option>Central Health Donor Hub</option>
-                    <option>Red Cross Donation Center</option>
-                </select>
-                @error('donation_center')
-                    <p class="mt-1 text-xs font-medium text-red-600">{{ $message }}</p>
-                @enderror
+                <label for="appointment_time" class="mb-1.5 block text-sm font-semibold text-slate-700">Appointment Time</label>
+                <select id="appointment_time" name="appointment_time" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ $bookingAllowed ? '' : 'disabled' }}></select>
             </div>
 
-            <div>
-                <label for="time_slot" class="mb-1.5 block text-sm font-semibold text-slate-700">Time Slot</label>
-                <select id="time_slot" name="time_slot" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ $bookingAllowed && old('donation_date') ? '' : 'disabled' }}>
-                    <option disabled {{ old('time_slot') ? '' : 'selected' }}>Select date first</option>
-                    @foreach ($timeSlots as $slot)
-                        <option value="{{ $slot }}" {{ old('time_slot') === $slot ? 'selected' : '' }}>{{ \Carbon\Carbon::createFromFormat('H:i', $slot)->format('g:i A') }}</option>
-                    @endforeach
-                </select>
-                @error('time_slot')
-                    <p class="mt-1 text-xs font-medium text-red-600">{{ $message }}</p>
-                @enderror
+            <div class="pt-1">
+                <button type="submit" class="w-full rounded-xl bg-red-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-900 disabled:cursor-not-allowed disabled:bg-slate-400 sm:mx-auto sm:block sm:w-auto sm:min-w-60" {{ $bookingAllowed ? '' : 'disabled' }}>
+                    Confirm Appointment
+                </button>
             </div>
-        </section>
-
-        <div class="pt-1">
-            <button type="submit" class="w-full rounded-xl bg-red-800 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-900 disabled:cursor-not-allowed disabled:bg-slate-400 sm:mx-auto sm:block sm:w-auto sm:min-w-60" {{ $bookingAllowed ? '' : 'disabled' }}>
-                Confirm Booking
-            </button>
-        </div>
+        @endif
     </form>
 </section>
 
-<x-dashboard.card class="mx-auto mt-6 w-full max-w-4xl" title="Upcoming Appointments" subtitle="Your scheduled and pending appointments.">
+<x-dashboard.card class="mx-auto mt-6 w-full max-w-5xl" title="Upcoming Appointments" subtitle="Your confirmed and active schedules.">
     @if ($appointments->isEmpty())
         <p class="text-sm text-slate-600">No appointments found. Your future schedules will appear here.</p>
     @else
-        <div class="space-y-3 lg:hidden">
-            @foreach ($appointments as $appointment)
-                <article class="rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <div class="flex items-start justify-between gap-3">
-                        <p class="text-sm font-bold text-slate-900">
-                            {{ $appointment->appointment_date ? \Carbon\Carbon::parse($appointment->appointment_date)->format('F j, Y') : '-' }}
-                        </p>
-                        <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">{{ ucfirst($appointment->status ?? 'pending') }}</span>
-                    </div>
-                    <p class="mt-2 text-sm text-slate-600"><span class="font-semibold text-slate-800">Time:</span> {{ $appointment->appointment_time ? \Carbon\Carbon::parse($appointment->appointment_time)->format('g:i A') : '-' }}</p>
-                </article>
-            @endforeach
-        </div>
-
-        <div class="hidden overflow-x-auto lg:block">
+        <div class="overflow-x-auto">
             <table class="min-w-full text-left text-sm">
                 <thead>
                 <tr class="border-b border-slate-200 text-slate-500">
+                    <th class="px-3 py-2 font-semibold">Event</th>
                     <th class="px-3 py-2 font-semibold">Date</th>
                     <th class="px-3 py-2 font-semibold">Time</th>
                     <th class="px-3 py-2 font-semibold">Status</th>
+                    <th class="px-3 py-2 font-semibold"></th>
                 </tr>
                 </thead>
                 <tbody>
                 @foreach ($appointments as $appointment)
+                    @php
+                        $normalizedStatus = app(\App\Services\AppointmentBookingService::class)->normalizeAppointmentStatus((string) $appointment->status);
+                        $canCancel = ! in_array($normalizedStatus, ['cancelled', 'completed', 'no_show'], true)
+                            && $appointment->appointment_date
+                            && \Carbon\Carbon::parse($appointment->appointment_date)->gte(\Carbon\Carbon::today());
+                    @endphp
                     <tr class="border-b border-slate-100 last:border-none">
-                        <td class="px-3 py-3 font-semibold text-slate-900">
-                            {{ $appointment->appointment_date ? \Carbon\Carbon::parse($appointment->appointment_date)->format('F j, Y') : '-' }}
-                        </td>
-                        <td class="px-3 py-3 text-slate-700">
-                            {{ $appointment->appointment_time ? \Carbon\Carbon::parse($appointment->appointment_time)->format('g:i A') : '-' }}
-                        </td>
+                        <td class="px-3 py-3 font-semibold text-slate-900">{{ $appointment->event?->title ?? 'Legacy appointment' }}</td>
+                        <td class="px-3 py-3 text-slate-700">{{ $appointment->appointment_date ? \Carbon\Carbon::parse($appointment->appointment_date)->format('F j, Y') : '-' }}</td>
+                        <td class="px-3 py-3 text-slate-700">{{ $appointment->appointment_time ? \Carbon\Carbon::parse($appointment->appointment_time)->format('g:i A') : '-' }}</td>
                         <td class="px-3 py-3">
-                            <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">{{ ucfirst($appointment->status ?? 'pending') }}</span>
+                            <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">{{ \Illuminate\Support\Str::headline($normalizedStatus) }}</span>
+                        </td>
+                        <td class="px-3 py-3 text-right">
+                            @if ($canCancel)
+                                <form method="POST" action="{{ route('donor.appointments.cancel', $appointment->appointment_id) }}" onsubmit="return confirm('Cancel this appointment?');">
+                                    @csrf
+                                    @method('PATCH')
+                                    <button type="submit" class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700">Cancel</button>
+                                </form>
+                            @endif
                         </td>
                     </tr>
                 @endforeach
@@ -216,53 +158,48 @@
     @endif
 </x-dashboard.card>
 
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 <script>
     (function () {
-        const enabledDates = @json($availableDates ?? []);
-        const fullyBookedDates = @json($fullyBookedDates ?? []);
-        const timeSlotSelect = document.getElementById('time_slot');
+        var select = document.getElementById('appointment_time');
+        var radios = Array.prototype.slice.call(document.querySelectorAll('input[name="event_id"]'));
+        var oldTime = @json(old('appointment_time'));
 
-        if (!@json($canBookAppointment ?? false)) {
-            return;
+        function toMinutes(value) {
+            var parts = String(value || '').split(':');
+            return (Number(parts[0] || 0) * 60) + Number(parts[1] || 0);
         }
 
-        flatpickr('#donation_date', {
-            inline: true,
-            minDate: 'today',
-            dateFormat: 'Y-m-d',
-            defaultDate: '{{ old('donation_date') }}' || null,
-            enable: enabledDates,
-            disable: fullyBookedDates,
-            onChange: function (selectedDates, dateStr) {
-                if (!timeSlotSelect) return;
+        function timeLabel(value) {
+            var date = new Date('1970-01-01T' + value + ':00');
+            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        }
 
-                if (dateStr) {
-                    timeSlotSelect.disabled = false;
-                    if (timeSlotSelect.options.length > 0 && timeSlotSelect.options[0].text.includes('Select date first')) {
-                        timeSlotSelect.options[0].text = 'Choose Time Slot';
-                    }
-                }
-            },
-            onDayCreate: function (_dObj, _dStr, _fp, dayElem) {
-                const dateKey = dayElem.dateObj.toISOString().slice(0, 10);
+        function fillTimes(radio) {
+            if (!select || !radio) return;
 
-                if (enabledDates.includes(dateKey)) {
-                    dayElem.classList.add('booking-available');
-                }
+            var start = radio.dataset.startTime || '';
+            var end = radio.dataset.endTime || '';
+            var startMinutes = toMinutes(start);
+            var endMinutes = toMinutes(end || start);
+            var options = [];
 
-                if (fullyBookedDates.includes(dateKey)) {
-                    dayElem.classList.add('booking-full');
-                }
+            for (var minute = startMinutes; minute <= endMinutes; minute += 30) {
+                var hour = String(Math.floor(minute / 60)).padStart(2, '0');
+                var min = String(minute % 60).padStart(2, '0');
+                var value = hour + ':' + min;
+                options.push('<option value="' + value + '"' + (oldTime === value ? ' selected' : '') + '>' + timeLabel(value) + '</option>');
             }
+
+            select.innerHTML = options.join('');
+        }
+
+        radios.forEach(function (radio) {
+            radio.addEventListener('change', function () {
+                fillTimes(radio);
+            });
         });
 
-        if (timeSlotSelect && document.getElementById('donation_date').value) {
-            timeSlotSelect.disabled = false;
-            if (timeSlotSelect.options.length > 0 && timeSlotSelect.options[0].text.includes('Select date first')) {
-                timeSlotSelect.options[0].text = 'Choose Time Slot';
-            }
-        }
+        fillTimes(radios.find(function (radio) { return radio.checked; }) || radios[0]);
     })();
 </script>
 @endcomponent

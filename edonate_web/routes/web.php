@@ -31,6 +31,7 @@ Route::post('/login', [DonorLoginController::class, 'store'])->name('donor.login
 Route::post('/auth/google', [SocialAuthController::class, 'handleGoogleLogin'])->name('auth.google');
 Route::get('/dashboard', [DonorDashboardController::class, 'index'])->name('donor.dashboard');
 Route::get('/appointments/book', [DonorPortalController::class, 'bookAppointment'])->name('donor.book-appointment');
+Route::get('/appointments/events', [DonorPortalController::class, 'availableEvents'])->name('donor.appointments.events');
 Route::post('/appointments/book', [DonorPortalController::class, 'storeAppointment'])->name('donor.book-appointment.store');
 Route::patch('/appointments/{appointment}/cancel', [DonorPortalController::class, 'cancelAppointment'])
     ->whereNumber('appointment')
@@ -137,6 +138,18 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/donation-events', [AdminDonationEventController::class, 'index'])->name('admin.donation-events.index');
         Route::get('/admin/donation-events/data', [AdminDonationEventController::class, 'data'])->name('admin.donation-events.data');
         Route::post('/admin/donation-events', [AdminDonationEventController::class, 'store'])->name('admin.donation-events.store');
+        Route::patch('/admin/donation-events/{event}/open', [AdminDonationEventController::class, 'open'])
+            ->whereNumber('event')
+            ->name('admin.donation-events.open');
+        Route::patch('/admin/donation-events/{event}/close', [AdminDonationEventController::class, 'close'])
+            ->whereNumber('event')
+            ->name('admin.donation-events.close');
+        Route::patch('/admin/donation-events/{event}/cancel', [AdminDonationEventController::class, 'cancel'])
+            ->whereNumber('event')
+            ->name('admin.donation-events.cancel');
+        Route::patch('/admin/donation-events/{event}/complete', [AdminDonationEventController::class, 'complete'])
+            ->whereNumber('event')
+            ->name('admin.donation-events.complete');
         Route::get('/admin/donation-events/{event}', [AdminDonationEventController::class, 'show'])
             ->whereNumber('event')
             ->name('admin.donation-events.show');

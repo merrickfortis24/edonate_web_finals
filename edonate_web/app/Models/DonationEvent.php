@@ -15,24 +15,18 @@ class DonationEvent extends Model
 
     protected $fillable = [
         'title',
-        'description',
         'event_date',
         'start_time',
         'end_time',
         'location_name',
         'address',
-        'latitude',
-        'longitude',
         'max_capacity',
-        'blood_types_needed',
         'status',
         'created_by_admin_id',
     ];
 
     protected $casts = [
         'event_date' => 'date',
-        'latitude' => 'decimal:6',
-        'longitude' => 'decimal:6',
         'max_capacity' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
@@ -43,18 +37,8 @@ class DonationEvent extends Model
         return $this->hasMany(Appointment::class, 'event_id', 'event_id');
     }
 
-    public function bloodTypesNeeded(): array
+    public function creator()
     {
-        $raw = $this->blood_types_needed;
-
-        if (is_array($raw)) {
-            return $raw;
-        }
-
-        $decoded = json_decode((string) $raw, true);
-
-        return is_array($decoded)
-            ? array_values(array_filter(array_map('strval', $decoded)))
-            : [];
+        return $this->belongsTo(Admin::class, 'created_by_admin_id', 'admin_id');
     }
 }

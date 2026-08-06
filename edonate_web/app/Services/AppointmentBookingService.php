@@ -16,15 +16,13 @@ use Throwable;
 
 class AppointmentBookingService
 {
-    private const BOOKING_STATUSES = ['pending', 'confirmed', 'approved', 'scheduled', 'rescheduled'];
-
-    private const SLOT_CONSUMING_STATUSES = ['pending', 'confirmed', 'approved', 'scheduled', 'rescheduled', 'completed', 'complete', 'done'];
+    private const SLOT_CONSUMING_STATUSES = ['confirmed', 'approved', 'scheduled', 'rescheduled', 'checked_in', 'completed', 'complete', 'done'];
 
     private const CANCELLATION_STATUSES = ['cancelled', 'canceled', 'rejected', 'declined'];
 
     private const NO_SHOW_STATUSES = ['no_show', 'no show', 'noshow'];
 
-    public function bookingReadiness(Donor $donor): array
+    public function bookingReadiness(Donor $donor, ?Carbon $eventDate = null): array
     {
         $messages = [];
 
@@ -37,9 +35,9 @@ class AppointmentBookingService
         }
 
         $latestEligibility = $this->latestEligibility($donor);
-        if (! $this->eligibilityAllowsBooking($latestEligibility)) {
+        if (! $this->eligibilityAllowsBooking($latestEligibility, $eventDate)) {
             $messages[] = $latestEligibility
-                ? 'Your latest eligibility result must be eligible before booking.'
+                ? 'Your latest eligibility result must be eligible for the selected event date before booking.'
                 : 'Please complete eligibility screening before booking an appointment.';
         }
 
@@ -50,18 +48,13 @@ class AppointmentBookingService
         ];
     }
 
-    public function book(Donor $donor, int $eventId, ?Request $request = null): Appointment
+    public function book(Donor $donor, int $eventId, ?Request $request = null, ?string $appointmentTime = null): Appointment
     {
-        return DB::transaction(function () use ($donor, $eventId, $request): Appointment {
+        return DB::transaction(function () use ($donor, $eventId, $request, $appointmentTime): Appointment {
             $donor = Donor::query()
                 ->where('donor_id', $donor->donor_id)
                 ->lockForUpdate()
                 ->firstOrFail();
-
-            $readiness = $this->bookingReadiness($donor);
-            if (! $readiness['allowed']) {
-                $this->fail('event_id', $readiness['messages'][0] ?? 'You are not allowed to book an appointment yet.');
-            }
 
             $event = DonationEvent::query()
                 ->where('event_id', $eventId)
@@ -70,6 +63,11 @@ class AppointmentBookingService
 
             if (! $event) {
                 $this->fail('event_id', 'The selected donation event could not be found.');
+            }
+
+            $readiness = $this->bookingReadiness($donor, Carbon::parse($event->event_date));
+            if (! $readiness['allowed']) {
+                $this->fail('event_id', $readiness['messages'][0] ?? 'You are not allowed to book an appointment yet.');
             }
 
             if (! $this->eventAcceptsBookings($event)) {
@@ -84,16 +82,14 @@ class AppointmentBookingService
                 $this->fail('event_id', 'You already have a booking for this donation event.');
             }
 
-            if ($this->hasConflictingFutureBooking((int) $donor->donor_id)) {
-                $this->fail('event_id', 'You already have an active future appointment. Please cancel it before booking another one.');
-            }
+            $confirmedTime = $this->appointmentTimeForEvent($event, $appointmentTime);
 
             $appointment = Appointment::query()->create([
                 'donor_id' => $donor->donor_id,
                 'event_id' => $event->event_id,
                 'appointment_date' => Carbon::parse($event->event_date)->toDateString(),
-                'appointment_time' => $event->start_time,
-                'status' => 'pending',
+                'appointment_time' => $confirmedTime,
+                'status' => 'confirmed',
                 'created_at' => now(),
                 'updated_at' => now(),
                 'admin_id' => null,
@@ -106,13 +102,13 @@ class AppointmentBookingService
             $this->createDonorNotification(
                 (int) $donor->donor_id,
                 'appointment_booked',
-                "Your appointment {$appointmentCode} for {$eventTitle} has been booked and is pending approval."
+                "Your appointment {$appointmentCode} for {$eventTitle} on " . Carbon::parse($event->event_date)->format('M j, Y') . " at " . Carbon::parse($confirmedTime)->format('g:i A') . ' has been confirmed.'
             );
 
             app(AdminNotificationService::class)->createAdminEvent(
                 'appointment_booked',
                 'Appointment Booked',
-                $this->donorName($donor) . " booked {$appointmentCode} for {$eventTitle}.",
+                $this->donorName($donor) . " booked confirmed appointment {$appointmentCode} for {$eventTitle}.",
                 'appointment',
                 (int) $appointment->appointment_id
             );
@@ -121,7 +117,7 @@ class AppointmentBookingService
                 'appointment_id' => (int) $appointment->appointment_id,
                 'donor_id' => (int) $donor->donor_id,
                 'event_id' => (int) $event->event_id,
-                'status' => 'pending',
+                'status' => 'confirmed',
             ]);
 
             return $appointment->fresh(['event']) ?? $appointment;
@@ -145,6 +141,10 @@ class AppointmentBookingService
 
             if (in_array($normalizedStatus, ['cancelled', 'completed', 'no_show'], true)) {
                 $this->fail('appointment_id', 'This appointment can no longer be cancelled.');
+            }
+
+            if ($appointment->appointment_date && Carbon::parse($appointment->appointment_date)->lt(Carbon::today())) {
+                $this->fail('appointment_id', 'Past appointments can no longer be cancelled.');
             }
 
             $appointment->fill([
@@ -209,6 +209,10 @@ class AppointmentBookingService
             return 'completed';
         }
 
+        if (in_array($status, ['checked_in', 'checked in'], true)) {
+            return 'checked_in';
+        }
+
         if (in_array($status, self::CANCELLATION_STATUSES, true)) {
             return 'cancelled';
         }
@@ -233,11 +237,11 @@ class AppointmentBookingService
         $status = strtolower(trim($status));
 
         return match ($status) {
-            'open', 'upcoming' => 'upcoming',
-            'ongoing' => 'ongoing',
+            'open', 'upcoming', 'ongoing' => 'open',
+            'closed' => 'closed',
             'cancelled', 'canceled' => 'cancelled',
-            'closed', 'completed', 'complete', 'done' => 'completed',
-            default => 'upcoming',
+            'completed', 'complete', 'done' => 'completed',
+            default => 'closed',
         };
     }
 
@@ -248,20 +252,21 @@ class AppointmentBookingService
 
         return [
             'event_id' => (int) $event->event_id,
+            'title' => (string) $event->title,
             'event_name' => (string) $event->title,
-            'description' => (string) ($event->description ?? ''),
+            'location_name' => (string) $event->location_name,
             'venue' => (string) $event->location_name,
             'address' => (string) ($event->address ?? ''),
-            'latitude' => $event->latitude !== null ? (float) $event->latitude : null,
-            'longitude' => $event->longitude !== null ? (float) $event->longitude : null,
             'event_date' => $event->event_date ? Carbon::parse($event->event_date)->toDateString() : null,
             'start_time' => $event->start_time ? (string) $event->start_time : null,
             'end_time' => $event->end_time ? (string) $event->end_time : null,
+            'max_capacity' => $capacity,
             'maximum_slots' => $capacity,
+            'confirmed_count' => $booked,
             'booked_slots' => $booked,
             'remaining_slots' => max(0, $capacity - $booked),
-            'blood_types_needed' => $event->bloodTypesNeeded(),
             'status' => $this->normalizeEventStatus((string) $event->status),
+            'availability_status' => $this->availabilityStatus($event),
             'accepts_bookings' => $this->eventAcceptsBookings($event),
         ];
     }
@@ -323,7 +328,7 @@ class AppointmentBookingService
             ->first();
     }
 
-    private function eligibilityAllowsBooking(?EligibilityStatus $eligibility): bool
+    private function eligibilityAllowsBooking(?EligibilityStatus $eligibility, ?Carbon $eventDate = null): bool
     {
         if (! $eligibility) {
             return false;
@@ -335,7 +340,7 @@ class AppointmentBookingService
         }
 
         if (! empty($eligibility->next_eligible_date)) {
-            return Carbon::parse($eligibility->next_eligible_date)->lte(Carbon::today());
+            return Carbon::parse($eligibility->next_eligible_date)->lte($eventDate ?? Carbon::today());
         }
 
         return true;
@@ -344,7 +349,7 @@ class AppointmentBookingService
     private function eventAcceptsBookings(DonationEvent $event): bool
     {
         $status = $this->normalizeEventStatus((string) $event->status);
-        if (! in_array($status, ['upcoming', 'ongoing'], true)) {
+        if ($status !== 'open') {
             return false;
         }
 
@@ -364,13 +369,50 @@ class AppointmentBookingService
             ->exists();
     }
 
-    private function hasConflictingFutureBooking(int $donorId): bool
+    private function appointmentTimeForEvent(DonationEvent $event, ?string $appointmentTime): string
     {
-        return Appointment::query()
-            ->where('donor_id', $donorId)
-            ->whereDate('appointment_date', '>=', Carbon::today()->toDateString())
-            ->whereRaw("LOWER(COALESCE(status, '')) IN (" . $this->placeholders(self::BOOKING_STATUSES) . ')', self::BOOKING_STATUSES)
-            ->exists();
+        $start = $event->start_time ? Carbon::parse($event->start_time) : null;
+        $end = $event->end_time ? Carbon::parse($event->end_time) : null;
+        $chosen = trim((string) $appointmentTime);
+
+        if ($chosen === '' && $start instanceof Carbon) {
+            return $start->format('H:i:s');
+        }
+
+        if ($chosen === '') {
+            $this->fail('appointment_time', 'Please choose an appointment time.');
+        }
+
+        try {
+            $time = Carbon::createFromFormat(strlen($chosen) === 5 ? 'H:i' : 'H:i:s', $chosen);
+        } catch (Throwable) {
+            $this->fail('appointment_time', 'Please choose a valid appointment time.');
+        }
+
+        if ($start instanceof Carbon && $time->lt($start)) {
+            $this->fail('appointment_time', 'The appointment time must be within the selected event schedule.');
+        }
+
+        if ($end instanceof Carbon && $time->gt($end)) {
+            $this->fail('appointment_time', 'The appointment time must be within the selected event schedule.');
+        }
+
+        return $time->format('H:i:s');
+    }
+
+    private function availabilityStatus(DonationEvent $event): string
+    {
+        $status = $this->normalizeEventStatus((string) $event->status);
+
+        if ($status !== 'open') {
+            return $status;
+        }
+
+        if (! $event->event_date || Carbon::parse($event->event_date)->lt(Carbon::today())) {
+            return 'past';
+        }
+
+        return $this->remainingSlots($event) > 0 ? 'available' : 'full';
     }
 
     private function createDonorNotification(int $donorId, string $type, string $message): void

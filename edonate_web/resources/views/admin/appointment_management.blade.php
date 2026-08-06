@@ -15,7 +15,7 @@
 @section('render_default_hamburger', 'false')
 
 @section('header_title', 'Appointment Management')
-@section('header_subtitle', 'Approve, reject, or reschedule donation appointments')
+@section('header_subtitle', 'Track auto-confirmed appointments and manage operational exceptions')
 
 @section('header_slot')
     <button class="hamburger" id="appointmentHamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="appointmentSidebar">
@@ -61,7 +61,7 @@
             </div>
             <div class="col-6 col-xl-3">
                 <article class="stat-card appointment-stat appointment-stat--gold h-100">
-                    <p class="appointment-stat__label">Pending Approval</p>
+                    <p class="appointment-stat__label">Legacy Pending</p>
                     <p class="appointment-stat__value" id="appointmentStatPending">0</p>
                 </article>
             </div>
@@ -120,7 +120,9 @@
                     <option value="pending">Pending</option>
                     <option value="cancelled">Cancelled</option>
                     <option value="rescheduled">Rescheduled</option>
+                    <option value="checked_in">Checked In</option>
                     <option value="completed">Completed</option>
+                    <option value="no_show">No Show</option>
                 </select>
                 <span class="appointment-filter__chevron" aria-hidden="true">
                     <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -409,7 +411,7 @@
 
         function normalizeStatus(value) {
             var status = String(value || '').toLowerCase();
-            if (['confirmed', 'pending', 'cancelled', 'rescheduled', 'completed'].indexOf(status) !== -1) {
+            if (['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'no_show'].indexOf(status) !== -1) {
                 return status;
             }
             return 'pending';
@@ -428,6 +430,12 @@
             }
             if (status === 'completed') {
                 return 'Completed';
+            }
+            if (status === 'checked_in') {
+                return 'Checked In';
+            }
+            if (status === 'no_show') {
+                return 'No Show';
             }
             return 'Pending';
         }

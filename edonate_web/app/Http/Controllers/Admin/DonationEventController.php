@@ -3,20 +3,24 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\BloodType;
 use App\Models\DonationEvent;
 use App\Services\AppointmentBookingService;
+use App\Services\DonationEventService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
 use Throwable;
 
 class DonationEventController extends Controller
 {
-    public function __construct(private readonly AppointmentBookingService $bookingService)
+    public function __construct(
+        private readonly AppointmentBookingService $bookingService,
+        private readonly DonationEventService $eventService
+    )
     {
     }
 
@@ -28,11 +32,6 @@ class DonationEventController extends Controller
                     'listUrl' => route('admin.donation-events.data'),
                     'storeUrl' => route('admin.donation-events.store'),
                 ],
-                'bloodTypes' => BloodType::query()
-                    ->orderBy('blood_type')
-                    ->pluck('blood_type')
-                    ->values()
-                    ->all(),
             ],
         ]);
     }
@@ -43,10 +42,11 @@ class DonationEventController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
-            'status' => ['nullable', 'string', Rule::in(['', 'upcoming', 'ongoing', 'completed', 'cancelled'])],
+            'date' => ['nullable', 'date'],
+            'status' => ['nullable', 'string', Rule::in(['', 'open', 'closed', 'completed', 'cancelled'])],
         ]);
 
-        $query = DonationEvent::query();
+        $query = DonationEvent::query()->with('creator');
         $search = trim((string) ($validated['search'] ?? ''));
         $status = Str::lower(trim((string) ($validated['status'] ?? '')));
 
@@ -60,7 +60,11 @@ class DonationEventController extends Controller
         }
 
         if ($status !== '') {
-            $query->whereIn('status', $this->storageStatusesFor($status));
+            $query->where('status', $status);
+        }
+
+        if (! empty($validated['date'])) {
+            $query->whereDate('event_date', $validated['date']);
         }
 
         $page = (int) ($validated['page'] ?? 1);
@@ -89,7 +93,7 @@ class DonationEventController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $payload = $this->validatedPayload($request);
+        $payload = $this->validatedPayload($request, null, true);
         $payload['created_by_admin_id'] = is_numeric($request->session()->get('admin_id'))
             ? (int) $request->session()->get('admin_id')
             : null;
@@ -107,17 +111,21 @@ class DonationEventController extends Controller
         ], 201);
     }
 
-    public function show(DonationEvent $event): JsonResponse
+    public function show(Request $request, DonationEvent $event)
     {
+        if (! $request->expectsJson() && ! $request->ajax()) {
+            return $this->bookings($request, $event);
+        }
+
         return response()->json([
-            'event' => $this->eventResponse($event),
+            'event' => $this->eventResponse($event->loadMissing('creator')),
         ]);
     }
 
     public function update(Request $request, DonationEvent $event): JsonResponse
     {
         $before = $this->eventResponse($event);
-        $event->fill($this->validatedPayload($request));
+        $event->fill($this->validatedPayload($request, $event, false));
         $event->save();
 
         $this->logEventAudit($request, 'donation_event_updated', "Updated donation event {$event->title}.", (int) $event->event_id, [
@@ -132,58 +140,142 @@ class DonationEventController extends Controller
         ]);
     }
 
-    public function destroy(Request $request, DonationEvent $event): JsonResponse
+    public function destroy(): JsonResponse
     {
-        $eventId = (int) $event->event_id;
-        $title = (string) $event->title;
-        $event->delete();
+        return response()->json([
+            'message' => 'Donation events are retained for audit history. Close or cancel the event instead.',
+        ], 405);
+    }
 
-        $this->logEventAudit($request, 'donation_event_deleted', "Deleted donation event {$title}.", $eventId, [
-            'event_id' => $eventId,
-            'title' => $title,
+    public function open(Request $request, DonationEvent $event): JsonResponse
+    {
+        return $this->changeStatus($request, $event, 'open', 'Donation event opened.');
+    }
+
+    public function close(Request $request, DonationEvent $event): JsonResponse
+    {
+        return $this->changeStatus($request, $event, 'closed', 'Donation event closed.');
+    }
+
+    public function complete(Request $request, DonationEvent $event): JsonResponse
+    {
+        return $this->changeStatus($request, $event, 'completed', 'Donation event marked as completed.');
+    }
+
+    public function cancel(Request $request, DonationEvent $event): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
-        return response()->json([
-            'message' => 'Donation event deleted.',
+        return $this->changeStatus($request, $event, 'cancelled', 'Donation event cancelled.', $validated['reason'] ?? null);
+    }
+
+    public function bookings(Request $request, DonationEvent $event)
+    {
+        $validated = $request->validate([
+            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'checked_in', 'completed', 'cancelled', 'no_show'])],
+        ]);
+
+        $status = Str::lower(trim((string) ($validated['status'] ?? '')));
+        $statusExpression = "CASE
+            WHEN LOWER(COALESCE(ap.status, '')) IN ('confirmed', 'approved', 'scheduled', 'rescheduled') THEN 'confirmed'
+            WHEN LOWER(COALESCE(ap.status, '')) IN ('checked_in', 'checked in') THEN 'checked_in'
+            WHEN LOWER(COALESCE(ap.status, '')) IN ('completed', 'complete', 'done') THEN 'completed'
+            WHEN LOWER(COALESCE(ap.status, '')) IN ('cancelled', 'canceled', 'rejected', 'declined') THEN 'cancelled'
+            WHEN LOWER(COALESCE(ap.status, '')) IN ('no_show', 'no show', 'noshow') THEN 'no_show'
+            ELSE 'pending'
+        END";
+
+        $query = DB::table('appointments as ap')
+            ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
+            ->leftJoinSub(
+                DB::table('donor_authentication')->select('donor_id', DB::raw('MAX(auth_id) as latest_auth_id'))->groupBy('donor_id'),
+                'da_latest',
+                fn ($join) => $join->on('da_latest.donor_id', '=', 'd.donor_id')
+            )
+            ->leftJoin('donor_authentication as da', 'da.auth_id', '=', 'da_latest.latest_auth_id')
+            ->leftJoinSub(
+                DB::table('eligibility_status')->select('donor_id', DB::raw('MAX(eligibility_id) as latest_eligibility_id'))->groupBy('donor_id'),
+                'es_latest',
+                fn ($join) => $join->on('es_latest.donor_id', '=', 'd.donor_id')
+            )
+            ->leftJoin('eligibility_status as es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
+            ->where('ap.event_id', $event->event_id)
+            ->select([
+                'ap.appointment_id',
+                'ap.appointment_date',
+                'ap.appointment_time',
+                'ap.status',
+                'ap.created_at',
+                'd.donor_id',
+                'd.first_name',
+                'd.last_name',
+                'd.verification_status',
+                'da.email',
+                'es.status as latest_eligibility_status',
+            ])
+            ->selectRaw("({$statusExpression}) as normalized_status");
+
+        if ($status !== '') {
+            $query->whereRaw("({$statusExpression}) = ?", [$status]);
+        }
+
+        $appointments = $query
+            ->orderBy('ap.appointment_time')
+            ->orderBy('ap.appointment_id')
+            ->paginate(15)
+            ->withQueryString();
+
+        return view('admin.donation_event_show', [
+            'event' => $event->loadMissing('creator'),
+            'eventPayload' => $this->eventResponse($event),
+            'appointments' => $appointments,
+            'filters' => ['status' => $status],
         ]);
     }
 
-    private function validatedPayload(Request $request): array
+    private function validatedPayload(Request $request, ?DonationEvent $event, bool $creating): array
     {
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:150'],
-            'description' => ['nullable', 'string', 'max:5000'],
             'location_name' => ['required', 'string', 'max:150'],
             'address' => ['nullable', 'string', 'max:5000'],
-            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'event_date' => ['required', 'date'],
-            'start_time' => ['nullable', 'date_format:H:i'],
-            'end_time' => ['nullable', 'date_format:H:i', 'after:start_time'],
+            'event_date' => ['required', 'date', $creating ? 'after_or_equal:today' : 'date'],
+            'start_time' => ['required', 'date_format:H:i'],
+            'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
             'max_capacity' => ['required', 'integer', 'min:1', 'max:100000'],
-            'blood_types_needed' => ['nullable', 'array'],
-            'blood_types_needed.*' => ['string', 'max:5'],
-            'status' => ['required', Rule::in(['upcoming', 'ongoing', 'completed', 'cancelled', 'open', 'closed'])],
+            'status' => ['required', Rule::in(['open', 'closed', 'completed', 'cancelled'])],
         ]);
 
-        $validated['status'] = $this->storageStatus((string) $validated['status']);
-        $validated['blood_types_needed'] = json_encode($this->cleanBloodTypes($validated['blood_types_needed'] ?? []));
+        if ($event instanceof DonationEvent && (int) $validated['max_capacity'] < $this->eventService->bookedSlotCount((int) $event->event_id)) {
+            throw ValidationException::withMessages([
+                'max_capacity' => 'The capacity cannot be lower than the number of currently confirmed appointments.',
+            ]);
+        }
 
         return $validated;
     }
 
     private function eventResponse(DonationEvent $event): array
     {
-        return $this->bookingService->eventPayload($event);
+        $payload = $this->bookingService->eventPayload($event);
+        $payload['created_by'] = $event->relationLoaded('creator')
+            ? ($event->creator?->full_name ?: $event->creator?->username)
+            : DB::table('admins')->where('admin_id', $event->created_by_admin_id)->value('full_name');
+
+        return $payload;
     }
 
     private function statusStats(): array
     {
         $stats = [
-            'upcoming' => 0,
-            'ongoing' => 0,
+            'open' => 0,
+            'closed' => 0,
             'completed' => 0,
             'cancelled' => 0,
+            'total_confirmed_bookings' => $this->totalConfirmedBookings(),
+            'full' => 0,
         ];
 
         DonationEvent::query()
@@ -192,45 +284,54 @@ class DonationEventController extends Controller
             ->get()
             ->each(function (object $row) use (&$stats): void {
                 $status = $this->bookingService->normalizeEventStatus((string) ($row->status ?? ''));
-                $stats[$status] = ($stats[$status] ?? 0) + (int) ($row->total ?? 0);
+                if (isset($stats[$status])) {
+                    $stats[$status] += (int) ($row->total ?? 0);
+                }
             });
+
+        DonationEvent::query()->get()->each(function (DonationEvent $event) use (&$stats): void {
+            if ($this->bookingService->eventPayload($event)['availability_status'] === 'full') {
+                $stats['full']++;
+            }
+        });
 
         return $stats;
     }
 
-    private function storageStatus(string $status): string
+    private function totalConfirmedBookings(): int
     {
-        $status = Str::lower(trim($status));
-
-        return match ($status) {
-            'open' => 'upcoming',
-            'closed' => 'completed',
-            'ongoing' => 'ongoing',
-            'completed' => 'completed',
-            'cancelled', 'canceled' => 'cancelled',
-            default => 'upcoming',
-        };
+        return (int) DB::table('appointments')
+            ->whereNotNull('event_id')
+            ->whereRaw("LOWER(COALESCE(status, '')) IN ('confirmed','approved','scheduled','rescheduled','checked_in','checked in','completed','complete','done')")
+            ->count();
     }
 
-    private function storageStatusesFor(string $status): array
-    {
-        return match ($status) {
-            'upcoming' => ['upcoming', 'open'],
-            'completed' => ['completed', 'closed'],
-            'cancelled' => ['cancelled', 'canceled'],
-            'ongoing' => ['ongoing'],
-            default => [$this->storageStatus($status)],
-        };
-    }
+    private function changeStatus(
+        Request $request,
+        DonationEvent $event,
+        string $status,
+        string $message,
+        ?string $reason = null
+    ): JsonResponse {
+        $before = $this->eventResponse($event);
 
-    private function cleanBloodTypes(array $bloodTypes): array
-    {
-        return collect($bloodTypes)
-            ->map(fn ($type): string => strtoupper(trim((string) $type)))
-            ->filter(fn (string $type): bool => $type !== '')
-            ->unique()
-            ->values()
-            ->all();
+        try {
+            $updated = $this->eventService->changeStatus($event, $status, $reason);
+        } catch (\DomainException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
+
+        $this->logEventAudit($request, 'donation_event_' . $status, $message, (int) $updated->event_id, [
+            'event_id' => (int) $updated->event_id,
+            'before' => $before,
+            'after' => $this->eventResponse($updated),
+            'reason' => $reason,
+        ]);
+
+        return response()->json([
+            'message' => $message,
+            'event' => $this->eventResponse($updated),
+        ]);
     }
 
     private function logEventAudit(Request $request, string $actionType, string $description, int $eventId, array $metadata = []): void

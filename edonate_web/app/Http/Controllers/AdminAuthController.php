@@ -866,7 +866,7 @@ class AdminAuthController extends BaseController
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
             'center' => ['nullable', 'string', 'max:150'],
-            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'completed'])],
+            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'no_show'])],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
@@ -938,6 +938,9 @@ class AdminAuthController extends BaseController
                 'pending' => (int) ($statusCounts['pending'] ?? 0),
                 'cancelled' => (int) ($statusCounts['cancelled'] ?? 0),
                 'rescheduled' => (int) ($statusCounts['rescheduled'] ?? 0),
+                'checked_in' => (int) ($statusCounts['checked_in'] ?? 0),
+                'completed' => (int) ($statusCounts['completed'] ?? 0),
+                'no_show' => (int) ($statusCounts['no_show'] ?? 0),
             ],
             'filters' => [
                 'centers' => $this->appointmentManagementCenterOptions(),
@@ -1174,6 +1177,96 @@ class AdminAuthController extends BaseController
         ]);
 
         return response()->json(['message' => 'Appointment completed and donation record created.']);
+    }
+
+    public function cancelAppointment(Request $request, int $appointment): JsonResponse
+    {
+        $validated = $request->validate([
+            'cancellation_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
+        if (!$row) {
+            return response()->json(['message' => 'Appointment not found.'], 404);
+        }
+
+        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
+        if (in_array($normalized, ['cancelled', 'completed', 'no_show'], true)) {
+            return response()->json(['message' => 'This appointment can no longer be cancelled.'], 422);
+        }
+
+        $actorAdminId = is_numeric($request->session()->get('admin_id'))
+            ? (int) $request->session()->get('admin_id')
+            : null;
+
+        DB::table('appointments')->where('appointment_id', $appointment)->update([
+            'status' => 'cancelled',
+            'cancellation_reason' => $validated['cancellation_reason'] ?? null,
+            'admin_id' => $actorAdminId,
+        ]);
+
+        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
+        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+
+        $this->createDonorNotification($donorId, 'appointment_cancelled', "Your appointment {$appointmentCode} has been cancelled.");
+        app(AdminNotificationService::class)->createAdminEvent(
+            'appointment_cancelled',
+            'Appointment Cancellation',
+            "Appointment {$appointmentCode} has been cancelled.",
+            'appointment',
+            $appointment
+        );
+        $this->logAppointmentAudit($request, 'appointment_cancelled', "Cancelled appointment {$appointmentCode}.", $appointment, [
+            'appointment_id' => $appointment,
+            'donor_id' => $donorId,
+            'previous_status' => $row->status ?? null,
+            'new_status' => 'cancelled',
+            'reason' => $validated['cancellation_reason'] ?? null,
+        ]);
+
+        return response()->json(['message' => 'Appointment cancelled.']);
+    }
+
+    public function markNoShowAppointment(Request $request, int $appointment): JsonResponse
+    {
+        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
+        if (!$row) {
+            return response()->json(['message' => 'Appointment not found.'], 404);
+        }
+
+        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
+        if (! in_array($normalized, ['confirmed', 'rescheduled', 'checked_in'], true)) {
+            return response()->json(['message' => 'Only active appointments can be marked as no-show.'], 422);
+        }
+
+        $actorAdminId = is_numeric($request->session()->get('admin_id'))
+            ? (int) $request->session()->get('admin_id')
+            : null;
+
+        DB::table('appointments')->where('appointment_id', $appointment)->update([
+            'status' => 'no_show',
+            'admin_id' => $actorAdminId,
+        ]);
+
+        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
+        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+
+        $this->createDonorNotification($donorId, 'appointment_no_show', "Your appointment {$appointmentCode} was marked as no-show.");
+        app(AdminNotificationService::class)->createAdminEvent(
+            'appointment_no_show',
+            'Appointment No-Show',
+            "Appointment {$appointmentCode} was marked as no-show.",
+            'appointment',
+            $appointment
+        );
+        $this->logAppointmentAudit($request, 'appointment_no_show', "Marked appointment {$appointmentCode} as no-show.", $appointment, [
+            'appointment_id' => $appointment,
+            'donor_id' => $donorId,
+            'previous_status' => $row->status ?? null,
+            'new_status' => 'no_show',
+        ]);
+
+        return response()->json(['message' => 'Appointment marked as no-show.']);
     }
 
     /**
@@ -3113,8 +3206,11 @@ class AdminAuthController extends BaseController
 IN ('confirmed', 'approved', 'scheduled') THEN 'confirmed'
 WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) 
 IN ('completed', 'complete', 'done') THEN 'completed'
+WHEN LOWER(COALESCE({$appointmentsAlias}.status, ''))
+IN ('checked_in', 'checked in') THEN 'checked_in'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('pending', 'pending approval', 'for approval') THEN 'pending'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('cancelled', 'canceled', 'rejected', 'declined') THEN 'cancelled'
+            WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('no_show', 'no show', 'noshow') THEN 'no_show'
             WHEN LOWER(COALESCE({$appointmentsAlias}.status, '')) IN ('rescheduled', 'reschedule requested') THEN 'rescheduled'
             ELSE 'pending'
         END";
@@ -3133,6 +3229,9 @@ IN ('completed', 'complete', 'done') THEN 'completed'
 if (in_array($status, ['completed', 'complete', 'done'], true)) {
     return 'completed';
 }
+        if (in_array($status, ['checked_in', 'checked in'], true)) {
+            return 'checked_in';
+        }
         if (in_array($status, ['pending', 'pending approval', 'for approval'], true)) {
             return 'pending';
         }
@@ -3141,6 +3240,9 @@ if (in_array($status, ['completed', 'complete', 'done'], true)) {
         }
         if (in_array($status, ['rescheduled', 'reschedule requested'], true)) {
             return 'rescheduled';
+        }
+        if (in_array($status, ['no_show', 'no show', 'noshow'], true)) {
+            return 'no_show';
         }
 
         return 'pending';
@@ -3189,7 +3291,7 @@ if (in_array($status, ['completed', 'complete', 'done'], true)) {
         }
 
         $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
-if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'completed'], true)) {
+if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'no_show'], true)) {
     $status = 'pending';
 }
 

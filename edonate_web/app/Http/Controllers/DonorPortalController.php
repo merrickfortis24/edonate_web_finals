@@ -17,6 +17,7 @@ use App\Services\AppointmentBookingService;
 use App\Services\EligibilityEvaluator;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,7 +38,7 @@ class DonorPortalController extends Controller
         $bookingReadiness = $bookingService->bookingReadiness($context['donor']);
         $eventOptions = DonationEvent::query()
             ->whereDate('event_date', '>=', Carbon::today()->toDateString())
-            ->whereIn('status', ['open', 'upcoming', 'ongoing'])
+            ->where('status', 'open')
             ->orderBy('event_date')
             ->orderBy('start_time')
             ->get()
@@ -72,13 +73,42 @@ class DonorPortalController extends Controller
 
         $validated = $request->validate([
             'event_id' => ['required', 'integer', 'exists:donation_events,event_id'],
+            'appointment_time' => ['required', 'date_format:H:i'],
         ]);
 
-        app(AppointmentBookingService::class)->book($context['donor'], (int) $validated['event_id'], $request);
+        app(AppointmentBookingService::class)->book(
+            $context['donor'],
+            (int) $validated['event_id'],
+            $request,
+            (string) $validated['appointment_time']
+        );
 
         return redirect()
             ->route('donor.book-appointment')
-            ->with('success', 'Appointment booked successfully.');
+            ->with('success', 'Appointment confirmed successfully.');
+    }
+
+    public function availableEvents(Request $request): JsonResponse
+    {
+        $context = $this->buildContext($request, 'book');
+        if ($context instanceof RedirectResponse) {
+            return response()->json(['message' => 'Please log in to continue.'], 401);
+        }
+
+        $bookingService = app(AppointmentBookingService::class);
+        $events = DonationEvent::query()
+            ->whereDate('event_date', '>=', Carbon::today()->toDateString())
+            ->where('status', 'open')
+            ->orderBy('event_date')
+            ->orderBy('start_time')
+            ->get()
+            ->map(fn (DonationEvent $event): array => $bookingService->eventPayload($event))
+            ->values();
+
+        return response()->json([
+            'data' => $events,
+            'booking_readiness' => $bookingService->bookingReadiness($context['donor']),
+        ]);
     }
 
     public function cancelAppointment(Request $request, int $appointment): RedirectResponse
