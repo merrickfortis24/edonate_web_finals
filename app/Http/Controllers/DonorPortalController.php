@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Appointment;
 use App\Models\BloodType;
+use App\Models\DonationEvent;
 use App\Models\DonationRecord;
 use App\Models\Donor;
 use App\Models\DonorScreeningAnswer;
@@ -12,6 +13,7 @@ use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Models\Notification;
 use App\Services\AdminNotificationService;
+use App\Services\AppointmentBookingService;
 use App\Services\EligibilityEvaluator;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -31,25 +33,20 @@ class DonorPortalController extends Controller
             return $context;
         }
 
-        $canBookAppointment = $this->donorCanBookAppointment($context['donor']);
-        $timeSlots = [
-            '08:00',
-            '09:00',
-            '10:00',
-            '11:00',
-            '13:00',
-            '14:00',
-            '15:00',
-        ];
-
-        [$availableDates, $fullyBookedDates] = $this->buildCalendarAvailability(
-            (int) $context['donor']->donor_id,
-            Carbon::today(),
-            60,
-            count($timeSlots)
-        );
+        $bookingService = app(AppointmentBookingService::class);
+        $bookingReadiness = $bookingService->bookingReadiness($context['donor']);
+        $eventOptions = DonationEvent::query()
+            ->whereDate('event_date', '>=', Carbon::today()->toDateString())
+            ->whereIn('status', ['open', 'upcoming', 'ongoing'])
+            ->orderBy('event_date')
+            ->orderBy('start_time')
+            ->get()
+            ->map(fn (DonationEvent $event): array => $bookingService->eventPayload($event))
+            ->filter(fn (array $event): bool => (bool) ($event['accepts_bookings'] ?? false))
+            ->values();
 
         $appointments = Appointment::query()
+            ->with('event')
             ->where('donor_id', $context['donor']->donor_id)
             ->whereDate('appointment_date', '>=', Carbon::today())
             ->orderBy('appointment_date')
@@ -59,10 +56,9 @@ class DonorPortalController extends Controller
 
         return view('portal.book-appointment', $context + [
             'appointments' => $appointments,
-            'timeSlots' => $timeSlots,
-            'availableDates' => $availableDates,
-            'fullyBookedDates' => $fullyBookedDates,
-            'canBookAppointment' => $canBookAppointment,
+            'eventOptions' => $eventOptions,
+            'bookingReadiness' => $bookingReadiness,
+            'canBookAppointment' => (bool) ($bookingReadiness['allowed'] ?? false),
             'identityVerificationStatus' => $this->donorVerificationStatus($context['donor']),
         ]);
     }
@@ -74,83 +70,38 @@ class DonorPortalController extends Controller
             return $context;
         }
 
-        if (! $this->donorCanBookAppointment($context['donor'])) {
-            return redirect()
-                ->route('donor.book-appointment')
-                ->withInput()
-                ->with('error', 'Please verify your identity before booking a donation appointment.');
-        }
-
-        $timeSlots = [
-            '08:00',
-            '09:00',
-            '10:00',
-            '11:00',
-            '13:00',
-            '14:00',
-            '15:00',
-        ];
-
-        [$availableDates, $fullyBookedDates] = $this->buildCalendarAvailability(
-            (int) $context['donor']->donor_id,
-            Carbon::today(),
-            60,
-            count($timeSlots)
-        );
-
         $validated = $request->validate([
-            'donation_date' => ['required', 'date', 'after_or_equal:today'],
-            'time_slot' => ['required', 'date_format:H:i'],
-            'donation_center' => ['nullable', 'string', 'max:150'],
+            'event_id' => ['required', 'integer', 'exists:donation_events,event_id'],
         ]);
 
-        if (!in_array($validated['donation_date'], $availableDates, true)) {
-            return redirect()
-                ->route('donor.book-appointment')
-                ->withInput()
-                ->with('error', 'The selected date is not available for booking.');
-        }
-
-        if (!in_array($validated['time_slot'], $timeSlots, true)) {
-            return redirect()
-                ->route('donor.book-appointment')
-                ->withInput()
-                ->with('error', 'Please choose a valid time slot.');
-        }
-
-        $slotTaken = Appointment::query()
-            ->where('appointment_date', $validated['donation_date'])
-            ->where('appointment_time', $validated['time_slot'])
-            ->exists();
-
-        if ($slotTaken) {
-            return redirect()
-                ->route('donor.book-appointment')
-                ->withInput()
-                ->with('error', 'That schedule is already taken. Please select another time.');
-        }
-
-        $appointment = Appointment::query()->create([
-            'donor_id' => $context['donor']->donor_id,
-            'appointment_date' => $validated['donation_date'],
-            'appointment_time' => $validated['time_slot'],
-            'status' => 'pending',
-            'created_at' => Carbon::now(),
-            'admin_id' => null,
-        ]);
-
-        $donorName = trim((string) $context['donor']->first_name . ' ' . (string) $context['donor']->last_name);
-        app(AdminNotificationService::class)->createAdminEvent(
-            'appointment_booked',
-            'Appointment Booked',
-            "{$donorName} booked an appointment for {$validated['donation_date']} at {$validated['time_slot']}.",
-            'appointment',
-            (int) $appointment->appointment_id
-        );
+        app(AppointmentBookingService::class)->book($context['donor'], (int) $validated['event_id'], $request);
 
         return redirect()
             ->route('donor.book-appointment')
             ->with('success', 'Appointment booked successfully.');
+    }
+
+    public function cancelAppointment(Request $request, int $appointment): RedirectResponse
+    {
+        $context = $this->buildContext($request, 'book');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        $validated = $request->validate([
+            'cancellation_reason' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        app(AppointmentBookingService::class)->cancel(
+            $context['donor'],
+            $appointment,
+            $validated['cancellation_reason'] ?? null,
+            $request
+        );
+
+        return redirect()
+            ->route('donor.book-appointment')
+            ->with('success', 'Appointment cancelled successfully.');
     }
 
     public function checkEligibility(Request $request)
@@ -398,7 +349,7 @@ class DonorPortalController extends Controller
 
     private function donorCanBookAppointment(Donor $donor): bool
     {
-        return $this->donorVerificationStatus($donor) === 'verified';
+        return (bool) app(AppointmentBookingService::class)->bookingReadiness($donor)['allowed'];
     }
 
     private function donorVerificationStatus(Donor $donor): string

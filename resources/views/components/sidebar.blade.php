@@ -22,6 +22,7 @@
         ['label' => 'Dashboard', 'route' => 'staff.dashboard', 'active' => ['staff.dashboard*'], 'roles' => ['staff']],
         ['label' => 'User Management', 'route' => 'admin.users', 'active' => ['admin.users*'], 'roles' => ['admin']],
         ['label' => 'Donor Verification', 'route' => 'admin.donor-verifications.index', 'active' => ['admin.donor-verifications*'], 'roles' => ['admin']],
+        ['label' => 'Donation Events', 'route' => 'admin.donation-events.index', 'active' => ['admin.donation-events*'], 'roles' => ['admin']],
         ['label' => 'Appointment Management', 'route' => 'admin.appointments', 'active' => ['admin.appointments*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Donation Records', 'route' => 'admin.donation-records', 'active' => ['admin.donation-records*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Blood Availability Mapping', 'route' => 'admin.blood-availability-mapping', 'active' => ['admin.blood-availability-mapping*'], 'roles' => ['admin', 'staff'], 'multiline' => true],

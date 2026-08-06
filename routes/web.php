@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
+use App\Http\Controllers\Admin\DonationEventController as AdminDonationEventController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorDashboardController;
@@ -31,6 +32,9 @@ Route::post('/auth/google', [SocialAuthController::class, 'handleGoogleLogin'])-
 Route::get('/dashboard', [DonorDashboardController::class, 'index'])->name('donor.dashboard');
 Route::get('/appointments/book', [DonorPortalController::class, 'bookAppointment'])->name('donor.book-appointment');
 Route::post('/appointments/book', [DonorPortalController::class, 'storeAppointment'])->name('donor.book-appointment.store');
+Route::patch('/appointments/{appointment}/cancel', [DonorPortalController::class, 'cancelAppointment'])
+    ->whereNumber('appointment')
+    ->name('donor.appointments.cancel');
 Route::get('/eligibility', [DonorPortalController::class, 'checkEligibility'])->name('donor.check-eligibility');
 Route::post('/eligibility', [DonorPortalController::class, 'submitEligibility'])->name('donor.check-eligibility.submit');
 Route::get('/verification', [DonorVerificationController::class, 'index'])->name('donor.verification.index');
@@ -75,6 +79,12 @@ Route::middleware('admin.auth')->group(function () {
         Route::patch('/admin/appointments/{appointment}/complete', [AdminAuthController::class, 'completeAppointment'])
             ->whereNumber('appointment')
             ->name('admin.appointments.complete');
+        Route::patch('/admin/appointments/{appointment}/cancel', [AdminAuthController::class, 'cancelAppointment'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.cancel');
+        Route::patch('/admin/appointments/{appointment}/no-show', [AdminAuthController::class, 'markNoShowAppointment'])
+            ->whereNumber('appointment')
+            ->name('admin.appointments.no-show');
         Route::get('/admin/donation-records', [AdminAuthController::class, 'donationRecords'])->name('admin.donation-records');
         Route::get('/admin/donation-records/data', [AdminAuthController::class, 'listDonationRecordsData'])->name('admin.donation-records.data');
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
@@ -124,6 +134,18 @@ Route::middleware('admin.auth')->group(function () {
         Route::patch('/admin/donor-verifications/{verification}/reject', [AdminDonorVerificationController::class, 'reject'])
             ->whereNumber('verification')
             ->name('admin.donor-verifications.reject');
+        Route::get('/admin/donation-events', [AdminDonationEventController::class, 'index'])->name('admin.donation-events.index');
+        Route::get('/admin/donation-events/data', [AdminDonationEventController::class, 'data'])->name('admin.donation-events.data');
+        Route::post('/admin/donation-events', [AdminDonationEventController::class, 'store'])->name('admin.donation-events.store');
+        Route::get('/admin/donation-events/{event}', [AdminDonationEventController::class, 'show'])
+            ->whereNumber('event')
+            ->name('admin.donation-events.show');
+        Route::put('/admin/donation-events/{event}', [AdminDonationEventController::class, 'update'])
+            ->whereNumber('event')
+            ->name('admin.donation-events.update');
+        Route::delete('/admin/donation-events/{event}', [AdminDonationEventController::class, 'destroy'])
+            ->whereNumber('event')
+            ->name('admin.donation-events.destroy');
         Route::get('/admin/report-analytics', [AdminAuthController::class, 'reportAnalytics'])->name('admin.report-analytics');
         Route::get('/admin/rbac', [AdminAuthController::class, 'rbac'])->name('admin.rbac');
         Route::get('/admin/rbac/users', [AdminAuthController::class, 'listRbacUsers'])
