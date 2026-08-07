@@ -44,6 +44,7 @@ if ($webRoot === $laravelPublicReal) {
 }
 
 $assetDirs = ['js', 'css', 'images', 'build', 'vendor'];
+$publicFiles = ['index.php', '.htaccess', 'favicon.ico', 'robots.txt'];
 $totals = [
     'copied' => 0,
     'unchanged' => 0,
@@ -70,7 +71,33 @@ foreach ($assetDirs as $dir) {
     $totals['unchanged'] += $result['unchanged'];
 }
 
-writeln("Asset sync complete. Copied: {$totals['copied']}; unchanged: {$totals['unchanged']}; missing source dirs: {$totals['skipped_dirs']}.");
+foreach ($publicFiles as $file) {
+    $source = $laravelPublicReal . DIRECTORY_SEPARATOR . $file;
+    $destination = $webRoot . DIRECTORY_SEPARATOR . $file;
+
+    if (! is_file($source)) {
+        $totals['skipped_dirs']++;
+        writeln("Skip missing public/{$file}");
+        continue;
+    }
+
+    if (! shouldCopyFile($source, $destination)) {
+        $totals['unchanged']++;
+        continue;
+    }
+
+    if ($dryRun) {
+        writeln("copy {$source} -> {$destination}");
+    } else {
+        if (! copy($source, $destination)) {
+            fail("Failed to copy {$source} to {$destination}");
+        }
+    }
+
+    $totals['copied']++;
+}
+
+writeln("Public sync complete. Copied: {$totals['copied']}; unchanged: {$totals['unchanged']}; missing source items: {$totals['skipped_dirs']}.");
 
 if (! $skipCache) {
     clearCaches($dryRun);
@@ -120,11 +147,18 @@ function resolveWebRoot(string $projectRoot, array $options): ?string
         return trim($envWebRoot);
     }
 
+    $parent = dirname($projectRoot);
+    $nestedPublicHtml = $parent . DIRECTORY_SEPARATOR . 'public_html';
+
+    if (basename($parent) === 'public_html' && is_dir($nestedPublicHtml)) {
+        return $parent;
+    }
+
     if (basename($projectRoot) === 'public_html') {
         return $projectRoot;
     }
 
-    $siblingPublicHtml = dirname($projectRoot) . DIRECTORY_SEPARATOR . 'public_html';
+    $siblingPublicHtml = $parent . DIRECTORY_SEPARATOR . 'public_html';
     if (is_dir($siblingPublicHtml)) {
         return $siblingPublicHtml;
     }
@@ -137,6 +171,11 @@ function resolveLaravelPublic(string $projectRoot, ?string $webRoot): string
     $defaultPublic = $projectRoot . DIRECTORY_SEPARATOR . 'public';
     if (is_dir($defaultPublic)) {
         return $defaultPublic;
+    }
+
+    $nestedPublic = dirname($projectRoot) . DIRECTORY_SEPARATOR . 'public_html';
+    if ($webRoot !== null && normalizePath($nestedPublic) !== normalizePath($webRoot) && is_dir($nestedPublic)) {
+        return $nestedPublic;
     }
 
     if ($webRoot !== null) {

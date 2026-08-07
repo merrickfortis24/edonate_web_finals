@@ -1,7 +1,30 @@
 # Hostinger Laravel Security Fix
 
-This project should use Hostinger's standard Laravel split: the Laravel app lives
-outside the served document root, and `public_html` contains only public files.
+Legacy note: this file describes the ideal sibling Laravel split. The current
+Hostinger deployment for this project intentionally uses the nested structure
+documented in `DEPLOY_HOSTINGER.md`:
+
+```text
+/home/USER/domains/edonate.online/public_html/
+|-- edonate_web/
+|-- public_html/
+|-- index.php
+|-- .htaccess
+|-- build/
+|-- css/
+|-- js/
+`-- vendor/
+```
+
+For the current deployment, use `DEPLOY_HOSTINGER.md` and run:
+
+```bash
+cd ~/domains/edonate.online/public_html/edonate_web
+php scripts/sync-public-assets.php
+```
+
+The notes below are retained only for reference if the project is later moved
+to a true sibling layout.
 
 ## Required Structure
 

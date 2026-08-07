@@ -2,17 +2,24 @@
 
 ## Production Structure
 
-Use Hostinger's official Laravel split:
+This deployment uses the current Hostinger nested structure:
 
 ```text
-/home/USER/domains/edonate.online/
-|-- edonate_web/      # Laravel app root, not web-accessible
-|-- public_html/      # Hostinger document root
+/home/USER/domains/edonate.online/public_html/
+|-- edonate_web/      # Laravel app root
+|-- public_html/      # source copy of Laravel public files from the repo
+|-- index.php         # live Hostinger front controller
+|-- .htaccess
+|-- build/
+|-- css/
+|-- js/
+`-- vendor/           # public assets only
 ```
 
-`public_html` must contain only files that came from Laravel's `public/`
-directory, such as `index.php`, `.htaccess`, `build/`, `css/`, `js/`,
-`vendor/leaflet/`, `favicon.ico`, and `robots.txt`.
+The outer `public_html` is Hostinger's served document root. It must contain
+the public files copied from the nested `public_html/public_html` folder:
+`index.php`, `.htaccess`, `build/`, `css/`, `js/`, `vendor/leaflet/`,
+`favicon.ico`, and `robots.txt`.
 
 Keep private Laravel files in `edonate_web`: `.env`, `app/`, `bootstrap/`,
 `config/`, `database/`, `resources/`, `routes/`, `storage/`, Composer
@@ -20,16 +27,20 @@ Keep private Laravel files in `edonate_web`: `.env`, `app/`, `bootstrap/`,
 
 ## Entrypoint
 
-`public_html/index.php` loads Laravel from the private sibling folder:
+The live outer `public_html/index.php` loads Laravel from the nested app folder:
 
 ```php
-require __DIR__.'/../edonate_web/vendor/autoload.php';
-$app = require_once __DIR__.'/../edonate_web/bootstrap/app.php';
+require __DIR__.'/edonate_web/vendor/autoload.php';
+$app = require_once __DIR__.'/edonate_web/bootstrap/app.php';
 ```
 
 `edonate_web/bootstrap/app.php` sets Laravel's public path to
-`../public_html`, so `public_path()`, Vite, `storage:link`, admin cache-busting,
-and generated `/storage` URLs use the served web root.
+the outer `public_html`, so `public_path()`, Vite, admin cache-busting, and
+generated public URLs use the served web root:
+
+```php
+$app->usePublicPath(dirname(__DIR__).'/..');
+```
 
 ## Deploy Commands
 
@@ -39,12 +50,24 @@ Run commands from the private Laravel root:
 cd ~/domains/edonate.online/edonate_web
 composer install --no-dev --optimize-autoloader
 php artisan migrate --force
-php artisan storage:link
+php scripts/sync-public-assets.php
 php artisan optimize:clear
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 ```
+
+If the live outer public files disappear after an upload or Git deploy, repair
+them with:
+
+```bash
+cd ~/domains/edonate.online/public_html/edonate_web
+php scripts/sync-public-assets.php
+```
+
+The script copies `index.php`, `.htaccess`, `build/`, `css/`, `js/`,
+`vendor/`, `favicon.ico`, and `robots.txt` into the served outer
+`public_html`.
 
 Keep the existing production `APP_KEY` unless you intentionally want to
 invalidate encrypted cookies and encrypted application data.
