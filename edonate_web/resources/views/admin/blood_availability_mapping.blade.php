@@ -4,192 +4,65 @@
 @section('admin_page_class', 'admin-blood-availability-page')
 @section('layout_wrapper_class', 'layout')
 @section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
 @section('sidebar_open_class', 'is-open')
 @section('render_default_hamburger', 'false')
 @section('header_title', 'Blood Availability Map')
-@section('header_subtitle', 'Aggregated eligible donors by barangay and verified blood type')
-
-@section('header_slot')
-    <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
+@section('header_subtitle', 'Verified donor availability and recorded facility inventory')
+@section('header_slot')<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar"><span class="hamburger__bar"></span><span class="hamburger__bar"></span><span class="hamburger__bar"></span></button>@endsection
 
 @push('admin_head')
-    <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.min.css') }}">
-    <style>
-        .availability-content { padding: 24px 32px 40px; }
-        .availability-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 18px; }
-        .availability-stat, .availability-panel { background: #fff; border: 1px solid rgba(0,0,0,.12); border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-        .availability-stat { padding: 18px; min-height: 112px; }
-        .availability-stat__label { color: #666; font-size: 13px; font-weight: 600; }
-        .availability-stat__value { color: #b60c0c; font-size: 28px; font-weight: 700; margin-top: 8px; }
-        .availability-panel { padding: 18px; margin-bottom: 18px; }
-        .availability-panel__title { color: #850000; font-size: 18px; font-weight: 700; margin: 0 0 4px; }
-        .availability-panel__hint { color: #666; font-size: 13px; margin: 0 0 16px; }
-        #availability-map { height: 500px; min-height: 360px; border-radius: 8px; background: #eef2f5; }
-        .availability-table-wrap { overflow-x: auto; }
-        .availability-table { min-width: 920px; margin-bottom: 0; }
-        .availability-table th { white-space: nowrap; font-size: 12px; }
-        .availability-table td { font-size: 13px; vertical-align: middle; }
-        .availability-badge { border-radius: 999px; display: inline-block; font-size: 11px; font-weight: 700; padding: 4px 8px; }
-        .availability-badge--high { background: #d8f5df; color: #146c2e; }
-        .availability-badge--moderate { background: #fff1bf; color: #795900; }
-        .availability-badge--low { background: #ffe0c2; color: #874000; }
-        .availability-badge--none { background: #ececec; color: #666; }
-        .availability-map-marker { align-items: center; background: #b60c0c; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 1px 5px rgba(0,0,0,.35); color: #fff; display: flex; font-size: 12px; font-weight: 700; height: 34px; justify-content: center; width: 34px; }
-        .availability-map-marker--moderate { background: #c28b00; }
-        .availability-map-marker--low { background: #d56c18; }
-        .availability-map-marker--none { background: #777; }
-        .availability-filter-row { align-items: end; display: grid; gap: 12px; grid-template-columns: 180px minmax(180px, 1fr) 180px auto; }
-        .availability-filter-row label { color: #444; display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
-        .availability-quality { color: #666; font-size: 12px; margin: 12px 0 0; }
-        @media (max-width: 900px) { .availability-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .availability-filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-        @media (max-width: 600px) { .availability-content { padding: 16px; } .availability-summary { grid-template-columns: 1fr; } .availability-filter-row { grid-template-columns: 1fr; } #availability-map { height: 420px; } }
-    </style>
+<link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.min.css') }}">
+<style>
+    .availability-content{padding:24px 32px 40px}.availability-tabs{display:inline-flex;border:1px solid #ccc;border-radius:8px;overflow:hidden;margin-bottom:18px}.availability-tab{background:#fff;border:0;border-right:1px solid #ccc;color:#555;font-weight:600;padding:10px 16px}.availability-tab:last-child{border-right:0}.availability-tab.active{background:#9f1010;color:#fff}.availability-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-bottom:18px}.availability-stat,.availability-panel{background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)}.availability-stat{min-height:100px;padding:16px}.availability-stat__label{color:#666;font-size:12px;font-weight:600}.availability-stat__value{color:#9f1010;font-size:26px;font-weight:700;margin-top:7px}.availability-panel{margin-bottom:18px;padding:18px}.availability-filter-row{align-items:end;display:grid;gap:12px;grid-template-columns:180px minmax(200px,1fr) 180px 180px auto}.availability-filter-row label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}.availability-quality,.availability-panel__hint,.availability-legend{color:#666;font-size:12px;margin:10px 0 0}.availability-panel__title{color:#850000;font-size:18px;font-weight:700;margin:0 0 4px}#availabilityMap{background:#eef2f5;border-radius:8px;height:500px;min-height:360px;margin-top:14px}.availability-table-wrap{overflow-x:auto}.availability-table{margin:0;min-width:980px}.availability-table td,.availability-table th{font-size:12px;vertical-align:middle;white-space:nowrap}.availability-badge{border-radius:999px;display:inline-block;font-size:11px;font-weight:700;padding:4px 8px}.availability-badge--high,.availability-badge--available{background:#dff3e4;color:#17642c}.availability-badge--moderate,.availability-badge--low{background:#fff0bd;color:#725500}.availability-badge--none,.availability-badge--out_of_stock{background:#f3d8d8;color:#851616}.availability-marker{align-items:center;background:#a90f0f;border:3px solid #fff;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;display:flex;font-size:11px;font-weight:700;height:38px;justify-content:center;width:38px}.availability-marker--moderate,.availability-marker--low{background:#bd8300}.availability-marker--none,.availability-marker--out_of_stock{background:#777}@media(max-width:1100px){.availability-summary{grid-template-columns:repeat(3,1fr)}.availability-filter-row{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){.availability-content{padding:16px}.availability-summary,.availability-filter-row{grid-template-columns:1fr}#availabilityMap{height:420px}.availability-tabs{display:flex}.availability-tab{flex:1}}
+</style>
 @endpush
 
 @section('main_content')
 <main class="availability-content">
+    <div class="availability-tabs" role="tablist" aria-label="Availability map layer"><button class="availability-tab active" id="donorLayer" role="tab" aria-selected="true" type="button">Donor Availability</button><button class="availability-tab" id="facilityLayer" role="tab" aria-selected="false" type="button">Facility Inventory</button></div>
     <section class="availability-summary" aria-label="Availability summary">
-        <div class="availability-stat"><div class="availability-stat__label">Available Verified Donors</div><div class="availability-stat__value" id="summaryAvailable">-</div></div>
-        <div class="availability-stat"><div class="availability-stat__label">Barangays With Availability</div><div class="availability-stat__value" id="summaryBarangays">-</div></div>
-        <div class="availability-stat"><div class="availability-stat__label">Most Available Type</div><div class="availability-stat__value" id="summaryMost">-</div></div>
-        <div class="availability-stat"><div class="availability-stat__label">Lowest Available Type</div><div class="availability-stat__value" id="summaryLowest">-</div></div>
+        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel1">Available Verified Donors</div><div class="availability-stat__value" id="summaryValue1">-</div></div>
+        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel2">Barangays With Availability</div><div class="availability-stat__value" id="summaryValue2">-</div></div>
+        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel3">Most Available Type</div><div class="availability-stat__value" id="summaryValue3">-</div></div>
+        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel4">Lowest Available Type</div><div class="availability-stat__value" id="summaryValue4">-</div></div>
+        <div class="availability-stat d-none" id="summaryCard5"><div class="availability-stat__label" id="summaryLabel5">Out of Stock</div><div class="availability-stat__value" id="summaryValue5">-</div></div>
     </section>
-
-    <section class="availability-panel" aria-label="Availability filters">
-        <div class="availability-filter-row">
-            <div><label for="availabilityBloodType">Blood type</label><select class="form-select" id="availabilityBloodType"><option value="">All Blood Types</option>@foreach ($bloodTypes as $bloodType)<option value="{{ $bloodType }}">{{ $bloodType }}</option>@endforeach</select></div>
-            <div><label for="availabilityBarangay">Barangay search</label><input class="form-control" id="availabilityBarangay" type="search" maxlength="150" placeholder="Search barangay"></div>
-            <div><label for="availabilityCity">City filter</label><input class="form-control" id="availabilityCity" type="search" maxlength="150" placeholder="Any city"></div>
-            <button class="btn btn-outline-secondary" id="clearAvailabilityFilters" type="button">Clear</button>
-        </div>
-        <p class="availability-quality" id="availabilityQuality">Availability is calculated from current verified and eligible donor data.</p>
-    </section>
-
-    <section class="availability-panel" aria-label="Aggregated donor map">
-        <h2 class="availability-panel__title">Eligible Verified Donor Availability</h2>
-        <p class="availability-panel__hint">One aggregate marker represents one barangay. This is not physical blood-bank inventory.</p>
-        <div id="availabilityMap" role="application" aria-label="Aggregated donor availability map"></div>
-        <p class="text-muted small mt-2 mb-0" id="mapStatus" aria-live="polite"></p>
-    </section>
-
-    <section class="availability-panel" aria-label="Barangay availability table">
-        <h2 class="availability-panel__title">Barangay Availability</h2>
-        <div class="availability-table-wrap">
-            <table class="table table-hover availability-table">
-                <thead><tr><th>Barangay</th><th>City</th><th>Available</th><th>Scheduled</th>@foreach ($bloodTypes as $bloodType)<th>{{ $bloodType }}</th>@endforeach<th>Level</th></tr></thead>
-                <tbody id="availabilityTableBody"><tr><td colspan="{{ 5 + count($bloodTypes) }}" class="text-center text-muted py-4">Loading...</td></tr></tbody>
-            </table>
-        </div>
-    </section>
+    <section class="availability-panel" aria-label="Availability filters"><div class="availability-filter-row">
+        <div><label for="availabilityBloodType">Blood type</label><select class="form-select" id="availabilityBloodType"><option value="">All blood types</option>@foreach($bloodTypes as $bloodType)<option value="{{ $bloodType }}">{{ $bloodType }}</option>@endforeach</select></div>
+        <div><label for="availabilitySearch" id="availabilitySearchLabel">Barangay search</label><input class="form-control" id="availabilitySearch" type="search" maxlength="150" placeholder="Search barangay"></div>
+        <div><label for="availabilityCity" id="availabilityScopeLabel">City filter</label><input class="form-control" id="availabilityCity" type="search" maxlength="150" placeholder="Any city"><select class="form-select d-none" id="availabilityFacilityType"><option value="">All facility types</option>@foreach($facilityTypes as $type)<option value="{{ $type }}">{{ \Illuminate\Support\Str::headline($type) }}</option>@endforeach</select></div>
+        <div id="availabilitySortWrap" class="d-none"><label for="availabilitySort">Sort facilities</label><select class="form-select" id="availabilitySort"><option value="name">Facility name</option><option value="units_desc">Units: high to low</option><option value="units_asc">Units: low to high</option><option value="updated_desc">Recently updated</option></select></div>
+        <button class="btn btn-outline-secondary" id="clearAvailabilityFilters" type="button">Clear</button>
+    </div><p class="availability-quality" id="availabilityQuality">Availability is calculated from current verified and eligible donor data.</p></section>
+    <section class="availability-panel"><h2 class="availability-panel__title" id="mapTitle">Eligible Verified Donor Availability</h2><p class="availability-panel__hint" id="mapHint">One aggregate marker represents one barangay. This is not physical blood-bank inventory.</p><p class="availability-legend" id="mapLegend">Legend: marker values are eligible verified donor counts.</p><div id="availabilityMap" role="application" aria-label="Blood availability map"></div><p class="text-muted small mt-2 mb-0" id="mapStatus" aria-live="polite"></p></section>
+    <section class="availability-panel"><h2 class="availability-panel__title" id="tableTitle">Barangay Availability</h2><div class="availability-table-wrap"><table class="table table-hover availability-table"><thead id="availabilityTableHead"></thead><tbody id="availabilityTableBody"></tbody></table></div><div class="d-none justify-content-between align-items-center mt-3" id="facilityPagination"><small class="text-muted" id="facilityPageMeta"></small><div class="btn-group"><button class="btn btn-sm btn-outline-secondary" id="facilityPagePrev" type="button">Previous</button><button class="btn btn-sm btn-outline-secondary" id="facilityPageNext" type="button">Next</button></div></div></section>
 </main>
 @endsection
 
 @push('admin_scripts')
 <script src="{{ asset('vendor/leaflet/leaflet.min.js') }}"></script>
 <script>
-(function () {
+(function(){
     'use strict';
-
-    const dataUrl = @json(route('admin.map.data'));
-    const bloodTypes = @json(array_values($bloodTypes));
-    const mapElement = document.getElementById('availabilityMap');
-    const tableBody = document.getElementById('availabilityTableBody');
-    const mapStatus = document.getElementById('mapStatus');
-    const bloodTypeInput = document.getElementById('availabilityBloodType');
-    const barangayInput = document.getElementById('availabilityBarangay');
-    const cityInput = document.getElementById('availabilityCity');
-    const markerLayer = window.L ? L.layerGroup() : null;
-    const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
-    let map = null;
-    let searchTimer = null;
-
-    if (window.L) {
-        map = L.map(mapElement, { zoomControl: true }).setView([13.9419, 121.1644], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' })
-            .addTo(map)
-            .on('tileerror', () => { mapStatus.textContent = 'Map tiles could not be loaded. The aggregate table remains available.'; });
-        markerLayer.addTo(map);
-    } else {
-        mapStatus.textContent = 'Map visualization is unavailable. The aggregate table remains available.';
-    }
-
-    function params() {
-        const query = new URLSearchParams();
-        if (bloodTypeInput.value) query.set('blood_type', bloodTypeInput.value);
-        if (barangayInput.value.trim()) query.set('barangay', barangayInput.value.trim());
-        if (cityInput.value.trim()) query.set('city', cityInput.value.trim());
-        return query.toString();
-    }
-
-    function validCoordinate(latitude, longitude) {
-        return Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude)) && Number(latitude) !== 0 && Number(longitude) !== 0;
-    }
-
-    function markerIcon(level, count) {
-        return L.divIcon({ className: '', html: `<span class="availability-map-marker availability-map-marker--${escapeHtml(level)}">${escapeHtml(count)}</span>`, iconSize: [34, 34], iconAnchor: [17, 17] });
-    }
-
-    function renderMap(points) {
-        if (!map || !markerLayer) return;
-        markerLayer.clearLayers();
-        const bounds = [];
-        points.forEach(point => {
-            if (!validCoordinate(point.latitude, point.longitude)) return;
-            const position = [Number(point.latitude), Number(point.longitude)];
-            bounds.push(position);
-            const bloodBreakdown = bloodTypes.map(type => `<div>${escapeHtml(type)}: <strong>${escapeHtml(point.blood_types?.[type] ?? 0)}</strong></div>`).join('');
-            const popup = `<strong>${escapeHtml(point.barangay_name)}</strong><br><span>${escapeHtml(point.city)}</span><hr class="my-1"><div>Available verified donors: <strong>${escapeHtml(point.available_donors)}</strong></div><div>Scheduled: <strong>${escapeHtml(point.scheduled_donors)}</strong></div><div class="mt-1">${bloodBreakdown}</div>`;
-            L.marker(position, { icon: markerIcon(point.availability_level, point.available_donors) }).bindPopup(popup).addTo(markerLayer);
-        });
-        if (bounds.length) map.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
-        mapStatus.textContent = points.length ? `${points.length} aggregate barangay marker(s).` : 'No mapped barangay coordinates match the current filters.';
-    }
-
-    function renderSummary(data) {
-        const summary = data.summary || {};
-        const formatType = value => value?.blood_type ? `${value.blood_type} (${value.count})` : '-';
-        document.getElementById('summaryAvailable').textContent = summary.available_donors ?? 0;
-        document.getElementById('summaryBarangays').textContent = summary.barangays ?? 0;
-        document.getElementById('summaryMost').textContent = formatType(summary.most_available_blood_type);
-        document.getElementById('summaryLowest').textContent = formatType(summary.lowest_available_blood_type);
-        const quality = data.data_quality || {};
-        document.getElementById('availabilityQuality').textContent = `Mapped available donors: ${quality.mapped_available_donors ?? 0}. Missing usable coordinates: ${quality.available_donors_missing_coordinates ?? 0}. Scheduled donors are shown separately.`;
-    }
-
-    function renderTable(rows) {
-        if (!rows.length) {
-            tableBody.innerHTML = `<tr><td colspan="${5 + bloodTypes.length}" class="text-center text-muted py-4">No aggregate availability found.</td></tr>`;
-            return;
-        }
-        tableBody.innerHTML = rows.map(row => `<tr><td><strong>${escapeHtml(row.barangay_name)}</strong></td><td>${escapeHtml(row.city)}</td><td>${escapeHtml(row.available_donors)}</td><td>${escapeHtml(row.scheduled_donors)}</td>${bloodTypes.map(type => `<td>${escapeHtml(row.blood_types?.[type] ?? 0)}</td>`).join('')}<td><span class="availability-badge availability-badge--${escapeHtml(row.availability_level)}">${escapeHtml(row.availability_level)}</span></td></tr>`).join('');
-    }
-
-    async function refresh() {
-        tableBody.innerHTML = `<tr><td colspan="${5 + bloodTypes.length}" class="text-center text-muted py-4">Loading...</td></tr>`;
-        try {
-            const response = await fetch(`${dataUrl}${params() ? '?' + params() : ''}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-            if (!response.ok) throw new Error('Availability request failed.');
-            const data = await response.json();
-            renderSummary(data);
-            renderTable(Array.isArray(data.barangays) ? data.barangays : []);
-            renderMap(Array.isArray(data.map_points) ? data.map_points : []);
-        } catch (error) {
-            tableBody.innerHTML = `<tr><td colspan="${5 + bloodTypes.length}" class="text-center text-danger py-4">Could not load aggregate availability.</td></tr>`;
-            mapStatus.textContent = 'The map request failed. Please try again; no donor details are exposed by this page.';
-        }
-    }
-
-    bloodTypeInput.addEventListener('change', refresh);
-    [barangayInput, cityInput].forEach(input => input.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(refresh, 300); }));
-    document.getElementById('clearAvailabilityFilters').addEventListener('click', () => { bloodTypeInput.value = ''; barangayInput.value = ''; cityInput.value = ''; refresh(); });
-    refresh();
+    const donorUrl=@json(route('admin.map.data')),facilityUrl=@json(route('admin.facilities.map-data')),bloodTypes=@json(array_values($bloodTypes));
+    const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const blood=document.getElementById('availabilityBloodType'),search=document.getElementById('availabilitySearch'),city=document.getElementById('availabilityCity'),facilityType=document.getElementById('availabilityFacilityType'),sort=document.getElementById('availabilitySort'),body=document.getElementById('availabilityTableBody'),head=document.getElementById('availabilityTableHead'),status=document.getElementById('mapStatus');
+    let layer='donors',timer=null,map=null,markers=window.L?L.layerGroup():null,facilityRows=[],facilityPage=1;
+    if(window.L){map=L.map('availabilityMap',{zoomControl:true}).setView([13.9419,121.1644],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map).on('tileerror',()=>status.textContent='Map tiles could not be loaded. The aggregate table remains available.');markers.addTo(map);}else status.textContent='Map visualization is unavailable. The table remains available.';
+    const valid=(lat,lng)=>Number.isFinite(Number(lat))&&Number.isFinite(Number(lng))&&Number(lat)!==0&&Number(lng)!==0;
+    const markerIcon=(level,label)=>L.divIcon({className:'',html:`<span class="availability-marker availability-marker--${esc(level)}">${esc(label)}</span>`,iconSize:[38,38],iconAnchor:[19,19]});
+    function query(){const q=new URLSearchParams();if(blood.value)q.set('blood_type',blood.value);if(layer==='donors'){if(search.value.trim())q.set('barangay',search.value.trim());if(city.value.trim())q.set('city',city.value.trim());}else{if(search.value.trim())q.set('search',search.value.trim());if(facilityType.value)q.set('facility_type',facilityType.value);}return q.toString();}
+    function summary(labels,values){for(let i=0;i<5;i++){const card=i===4?document.getElementById('summaryCard5'):null;if(card)card.classList.toggle('d-none',!labels[i]);if(labels[i]){document.getElementById(`summaryLabel${i+1}`).textContent=labels[i];document.getElementById(`summaryValue${i+1}`).textContent=values[i]??0;}}}
+    function renderDonors(data){const s=data.summary||{},format=v=>v?.blood_type?`${v.blood_type} (${v.count})`:'-';summary(['Available Verified Donors','Barangays With Availability','Most Available Type','Lowest Available Type'],[s.available_donors,s.barangays,format(s.most_available_blood_type),format(s.lowest_available_blood_type)]);const quality=data.data_quality||{};document.getElementById('availabilityQuality').textContent=`Mapped available donors: ${quality.mapped_available_donors??0}. Missing usable coordinates: ${quality.available_donors_missing_coordinates??0}. Scheduled donors are shown separately.`;head.innerHTML=`<tr><th>Barangay</th><th>City</th><th>Available</th><th>Scheduled</th>${bloodTypes.map(type=>`<th>${esc(type)}</th>`).join('')}<th>Level</th></tr>`;const rows=data.barangays||[];body.innerHTML=rows.length?rows.map(row=>`<tr><td><strong>${esc(row.barangay_name)}</strong></td><td>${esc(row.city)}</td><td>${esc(row.available_donors)}</td><td>${esc(row.scheduled_donors)}</td>${bloodTypes.map(type=>`<td>${esc(row.blood_types?.[type]??0)}</td>`).join('')}<td><span class="availability-badge availability-badge--${esc(row.availability_level)}">${esc(row.availability_level)}</span></td></tr>`).join(''):`<tr><td colspan="${5+bloodTypes.length}" class="text-center text-muted py-4">No aggregate donor availability found.</td></tr>`;renderDonorMarkers(data.map_points||[]);}
+    function renderDonorMarkers(points){if(!map)return;markers.clearLayers();const bounds=[];points.forEach(point=>{if(!valid(point.latitude,point.longitude))return;const pos=[Number(point.latitude),Number(point.longitude)];bounds.push(pos);const types=bloodTypes.map(type=>`<div>${esc(type)}: <strong>${esc(point.blood_types?.[type]??0)}</strong></div>`).join('');L.marker(pos,{icon:markerIcon(point.availability_level,point.available_donors)}).bindPopup(`<strong>${esc(point.barangay_name)}</strong><br>${esc(point.city)}<hr class="my-1"><div>Available verified donors: <strong>${esc(point.available_donors)}</strong></div><div>Scheduled: <strong>${esc(point.scheduled_donors)}</strong></div>${types}`).addTo(markers);});fit(bounds);status.textContent=points.length?`${points.length} aggregate barangay marker(s).`:'No mapped barangay coordinates match the filters.';}
+    function renderFacilities(data){const s=data.summary||{},selected=blood.value;summary(selected?['Active Facilities',`Total ${selected} Units`,`${selected} Available`,`Low ${selected}`,`Out of ${selected}`]:['Total Facilities','Mapped Facilities','Total Blood Units','Low Stock Facilities','Out-of-Stock Facilities'],selected?[s.facilities,s.total_units,s.facilities_with_available,s.facilities_with_low_stock,s.facilities_with_out_of_stock]:[s.facilities,s.mapped_facilities,s.total_units,s.facilities_with_low_stock,s.facilities_with_out_of_stock]);document.getElementById('availabilityQuality').textContent=`${data.freshness_notice||'Inventory reflects the latest recorded update.'} Mapped facilities: ${s.mapped_facilities??0}.`;head.innerHTML=`<tr><th>Facility</th><th>Type</th><th>Location</th>${bloodTypes.map(type=>`<th>${esc(type)}</th>`).join('')}<th>Last Updated</th></tr>`;facilityRows=data.facilities||[];facilityPage=1;renderFacilityTable();renderFacilityMarkers(data.map_points||[]);}
+    function rowUnits(row){return blood.value?Number(row.blood_types?.[blood.value]?.units||0):Object.values(row.blood_types||{}).reduce((sum,item)=>sum+Number(item.units||0),0);}
+    function renderFacilityTable(){let rows=[...facilityRows];if(sort.value==='units_desc')rows.sort((a,b)=>rowUnits(b)-rowUnits(a));else if(sort.value==='units_asc')rows.sort((a,b)=>rowUnits(a)-rowUnits(b));else if(sort.value==='updated_desc')rows.sort((a,b)=>new Date(b.last_updated||0)-new Date(a.last_updated||0));else rows.sort((a,b)=>a.facility_name.localeCompare(b.facility_name));const perPage=10,last=Math.max(1,Math.ceil(rows.length/perPage));facilityPage=Math.min(facilityPage,last);const pageRows=rows.slice((facilityPage-1)*perPage,facilityPage*perPage);body.innerHTML=pageRows.length?pageRows.map(row=>`<tr><td><strong>${esc(row.facility_name)}</strong></td><td>${esc(String(row.facility_type).replaceAll('_',' '))}</td><td>${esc([row.barangay_name,row.city,row.province].filter(Boolean).join(', '))}${row.mapped?'':'<br><small class="text-muted">Location not mapped</small>'}</td>${bloodTypes.map(type=>{const item=row.blood_types?.[type]||{units:0,status:'out_of_stock'};return `<td><span class="availability-badge availability-badge--${esc(item.status)}">${esc(item.units)}</span></td>`;}).join('')}<td>${row.last_updated?esc(new Date(row.last_updated).toLocaleString()):'Never'}</td></tr>`).join(''):`<tr><td colspan="${4+bloodTypes.length}" class="text-center text-muted py-4">No active facilities match the filters.</td></tr>`;document.getElementById('facilityPageMeta').textContent=rows.length?`Page ${facilityPage} of ${last} (${rows.length} facilities)`:'No facilities';document.getElementById('facilityPagePrev').disabled=facilityPage<=1;document.getElementById('facilityPageNext').disabled=facilityPage>=last;}
+    function renderFacilityMarkers(points){if(!map)return;markers.clearLayers();const bounds=[];points.forEach(point=>{if(!valid(point.latitude,point.longitude))return;const pos=[Number(point.latitude),Number(point.longitude)];bounds.push(pos);const selected=blood.value?point.blood_types?.[blood.value]:null,all=Object.entries(point.blood_types||{}),units=selected?.units??all.reduce((sum,[,v])=>sum+Number(v.units||0),0),state=selected?.status??(units>0?'available':'out_of_stock'),types=all.map(([name,item])=>`<div>${esc(name)}: <strong>${esc(item.units)}</strong> <span>(${esc(item.status.replaceAll('_',' '))})</span></div>`).join(''),low=all.filter(([,item])=>item.status==='low').map(([name])=>name).join(', ')||'None';L.marker(pos,{icon:markerIcon(state,units)}).bindPopup(`<strong>${esc(point.facility_name)}</strong><br>${esc(String(point.facility_type).replaceAll('_',' '))}<br>${esc([point.address,point.barangay_name,point.city,point.province].filter(Boolean).join(', '))}<hr class="my-1">${types}<div class="mt-1">Low stock: <strong>${esc(low)}</strong></div><div>Updated: ${point.last_updated?esc(new Date(point.last_updated).toLocaleString()):'Never'}</div>`).addTo(markers);});fit(bounds);status.textContent=points.length?`${points.length} facility marker(s).`:'No mapped facilities match the filters.';}
+    function fit(bounds){if(bounds.length)map.fitBounds(bounds,{padding:[24,24],maxZoom:14});}
+    async function refresh(){body.innerHTML='<tr><td class="text-center text-muted py-4">Loading...</td></tr>';try{const response=await fetch(`${layer==='donors'?donorUrl:facilityUrl}${query()?'?'+query():''}`,{headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest'}});if(!response.ok)throw new Error();const data=await response.json();layer==='donors'?renderDonors(data):renderFacilities(data);}catch(e){body.innerHTML='<tr><td class="text-center text-danger py-4">Could not load availability data.</td></tr>';status.textContent='The map request failed. Please try again.';}}
+    function setLayer(next){layer=next;document.getElementById('donorLayer').classList.toggle('active',next==='donors');document.getElementById('facilityLayer').classList.toggle('active',next==='facilities');document.getElementById('donorLayer').setAttribute('aria-selected',next==='donors');document.getElementById('facilityLayer').setAttribute('aria-selected',next==='facilities');document.getElementById('availabilitySearchLabel').textContent=next==='donors'?'Barangay search':'Facility or location';search.placeholder=next==='donors'?'Search barangay':'Search facility or location';document.getElementById('availabilityScopeLabel').textContent=next==='donors'?'City filter':'Facility type';city.classList.toggle('d-none',next!=='donors');facilityType.classList.toggle('d-none',next==='donors');document.getElementById('availabilitySortWrap').classList.toggle('d-none',next==='donors');document.getElementById('facilityPagination').classList.toggle('d-none',next==='donors');document.getElementById('facilityPagination').classList.toggle('d-flex',next==='facilities');document.getElementById('mapTitle').textContent=next==='donors'?'Eligible Verified Donor Availability':'Facility Blood Inventory';document.getElementById('mapHint').textContent=next==='donors'?'One aggregate marker represents one barangay. This is not physical blood-bank inventory.':'One marker represents one active facility and its latest recorded stock.';document.getElementById('mapLegend').textContent=next==='donors'?'Legend: marker values are eligible verified donor counts.':'Legend: marker values are recorded inventory units; green is available, amber is low, and gray is out of stock.';document.getElementById('tableTitle').textContent=next==='donors'?'Barangay Availability':'Facility Inventory';search.value='';city.value='';facilityType.value='';history.replaceState(null,'',next==='facilities'?'?layer=facilities':location.pathname);setTimeout(()=>map?.invalidateSize(),0);refresh();}
+    document.getElementById('donorLayer').onclick=()=>setLayer('donors');document.getElementById('facilityLayer').onclick=()=>setLayer('facilities');blood.onchange=refresh;[search,city].forEach(input=>input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(refresh,300);}));facilityType.onchange=refresh;sort.onchange=()=>{facilityPage=1;renderFacilityTable();};document.getElementById('facilityPagePrev').onclick=()=>{if(facilityPage>1){facilityPage--;renderFacilityTable();}};document.getElementById('facilityPageNext').onclick=()=>{facilityPage++;renderFacilityTable();};document.getElementById('clearAvailabilityFilters').onclick=()=>{blood.value='';search.value='';city.value='';facilityType.value='';sort.value='name';refresh();};setLayer(new URLSearchParams(location.search).get('layer')==='facilities'?'facilities':'donors');
 }());
 </script>
 @endpush

@@ -10,6 +10,7 @@ use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
 use App\Services\BloodAvailabilityService;
+use App\Services\FacilityBloodInventoryService;
 use App\Services\DonationProcessingService;
 use App\Services\GeocodingService;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
@@ -1403,10 +1404,15 @@ class AdminAuthController extends BaseController
     /**
      * Display blood availability mapping page.
      */
-    public function bloodAvailabilityMapping(Request $request, BloodAvailabilityService $availability)
+    public function bloodAvailabilityMapping(
+        Request $request,
+        BloodAvailabilityService $availability,
+        FacilityBloodInventoryService $inventory
+    )
     {
         return view('admin.blood_availability_mapping', [
             'bloodTypes' => $availability->bloodTypeNames(),
+            'facilityTypes' => $inventory->facilityTypes(),
         ]);
     }
 

@@ -23,4 +23,9 @@ class BloodType extends Model
     {
         return $this->hasMany(Donor::class, 'blood_type_id', 'blood_type_id');
     }
+
+    public function facilityInventories()
+    {
+        return $this->hasMany(FacilityBloodInventory::class, 'blood_type_id', 'blood_type_id');
+    }
 }

@@ -3,6 +3,7 @@
 use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
 use App\Http\Controllers\Admin\DonationEventController as AdminDonationEventController;
+use App\Http\Controllers\Admin\FacilityController as AdminFacilityController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorDashboardController;
@@ -96,6 +97,15 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/donation-records/data', [AdminAuthController::class, 'listDonationRecordsData'])->name('admin.donation-records.data');
         Route::get('/admin/blood-availability-mapping', [AdminAuthController::class, 'bloodAvailabilityMapping'])->name('admin.blood-availability-mapping');
         Route::get('/admin/blood-availability/map-data', [AdminAuthController::class, 'mapData'])->name('admin.map.data');
+        Route::get('/admin/blood-availability/facilities', [AdminFacilityController::class, 'mapData'])->name('admin.facilities.map-data');
+        Route::get('/admin/facilities', [AdminFacilityController::class, 'index'])->name('admin.facilities.index');
+        Route::get('/admin/facilities/data', [AdminFacilityController::class, 'data'])->name('admin.facilities.data');
+        Route::get('/admin/facilities/{facility}/inventory', [AdminFacilityController::class, 'inventory'])
+            ->whereNumber('facility')
+            ->name('admin.facilities.inventory');
+        Route::get('/admin/facilities/{facility}/inventory/data', [AdminFacilityController::class, 'inventoryData'])
+            ->whereNumber('facility')
+            ->name('admin.facilities.inventory.data');
         Route::get('/admin/map/donors', [AdminAuthController::class, 'mapDonors'])->name('admin.map.donors');
         Route::get('/admin/map/barangays', [AdminAuthController::class, 'mapBarangays'])->name('admin.map.barangays');
         Route::get('/admin/map/summary', [AdminAuthController::class, 'mapSummary'])->name('admin.map.summary');
@@ -145,6 +155,16 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/donation-events', [AdminDonationEventController::class, 'index'])->name('admin.donation-events.index');
         Route::get('/admin/donation-events/data', [AdminDonationEventController::class, 'data'])->name('admin.donation-events.data');
         Route::post('/admin/donation-events', [AdminDonationEventController::class, 'store'])->name('admin.donation-events.store');
+        Route::post('/admin/facilities', [AdminFacilityController::class, 'store'])->name('admin.facilities.store');
+        Route::put('/admin/facilities/{facility}', [AdminFacilityController::class, 'update'])
+            ->whereNumber('facility')
+            ->name('admin.facilities.update');
+        Route::patch('/admin/facilities/{facility}/status', [AdminFacilityController::class, 'status'])
+            ->whereNumber('facility')
+            ->name('admin.facilities.status');
+        Route::put('/admin/facilities/{facility}/inventory', [AdminFacilityController::class, 'updateInventory'])
+            ->whereNumber('facility')
+            ->name('admin.facilities.inventory.update');
         Route::patch('/admin/donation-events/{event}/open', [AdminDonationEventController::class, 'open'])
             ->whereNumber('event')
             ->name('admin.donation-events.open');

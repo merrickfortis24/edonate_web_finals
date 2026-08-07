@@ -25,6 +25,7 @@
         ['label' => 'Event Management', 'route' => 'admin.donation-events.index', 'active' => ['admin.donation-events*'], 'roles' => ['admin']],
         ['label' => 'Appointment Management', 'route' => 'admin.appointments', 'active' => ['admin.appointments*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Donation Records / Check-in', 'route' => 'admin.donation-records', 'active' => ['admin.donation-records*'], 'roles' => ['admin', 'staff']],
+        ['label' => 'Facility Management', 'route' => 'admin.facilities.index', 'active' => ['admin.facilities*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Blood Availability Mapping', 'route' => 'admin.blood-availability-mapping', 'active' => ['admin.blood-availability-mapping*'], 'roles' => ['admin', 'staff'], 'multiline' => true],
         ['label' => 'Eligibility Review', 'route' => 'admin.eligibility.index', 'active' => ['admin.eligibility.index*'], 'roles' => ['admin', 'staff']],
         ['label' => 'Question Management', 'route' => 'admin.eligibility.questions.index', 'active' => ['admin.eligibility.questions*'], 'roles' => ['admin']],
