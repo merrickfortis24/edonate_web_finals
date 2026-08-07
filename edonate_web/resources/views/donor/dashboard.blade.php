@@ -27,6 +27,7 @@
 
             <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:max-w-2xl">
                 <x-dashboard.stat-card label="Your Blood Type" :value="$user->blood_type" />
+                <x-dashboard.stat-card label="Blood Type Status" :value="ucwords(str_replace('_', ' ', $user->blood_type_status))" />
                 <x-dashboard.stat-card label="Total Donations" :value="$user->total_donations" />
             </div>
         </section>

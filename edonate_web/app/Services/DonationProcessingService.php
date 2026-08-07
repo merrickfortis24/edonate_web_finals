@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Appointment;
+use App\Models\BloodType;
+use App\Models\Donor;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -66,6 +68,20 @@ class DonationProcessingService
                 ]);
             }
 
+            $donor = Donor::query()
+                ->where('donor_id', $appointment->donor_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $donor) {
+                throw ValidationException::withMessages([
+                    'donor' => 'The donor for this appointment could not be found.',
+                ]);
+            }
+
+            $verifiedBloodType = $this->verifiedBloodType($data, $request);
+            $bloodTypeChange = $this->prepareBloodTypeChange($donor, $verifiedBloodType, $data);
+
             $donationDate = Carbon::parse((string) ($data['donation_date'] ?? $appointment->appointment_date))->toDateString();
             $recordId = DB::table('donation_records')->insertGetId([
                 'donor_id' => $appointment->donor_id,
@@ -73,7 +89,7 @@ class DonationProcessingService
                 'donation_date' => $donationDate,
                 'donation_status' => 'completed',
                 'blood_units' => (int) $data['blood_units'],
-                'verified_blood_type_id' => $data['verified_blood_type_id'] ?? null,
+                'verified_blood_type_id' => $verifiedBloodType?->blood_type_id,
                 'remarks' => $data['remarks'] ?? null,
                 'deferred_reason' => null,
                 'recorded_by_admin_id' => $adminId,
@@ -87,6 +103,42 @@ class DonationProcessingService
                 'admin_id' => $adminId,
                 'updated_at' => now(),
             ])->save();
+
+            if ($verifiedBloodType) {
+                $verifiedPayload = [
+                    'blood_type_id' => $verifiedBloodType->blood_type_id,
+                ];
+
+                if (Schema::hasColumn('donors', 'blood_type_status')) {
+                    $verifiedPayload['blood_type_status'] = 'verified';
+                }
+                if (Schema::hasColumn('donors', 'blood_type_verified_by_admin_id')) {
+                    $verifiedPayload['blood_type_verified_by_admin_id'] = $adminId;
+                }
+                if (Schema::hasColumn('donors', 'blood_type_verified_at')) {
+                    $verifiedPayload['blood_type_verified_at'] = now();
+                }
+
+                $donor->forceFill($verifiedPayload)->save();
+
+                $this->auditBloodTypeVerification(
+                    $request,
+                    $adminId,
+                    $donor,
+                    $appointment,
+                    $recordId,
+                    $verifiedBloodType,
+                    $bloodTypeChange
+                );
+
+                if ($bloodTypeChange['initial_verification']) {
+                    $this->donorNotification(
+                        (int) $donor->donor_id,
+                        'blood_type_verified',
+                        'Your blood type has been verified as ' . $verifiedBloodType->blood_type . ' during your completed donation.'
+                    );
+                }
+            }
 
             $this->eligibility->markCompletedDonation((int) $appointment->donor_id, $donationDate);
 
@@ -107,6 +159,7 @@ class DonationProcessingService
                 'donation_id' => $recordId,
                 'blood_units' => (int) $data['blood_units'],
                 'donation_status' => 'completed',
+                'verified_blood_type_id' => $verifiedBloodType?->blood_type_id,
             ]);
 
             return [
@@ -263,6 +316,74 @@ class DonationProcessingService
             ->first();
     }
 
+    /**
+     * Resolve a supported laboratory blood type from a trusted lookup record.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function verifiedBloodType(array $data, ?Request $request): ?BloodType
+    {
+        $bloodTypeId = isset($data['verified_blood_type_id']) && $data['verified_blood_type_id'] !== ''
+            ? (int) $data['verified_blood_type_id']
+            : null;
+
+        if (! $bloodTypeId) {
+            return null;
+        }
+
+        if (strtolower(trim((string) $request?->session()->get('admin_role'))) !== 'admin') {
+            throw ValidationException::withMessages([
+                'verified_blood_type_id' => 'Only an administrator may verify a donor blood type.',
+            ]);
+        }
+
+        $bloodType = BloodType::query()->where('blood_type_id', $bloodTypeId)->first();
+        if (! $bloodType || ! in_array(strtoupper(trim((string) $bloodType->blood_type)), ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], true)) {
+            throw ValidationException::withMessages([
+                'verified_blood_type_id' => 'Select a supported verified blood type.',
+            ]);
+        }
+
+        return $bloodType;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array{initial_verification: bool, changed: bool, previous_blood_type_id: int|null, previous_blood_type_name: string|null, change_reason: string|null}
+     */
+    private function prepareBloodTypeChange(Donor $donor, ?BloodType $newBloodType, array $data): array
+    {
+        $currentStatus = strtolower(trim((string) ($donor->blood_type_status ?? 'not_yet_determined')));
+        $currentTypeId = $donor->blood_type_id ? (int) $donor->blood_type_id : null;
+        $currentTypeName = $currentTypeId
+            ? BloodType::query()->where('blood_type_id', $currentTypeId)->value('blood_type')
+            : null;
+        $changed = $newBloodType !== null && $currentStatus === 'verified' && $currentTypeId !== (int) $newBloodType->blood_type_id;
+        $reason = trim((string) ($data['blood_type_change_reason'] ?? ''));
+
+        if ($changed) {
+            if (empty($data['confirm_blood_type_change'])) {
+                throw ValidationException::withMessages([
+                    'confirm_blood_type_change' => 'Confirm the blood type correction before saving it.',
+                ]);
+            }
+
+            if (mb_strlen($reason) < 8) {
+                throw ValidationException::withMessages([
+                    'blood_type_change_reason' => 'Provide a meaningful reason for changing a verified blood type.',
+                ]);
+            }
+        }
+
+        return [
+            'initial_verification' => $newBloodType !== null && $currentStatus !== 'verified',
+            'changed' => $changed,
+            'previous_blood_type_id' => $currentTypeId,
+            'previous_blood_type_name' => $currentTypeName ? (string) $currentTypeName : null,
+            'change_reason' => $changed ? $reason : null,
+        ];
+    }
+
     private function ensureTransition(Appointment $appointment, string $targetStatus): void
     {
         if (!$this->statuses->canTransition((string) $appointment->status, $targetStatus)) {
@@ -361,6 +482,44 @@ class DonationProcessingService
             'ip_address' => $request?->ip(),
             'result' => 'success',
             'metadata' => json_encode($metadata, JSON_UNESCAPED_SLASHES),
+            'created_at' => now(),
+        ]);
+    }
+
+    /**
+     * @param array{initial_verification: bool, changed: bool, previous_blood_type_id: int|null, previous_blood_type_name: string|null, change_reason: string|null} $change
+     */
+    private function auditBloodTypeVerification(?Request $request, int $adminId, Donor $donor, Appointment $appointment, int $recordId, BloodType $bloodType, array $change): void
+    {
+        if (! Schema::hasTable('audit_logs')) {
+            return;
+        }
+
+        $action = $change['changed'] ? 'blood_type_changed' : 'blood_type_verified';
+        DB::table('audit_logs')->insert([
+            'actor_admin_id' => $adminId,
+            'actor_name' => $this->adminName($request),
+            'actor_role' => $request?->session()->get('admin_role'),
+            'action_type' => $action,
+            'module_type' => 'blood_type_verification',
+            'target_table' => 'donors',
+            'target_id' => (int) $donor->donor_id,
+            'description' => $change['changed']
+                ? 'Updated a donor\'s verified blood type during donation completion.'
+                : 'Verified a donor\'s blood type during donation completion.',
+            'ip_address' => $request?->ip(),
+            'result' => 'success',
+            'metadata' => json_encode([
+                'donor_id' => (int) $donor->donor_id,
+                'donation_id' => $recordId,
+                'appointment_id' => (int) $appointment->appointment_id,
+                'blood_type_id' => (int) $bloodType->blood_type_id,
+                'blood_type_name' => (string) $bloodType->blood_type,
+                'previous_status' => $change['initial_verification'] ? 'not_verified' : 'verified',
+                'previous_blood_type_id' => $change['previous_blood_type_id'],
+                'previous_blood_type_name' => $change['previous_blood_type_name'],
+                'change_reason' => $change['change_reason'],
+            ], JSON_UNESCAPED_SLASHES),
             'created_at' => now(),
         ]);
     }

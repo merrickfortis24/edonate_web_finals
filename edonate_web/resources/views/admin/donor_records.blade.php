@@ -42,6 +42,8 @@
 @section('main_content')
 @php
   $bloodTypeOptions = data_get($donationRecordsPayload ?? [], 'filters.bloodTypes', []);
+  $verificationBloodTypeOptions = data_get($donationRecordsPayload ?? [], 'filters.verificationBloodTypes', []);
+  $canVerifyBloodType = (bool) data_get($donationRecordsPayload ?? [], 'canVerifyBloodType', false);
   $eventOptions = data_get($donationRecordsPayload ?? [], 'filters.events', []);
   $centerOptions = data_get($donationRecordsPayload ?? [], 'filters.centers', []);
 @endphp
@@ -168,6 +170,29 @@
           <label class="form-label" for="completeDonationDate">Donation Date</label>
           <input class="form-control" id="completeDonationDate" type="date" />
         </div>
+        <div class="mb-3">
+          <div class="small text-muted mb-1">Current Blood Type</div>
+          <div class="fw-semibold" id="completeCurrentBloodType">Not yet determined</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="completeVerifiedBloodType">Verified Blood Type</label>
+          <select class="form-select" id="completeVerifiedBloodType" @disabled(! $canVerifyBloodType)>
+            <option value="">Not yet determined</option>
+            @foreach ($verificationBloodTypeOptions as $type)
+              <option value="{{ $type['id'] }}">{{ $type['label'] }}</option>
+            @endforeach
+          </select>
+          <div class="form-text">{{ $canVerifyBloodType ? 'Only enter a confirmed laboratory result.' : 'Only an administrator may record a verified blood type.' }}</div>
+        </div>
+        <div class="mb-3 d-none" id="completeBloodTypeChangeFields">
+          <div class="alert alert-warning py-2 small mb-2">This result differs from the donor's current verified blood type. Confirm the correction and record its reason.</div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" id="completeConfirmBloodTypeChange" type="checkbox" value="1" />
+            <label class="form-check-label" for="completeConfirmBloodTypeChange">I confirm this verified blood type correction.</label>
+          </div>
+          <label class="form-label" for="completeBloodTypeChangeReason">Reason for change</label>
+          <textarea class="form-control" id="completeBloodTypeChangeReason" rows="2" maxlength="1000"></textarea>
+        </div>
         <div>
           <label class="form-label" for="completeRemarks">Remarks</label>
           <textarea class="form-control" id="completeRemarks" rows="3" maxlength="1000"></textarea>
@@ -218,7 +243,7 @@
 
     var config = (window.AdminPageData && window.AdminPageData.donationRecords) || {};
     var api = config.api || {};
-    var state = { page: 1, perPage: 10 };
+    var state = { page: 1, perPage: 10, rows: {} };
     var csrf = document.querySelector('meta[name="csrf-token"]');
     var token = csrf ? csrf.getAttribute('content') : '';
     var tableBody = document.getElementById('processingTableBody');
@@ -303,13 +328,15 @@
       return buttons.length ? buttons.join(' ') : '<span class="text-muted">No actions</span>';
     }
     function renderRows(rows) {
+      state.rows = {};
       if (!rows.length) {
         tableBody.innerHTML = '<tr><td colspan="8">No matching appointments.</td></tr>';
         return;
       }
       tableBody.innerHTML = rows.map(function (row) {
+        state.rows[String(row.appointment_id)] = row;
         var record = row.donation_code
-          ? '<span class="fw-semibold">' + esc(row.donation_code) + '</span><span class="d-block text-muted small">' + esc(row.donation_status || '-') + (row.blood_units !== null ? ' · ' + esc(row.blood_units) + ' unit(s)' : '') + '</span>'
+          ? '<span class="fw-semibold">' + esc(row.donation_code) + '</span><span class="d-block text-muted small">' + esc(row.donation_status || '-') + (row.blood_units !== null ? ' · ' + esc(row.blood_units) + ' unit(s)' : '') + '</span><span class="d-block text-muted small">Verified type: ' + esc(row.verified_blood_type || 'Not yet determined') + '</span>'
           : '<span class="text-muted">Not recorded</span>';
         var note = row.deferred_reason || row.remarks || '';
         return '<tr>'
@@ -378,10 +405,20 @@
       if (action === 'check-in') {
         sendPatch(actionUrl(api.checkInUrlTemplate, id)).then(loadRows).catch(showError);
       } else if (action === 'complete') {
+        var row = state.rows[String(id)] || {};
         qs('completeAppointmentId').value = id;
         qs('completeDonationDate').value = new Date().toISOString().slice(0, 10);
         qs('completeBloodUnits').value = 1;
         qs('completeRemarks').value = '';
+        qs('completeVerifiedBloodType').value = '';
+        qs('completeConfirmBloodTypeChange').checked = false;
+        qs('completeBloodTypeChangeReason').value = '';
+        qs('completeBloodTypeChangeFields').classList.add('d-none');
+        var currentType = row.blood_type || 'Not yet determined';
+        var currentStatus = String(row.blood_type_status || 'not_yet_determined').replace(/_/g, ' ');
+        qs('completeCurrentBloodType').textContent = currentType + ' (' + currentStatus + ')';
+        qs('completeVerifiedBloodType').setAttribute('data-current-id', row.blood_type_id || '');
+        qs('completeVerifiedBloodType').setAttribute('data-current-status', row.blood_type_status || 'not_yet_determined');
         completeModal ? completeModal.show() : null;
       } else if (action === 'defer') {
         qs('deferAppointmentId').value = id;
@@ -399,11 +436,24 @@
       sendPatch(actionUrl(api.completeUrlTemplate, id), {
         blood_units: qs('completeBloodUnits').value,
         donation_date: qs('completeDonationDate').value,
+        verified_blood_type_id: qs('completeVerifiedBloodType').value || null,
+        confirm_blood_type_change: qs('completeConfirmBloodTypeChange').checked,
+        blood_type_change_reason: qs('completeBloodTypeChangeReason').value,
         remarks: qs('completeRemarks').value
       }).then(function () {
         completeModal ? completeModal.hide() : null;
         loadRows();
       }).catch(showError);
+    });
+    qs('completeVerifiedBloodType').addEventListener('change', function () {
+      var isDifferentVerifiedType = this.value !== ''
+        && this.getAttribute('data-current-status') === 'verified'
+        && this.value !== this.getAttribute('data-current-id');
+      qs('completeBloodTypeChangeFields').classList.toggle('d-none', !isDifferentVerifiedType);
+      if (!isDifferentVerifiedType) {
+        qs('completeConfirmBloodTypeChange').checked = false;
+        qs('completeBloodTypeChangeReason').value = '';
+      }
     });
     qs('deferDonationForm').addEventListener('submit', function (event) {
       event.preventDefault();

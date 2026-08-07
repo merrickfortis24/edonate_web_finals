@@ -292,7 +292,7 @@ class DonorPortalController extends Controller
         }
 
         $donationHistory = DonationRecord::query()
-            ->with(['appointment.event'])
+            ->with(['appointment.event', 'verifiedBloodType'])
             ->where('donor_id', $context['donor']->donor_id)
             ->orderByDesc('donation_date')
             ->limit(20)
@@ -358,6 +358,7 @@ class DonorPortalController extends Controller
             'first_name' => $donor->first_name,
             'last_name' => $donor->last_name,
             'blood_type' => $bloodType ?? '-',
+            'blood_type_status' => strtolower(trim((string) ($donor->blood_type_status ?? 'not_yet_determined'))),
             'total_donations' => $totalDonations,
         ];
 

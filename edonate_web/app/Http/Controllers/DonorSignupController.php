@@ -229,9 +229,9 @@ class DonorSignupController extends Controller
         DB::beginTransaction();
 
         try {
-            $bloodType = BloodType::firstOrCreate([
-                'blood_type' => $validated['blood_type'],
-            ]);
+            $bloodType = BloodType::query()
+                ->where('blood_type', $validated['blood_type'])
+                ->firstOrFail();
 
             $location = Location::create([
                 'street_address' => $validated['street_address'],
@@ -247,6 +247,9 @@ class DonorSignupController extends Controller
                 'birthdate' => $validated['birthdate'],
                 'contact_number' => $validated['phone'],
                 'blood_type_id' => $bloodType->blood_type_id,
+                'blood_type_status' => 'self_reported',
+                'blood_type_verified_by_admin_id' => null,
+                'blood_type_verified_at' => null,
                 'location_id' => $location->location_id,
                 'date_registered' => now(),
             ]);

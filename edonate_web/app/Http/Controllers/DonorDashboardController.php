@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 
 class DonorDashboardController extends Controller
 {
@@ -83,6 +84,7 @@ class DonorDashboardController extends Controller
             'first_name' => $donor->first_name,
             'last_name' => $donor->last_name,
             'blood_type' => $bloodType ?? '-',
+            'blood_type_status' => $this->bloodTypeStatus($donor),
             'total_donations' => $totalDonations,
         ];
 
@@ -134,20 +136,28 @@ class DonorDashboardController extends Controller
             'phone' => ['required', 'regex:/^(\+63|0)\d{10}$/'],
             'birthdate' => ['required', 'date', 'before_or_equal:today'],
             'gender' => ['required', 'string', 'max:20'],
-            'blood_type' => ['required', 'string', 'max:5'],
+            'blood_type' => ['required', 'string', Rule::in(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']), Rule::exists('blood_types', 'blood_type')],
             'street_address' => ['required', 'string', 'max:150'],
             'barangay' => ['required', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],
             'province' => ['required', 'string', 'max:100'],
         ]);
 
+        $bloodType = BloodType::query()
+            ->where('blood_type', $validated['blood_type'])
+            ->firstOrFail();
+        $bloodTypeStatus = strtolower(trim((string) ($donor->blood_type_status ?? 'not_yet_determined')));
+
+        if ($bloodTypeStatus === 'verified' && (int) $donor->blood_type_id !== (int) $bloodType->blood_type_id) {
+            return redirect('/dashboard')->withErrors([
+                'blood_type' => 'Your verified blood type can only be changed through a completed donation review.',
+            ]);
+        }
+
         DB::beginTransaction();
 
         try {
             $shouldGeocodeLocation = false;
-            $bloodType = BloodType::query()->firstOrCreate([
-                'blood_type' => $validated['blood_type'],
-            ]);
 
             $location = $donor->location_id
                 ? Location::query()->find($donor->location_id)
@@ -181,13 +191,21 @@ class DonorDashboardController extends Controller
                 $shouldGeocodeLocation = true;
             }
 
-            $donor->update([
+            $donorPayload = [
                 'contact_number' => $validated['phone'],
                 'birthdate' => $validated['birthdate'],
                 'gender' => $validated['gender'],
                 'blood_type_id' => $bloodType->blood_type_id,
                 'location_id' => $location->location_id,
-            ]);
+            ];
+
+            if ($bloodTypeStatus !== 'verified') {
+                $donorPayload['blood_type_status'] = 'self_reported';
+                $donorPayload['blood_type_verified_by_admin_id'] = null;
+                $donorPayload['blood_type_verified_at'] = null;
+            }
+
+            $donor->update($donorPayload);
 
             $request->session()->put('donor_name', trim($donor->first_name . ' ' . $donor->last_name));
 
@@ -228,6 +246,15 @@ class DonorDashboardController extends Controller
         $status = strtolower(trim((string) ($donor->verification_status ?? 'unverified')));
 
         return in_array($status, ['unverified', 'pending', 'verified', 'rejected'], true) ? $status : 'unverified';
+    }
+
+    private function bloodTypeStatus(Donor $donor): string
+    {
+        $status = strtolower(trim((string) ($donor->blood_type_status ?? 'not_yet_determined')));
+
+        return in_array($status, ['verified', 'self_reported', 'not_yet_determined'], true)
+            ? $status
+            : 'not_yet_determined';
     }
 
     /**

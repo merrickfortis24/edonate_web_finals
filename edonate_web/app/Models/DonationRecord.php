@@ -43,4 +43,9 @@ class DonationRecord extends Model
     {
         return $this->belongsTo(Admin::class, 'recorded_by_admin_id', 'admin_id');
     }
+
+    public function verifiedBloodType()
+    {
+        return $this->belongsTo(BloodType::class, 'verified_blood_type_id', 'blood_type_id');
+    }
 }

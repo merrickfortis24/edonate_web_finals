@@ -619,6 +619,14 @@ class AdminAuthController extends BaseController
             'eligibility_status' => ['nullable', 'string', Rule::in(['eligible', 'not_eligible'])],
         ]);
 
+        $requestedBloodTypeId = isset($validated['blood_type_id']) ? (int) $validated['blood_type_id'] : null;
+        $currentBloodTypeStatus = Str::lower(trim((string) ($targetDonor->blood_type_status ?? 'not_yet_determined')));
+        if ($currentBloodTypeStatus === 'verified' && $requestedBloodTypeId !== (int) ($targetDonor->blood_type_id ?? 0)) {
+            return response()->json([
+                'message' => 'A verified blood type can only be corrected during an authorized completed donation review.',
+            ], 422);
+        }
+
         $manualCoordinates = $this->userManagementManualCoordinates($validated);
         if ($manualCoordinates === false) {
             return response()->json([
@@ -694,6 +702,13 @@ class AdminAuthController extends BaseController
                 'blood_type_id' => isset($validated['blood_type_id']) ? (int) $validated['blood_type_id'] : null,
                 'location_id' => $nextLocationId,
             ]);
+
+            if (Schema::hasColumn('donors', 'blood_type_status')
+                && strtolower(trim((string) ($targetDonor->blood_type_status ?? 'not_yet_determined'))) !== 'verified') {
+                $targetDonor->blood_type_status = $targetDonor->blood_type_id ? 'self_reported' : 'not_yet_determined';
+                $targetDonor->blood_type_verified_by_admin_id = null;
+                $targetDonor->blood_type_verified_at = null;
+            }
             $targetDonor->save();
 
             $targetAuth->email = Str::lower(trim((string) $validated['email']));
@@ -1132,6 +1147,8 @@ class AdminAuthController extends BaseController
             'donation_date' => ['nullable', 'date', 'before_or_equal:today'],
             'blood_units' => ['required', 'integer', 'min:1', 'max:10'],
             'verified_blood_type_id' => ['nullable', 'integer', 'exists:blood_types,blood_type_id'],
+            'confirm_blood_type_change' => ['nullable', 'boolean'],
+            'blood_type_change_reason' => ['nullable', 'string', 'max:1000'],
             'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -1229,6 +1246,7 @@ class AdminAuthController extends BaseController
     {
         return view('admin.donor_records', [
             'donationRecordsPayload' => [
+                'canVerifyBloodType' => Str::lower(trim((string) $request->session()->get('admin_role'))) === 'admin',
                 'api' => [
                     'listUrl' => route('admin.donation-records.data'),
                     'checkInUrlTemplate' => route('admin.appointments.check-in', ['appointment' => '__ID__']),
@@ -1238,6 +1256,7 @@ class AdminAuthController extends BaseController
                 ],
                 'filters' => [
                     'bloodTypes' => $this->userManagementBloodTypeOptions(),
+                    'verificationBloodTypes' => $this->userManagementBloodTypeFormOptions(),
                     'events' => $this->donationProcessingEventOptions(),
                     'centers' => $this->donationProcessingCenterOptions(),
                 ],
@@ -3150,6 +3169,7 @@ class AdminAuthController extends BaseController
             })
             ->leftJoin('donor_authentication as da', 'da.auth_id', '=', 'da_latest.latest_auth_id')
             ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoin('admins as blood_type_verifier', 'blood_type_verifier.admin_id', '=', 'd.blood_type_verified_by_admin_id')
             ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
             ->select([
                 'ap.appointment_id',
@@ -3311,6 +3331,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             ->leftJoin('donation_events as de', 'de.event_id', '=', 'ap.event_id')
             ->leftJoin('donation_records as dr', 'dr.appointment_id', '=', 'ap.appointment_id')
             ->leftJoin('blood_types as bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
+            ->leftJoin('blood_types as verified_bt', 'verified_bt.blood_type_id', '=', 'dr.verified_blood_type_id')
             ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
                 $join->on('da_latest.donor_id', '=', 'd.donor_id');
             })
@@ -3335,8 +3356,15 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 'd.first_name',
                 'd.last_name',
                 'd.verification_status',
+                'd.blood_type_id',
+                'd.blood_type_status',
+                'd.blood_type_verified_at',
+                'd.blood_type_verified_by_admin_id',
+                'd.blood_type_status',
                 'da.email',
                 'bt.blood_type',
+                'blood_type_verifier.full_name as blood_type_verified_by_name',
+                'blood_type_verifier.username as blood_type_verified_by_username',
                 'de.title as event_title',
                 'de.location_name as event_location_name',
                 'es.status as eligibility_status',
@@ -3345,6 +3373,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 'dr.donation_date',
                 'dr.donation_status',
                 'dr.blood_units',
+                'dr.verified_blood_type_id',
+                'verified_bt.blood_type as verified_blood_type',
                 'dr.remarks',
                 'dr.deferred_reason',
                 'dr.recorded_by_admin_id',
@@ -3384,6 +3414,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             'donor_name' => $donorName,
             'donor_email' => trim((string) ($entry->email ?? '')),
             'blood_type' => trim((string) ($entry->blood_type ?? '')),
+            'blood_type_id' => isset($entry->blood_type_id) ? (int) $entry->blood_type_id : null,
+            'blood_type_status' => Str::lower(trim((string) ($entry->blood_type_status ?? 'not_yet_determined'))),
             'event_id' => isset($entry->event_id) ? (int) $entry->event_id : null,
             'event_title' => trim((string) ($entry->event_title ?? 'Legacy appointment')),
             'appointment_date' => !empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
@@ -3398,6 +3430,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             'next_eligible_date' => !empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
             'donation_status' => $entry->donation_status ? Str::lower((string) $entry->donation_status) : null,
             'blood_units' => is_numeric($entry->blood_units ?? null) ? (int) $entry->blood_units : null,
+            'verified_blood_type_id' => isset($entry->verified_blood_type_id) ? (int) $entry->verified_blood_type_id : null,
+            'verified_blood_type' => trim((string) ($entry->verified_blood_type ?? '')),
             'remarks' => $entry->remarks,
             'deferred_reason' => $entry->deferred_reason,
             'recorded_by' => $recordedBy !== '' ? $recordedBy : null,
@@ -4404,6 +4438,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
     private function userManagementBloodTypeFormOptions(): array
     {
         return BloodType::query()
+            ->whereIn('blood_type', ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
             ->orderBy('blood_type')
             ->get(['blood_type_id', 'blood_type'])
             ->map(function (BloodType $bloodType): array {
@@ -4503,6 +4538,11 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             'birthdate' => ! empty($donor->birthdate) ? (string) $donor->birthdate : null,
             'blood_type_id' => isset($donor->blood_type_id) ? (int) $donor->blood_type_id : null,
             'blood_type' => trim((string) ($donor->blood_type ?? '')),
+            'blood_type_status' => Str::lower(trim((string) ($donor->blood_type_status ?? 'not_yet_determined'))),
+            'blood_type_verified_at' => ! empty($donor->blood_type_verified_at) ? (string) $donor->blood_type_verified_at : null,
+            'blood_type_verified_by' => trim((string) ($donor->blood_type_verified_by_name ?? '')) !== ''
+                ? trim((string) $donor->blood_type_verified_by_name)
+                : $this->userManagementNullableString($donor->blood_type_verified_by_username ?? null),
             'location_id' => isset($donor->location_id) ? (int) $donor->location_id : null,
             'street_address' => $this->userManagementNullableString($donor->street_address ?? null),
             'barangay_name' => $this->userManagementNullableString($donor->barangay_name ?? null),

@@ -213,6 +213,21 @@
                             <div class="fw-semibold" id="userManagementViewBloodType">-</div>
                         </div>
                         <div class="col-md-6">
+                            <div class="small text-muted text-uppercase">Blood Type Status</div>
+                            <div class="fw-semibold" id="userManagementViewBloodTypeStatus">-</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="small text-muted text-uppercase">Verified Date</div>
+                            <div class="fw-semibold" id="userManagementViewBloodTypeVerifiedAt">-</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="small text-muted text-uppercase">Verified By</div>
+                            <div class="fw-semibold" id="userManagementViewBloodTypeVerifiedBy">-</div>
+                        </div>
+                        <div class="col-md-12 d-none" id="userManagementViewSelfReportedWarning">
+                            <div class="alert alert-warning mb-0 py-2 small">Self-reported blood type must not be used as verified blood availability data.</div>
+                        </div>
+                        <div class="col-md-6">
                             <div class="small text-muted text-uppercase">Eligibility Status</div>
                             <div class="fw-semibold" id="userManagementViewEligibilityStatus">-</div>
                         </div>
@@ -415,6 +430,10 @@
         var viewGender = document.getElementById('userManagementViewGender');
         var viewBirthdate = document.getElementById('userManagementViewBirthdate');
         var viewBloodType = document.getElementById('userManagementViewBloodType');
+        var viewBloodTypeStatus = document.getElementById('userManagementViewBloodTypeStatus');
+        var viewBloodTypeVerifiedAt = document.getElementById('userManagementViewBloodTypeVerifiedAt');
+        var viewBloodTypeVerifiedBy = document.getElementById('userManagementViewBloodTypeVerifiedBy');
+        var viewSelfReportedWarning = document.getElementById('userManagementViewSelfReportedWarning');
         var viewEligibilityStatus = document.getElementById('userManagementViewEligibilityStatus');
         var viewAddress = document.getElementById('userManagementViewAddress');
         var viewLatitude = document.getElementById('userManagementViewLatitude');
@@ -955,6 +974,12 @@
             setValue(viewGender, donorPayload.gender);
             setValue(viewBirthdate, formatDate(donorPayload.birthdate));
             setValue(viewBloodType, donorPayload.blood_type);
+            setValue(viewBloodTypeStatus, String(donorPayload.blood_type_status || 'not_yet_determined').replace(/_/g, ' '));
+            setValue(viewBloodTypeVerifiedAt, formatDateTime(donorPayload.blood_type_verified_at));
+            setValue(viewBloodTypeVerifiedBy, donorPayload.blood_type_verified_by);
+            if (viewSelfReportedWarning) {
+                viewSelfReportedWarning.classList.toggle('d-none', donorPayload.blood_type_status !== 'self_reported');
+            }
             setValue(viewEligibilityStatus, statusLabel(donorPayload.eligibility_status));
             setValue(viewAddress, donorPayload.full_address);
             setValue(viewLatitude, donorPayload.latitude);

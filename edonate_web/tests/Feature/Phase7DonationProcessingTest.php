@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureAdminAuthenticated;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Models\Donor;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,27 @@ class Phase7DonationProcessingTest extends TestCase
             'action_type' => 'appointment_checked_in',
             'target_table' => 'appointments',
             'target_id' => $appointmentId,
+        ]);
+    }
+
+    public function test_donor_mass_assignment_cannot_set_verified_blood_type_fields(): void
+    {
+        $donor = Donor::query()->create([
+            'first_name' => 'Self',
+            'last_name' => 'Reported',
+            'blood_type_id' => 1,
+            'blood_type_status' => 'verified',
+            'blood_type_verified_by_admin_id' => 1,
+            'blood_type_verified_at' => now(),
+            'date_registered' => now(),
+        ]);
+
+        $this->assertDatabaseHas('donors', [
+            'donor_id' => $donor->donor_id,
+            'blood_type_id' => 1,
+            'blood_type_status' => 'not_yet_determined',
+            'blood_type_verified_by_admin_id' => null,
+            'blood_type_verified_at' => null,
         ]);
     }
 
@@ -115,6 +137,118 @@ class Phase7DonationProcessingTest extends TestCase
             ->assertUnprocessable();
 
         $this->assertDatabaseMissing('donation_records', ['appointment_id' => $appointmentId]);
+    }
+
+    public function test_admin_can_verify_blood_type_during_successful_donation(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'A+']);
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'verified_blood_type_id' => 2,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'verified_blood_type_id' => 2,
+        ]);
+        $this->assertDatabaseHas('donors', [
+            'donor_id' => $donorId,
+            'blood_type_id' => 2,
+            'blood_type_status' => 'verified',
+            'blood_type_verified_by_admin_id' => 1,
+        ]);
+        $this->assertNotNull(DB::table('donors')->where('donor_id', $donorId)->value('blood_type_verified_at'));
+        $this->assertSame(1, DB::table('audit_logs')->where('action_type', 'blood_type_verified')->count());
+        $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'blood_type_verified')->count());
+    }
+
+    public function test_not_yet_determined_does_not_verify_donor_blood_type(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", ['blood_units' => 1])
+            ->assertOk();
+
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'verified_blood_type_id' => null,
+        ]);
+        $this->assertDatabaseHas('donors', [
+            'donor_id' => $donorId,
+            'blood_type_status' => 'self_reported',
+            'blood_type_verified_by_admin_id' => null,
+        ]);
+    }
+
+    public function test_staff_cannot_record_a_verified_blood_type(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+
+        $this->withSession(array_merge($this->adminSession(), ['admin_role' => 'staff']))
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'verified_blood_type_id' => 1,
+            ])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseMissing('donation_records', ['appointment_id' => $appointmentId]);
+    }
+
+    public function test_verified_blood_type_correction_requires_confirmation_and_reason(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'A+']);
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+        DB::table('donors')->where('donor_id', $donorId)->update([
+            'blood_type_status' => 'verified',
+            'blood_type_verified_by_admin_id' => 1,
+            'blood_type_verified_at' => now(),
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'verified_blood_type_id' => 2,
+            ])
+            ->assertUnprocessable();
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'verified_blood_type_id' => 2,
+                'confirm_blood_type_change' => true,
+                'blood_type_change_reason' => 'Laboratory result was corrected after repeat testing.',
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'blood_type_changed']);
     }
 
     public function test_checked_in_appointment_can_be_deferred_on_site(): void
@@ -214,6 +348,9 @@ class Phase7DonationProcessingTest extends TestCase
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
             $table->integer('blood_type_id')->nullable();
+            $table->string('blood_type_status')->default('not_yet_determined');
+            $table->integer('blood_type_verified_by_admin_id')->nullable();
+            $table->dateTime('blood_type_verified_at')->nullable();
             $table->timestamp('date_registered')->nullable();
             $table->string('verification_status')->default('verified');
         });
@@ -348,6 +485,7 @@ class Phase7DonationProcessingTest extends TestCase
             'first_name' => 'Test',
             'last_name' => 'Donor',
             'blood_type_id' => 1,
+            'blood_type_status' => 'self_reported',
             'verification_status' => 'verified',
             'date_registered' => now(),
         ], 'donor_id');

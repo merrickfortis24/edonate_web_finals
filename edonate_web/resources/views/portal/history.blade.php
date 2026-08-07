@@ -19,6 +19,7 @@
                     <th class="px-3 py-2 font-semibold">Event / Center</th>
                     <th class="px-3 py-2 font-semibold">Status</th>
                     <th class="px-3 py-2 font-semibold">Units</th>
+                    <th class="px-3 py-2 font-semibold">Verified Blood Type</th>
                     <th class="px-3 py-2 font-semibold">Next Eligible</th>
                 </tr>
                 </thead>
@@ -45,13 +46,14 @@
                         </td>
                         <td class="px-3 py-3 text-slate-700">{{ $statusLabel }}</td>
                         <td class="px-3 py-3 text-slate-700">{{ $record->blood_units ?? '-' }}</td>
+                        <td class="px-3 py-3 text-slate-700">{{ $record->verifiedBloodType?->blood_type ?: 'Not yet determined' }}</td>
                         <td class="px-3 py-3 text-slate-700">
                             {{ $latestEligibility?->next_eligible_date ? \Carbon\Carbon::parse($latestEligibility->next_eligible_date)->format('F j, Y') : '-' }}
                         </td>
                     </tr>
                     @if ($record->remarks || $record->deferred_reason)
                         <tr class="border-b border-slate-100 bg-slate-50/70">
-                            <td class="px-3 py-2 text-xs text-slate-500" colspan="5">
+                            <td class="px-3 py-2 text-xs text-slate-500" colspan="6">
                                 {{ $record->deferred_reason ?: $record->remarks }}
                             </td>
                         </tr>

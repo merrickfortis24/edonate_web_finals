@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreDonorRegistrationRequest extends FormRequest
 {
@@ -28,7 +29,7 @@ class StoreDonorRegistrationRequest extends FormRequest
             'phone' => ['required', 'string', 'regex:/^(\\+63|0)\\d{10}$/'],
             'birthdate' => ['required', 'date', 'before_or_equal:today'],
             'gender' => ['required', 'in:Male,Female,Other,Prefer not to say'],
-            'blood_type' => ['required', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'],
+            'blood_type' => ['required', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-', Rule::exists('blood_types', 'blood_type')],
             'street_address' => ['required', 'string', 'max:150'],
             'barangay' => ['required', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],

@@ -27,9 +27,19 @@ class Donor extends Model
         'verification_status',
     ];
 
+    protected $casts = [
+        'blood_type_verified_at' => 'datetime',
+        'birthdate' => 'date',
+    ];
+
     public function bloodType()
     {
         return $this->belongsTo(BloodType::class, 'blood_type_id', 'blood_type_id');
+    }
+
+    public function bloodTypeVerifiedBy()
+    {
+        return $this->belongsTo(Admin::class, 'blood_type_verified_by_admin_id', 'admin_id');
     }
 
     public function location()
