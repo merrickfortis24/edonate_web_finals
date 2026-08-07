@@ -15,6 +15,7 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: 65002
           script: |
+            set -e
             cd /home/u156729731/domains/edonate.online/public_html
             REPO_URL="git@github.com:merrickfortis24/edonate_web_finals.git"
             export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
@@ -31,3 +32,18 @@ jobs:
             git remote add origin "$REPO_URL"
             git fetch --prune origin main
             git reset --hard origin/main
+
+            # The repository keeps public assets in the nested public_html
+            # folder, while Hostinger serves the outer public_html directory.
+            cd /home/u156729731/domains/edonate.online/public_html/edonate_web
+            php scripts/sync-public-assets.php \
+              --web-root=/home/u156729731/domains/edonate.online/public_html
+
+            php artisan migrate --force
+            php artisan optimize:clear
+            php artisan config:cache
+            php artisan view:cache
+
+            test -f /home/u156729731/domains/edonate.online/public_html/index.php
+            test -f /home/u156729731/domains/edonate.online/public_html/.htaccess
+            test -f /home/u156729731/domains/edonate.online/public_html/edonate_web/vendor/autoload.php

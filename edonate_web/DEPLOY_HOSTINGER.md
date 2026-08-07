@@ -47,13 +47,11 @@ $app->usePublicPath(dirname(__DIR__).'/..');
 Run commands from the private Laravel root:
 
 ```bash
-cd ~/domains/edonate.online/edonate_web
-composer install --no-dev --optimize-autoloader
+cd ~/domains/edonate.online/public_html/edonate_web
 php artisan migrate --force
-php scripts/sync-public-assets.php
+php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/public_html"
 php artisan optimize:clear
 php artisan config:cache
-php artisan route:cache
 php artisan view:cache
 ```
 
@@ -62,7 +60,7 @@ them with:
 
 ```bash
 cd ~/domains/edonate.online/public_html/edonate_web
-php scripts/sync-public-assets.php
+php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/public_html"
 ```
 
 The script copies `index.php`, `.htaccess`, `build/`, `css/`, `js/`,
