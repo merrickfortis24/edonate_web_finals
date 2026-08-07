@@ -44,4 +44,9 @@ class Facility extends Model
     {
         return $this->hasMany(FacilityBloodInventoryLog::class, 'facility_id', 'facility_id');
     }
+
+    public function bloodRequests()
+    {
+        return $this->hasMany(BloodRequest::class, 'facility_id', 'facility_id');
+    }
 }

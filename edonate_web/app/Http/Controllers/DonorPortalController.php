@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\BloodRequest;
+use App\Models\BloodRequestDonor;
 use App\Models\BloodType;
 use App\Models\DonationEvent;
 use App\Models\DonationRecord;
@@ -14,6 +16,7 @@ use App\Models\Location;
 use App\Models\Notification;
 use App\Services\AdminNotificationService;
 use App\Services\AppointmentBookingService;
+use App\Services\BloodRequestService;
 use App\Services\EligibilityEvaluator;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
@@ -327,6 +330,54 @@ class DonorPortalController extends Controller
         ]);
     }
 
+    public function bloodRequests(Request $request)
+    {
+        $context = $this->buildContext($request, 'blood-requests');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        $invitations = BloodRequestDonor::query()
+            ->with(['request.facility', 'request.bloodType'])
+            ->where('donor_id', $context['donor']->donor_id)
+            ->orderByDesc('created_at')
+            ->limit(30)
+            ->get();
+
+        return view('portal.blood-requests', $context + [
+            'invitations' => $invitations,
+        ]);
+    }
+
+    public function showBloodRequest(Request $request, BloodRequest $bloodRequest)
+    {
+        $context = $this->buildContext($request, 'blood-requests');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        $invitation = BloodRequestDonor::query()
+            ->with(['request.facility', 'request.bloodType'])
+            ->where('request_id', $bloodRequest->request_id)
+            ->where('donor_id', $context['donor']->donor_id)
+            ->firstOrFail();
+
+        return view('portal.blood-request-show', $context + [
+            'invitation' => $invitation,
+            'bloodRequest' => $invitation->request,
+        ]);
+    }
+
+    public function respondBloodRequestInterested(Request $request, BloodRequest $bloodRequest, BloodRequestService $service): RedirectResponse|JsonResponse
+    {
+        return $this->respondBloodRequest($request, $bloodRequest, $service, 'interested');
+    }
+
+    public function respondBloodRequestDecline(Request $request, BloodRequest $bloodRequest, BloodRequestService $service): RedirectResponse|JsonResponse
+    {
+        return $this->respondBloodRequest($request, $bloodRequest, $service, 'declined');
+    }
+
     private function buildContext(Request $request, string $activeNav): array|RedirectResponse
     {
         $donorId = (int) $request->session()->get('donor_id');
@@ -380,9 +431,33 @@ class DonorPortalController extends Controller
             ['key' => 'book', 'label' => 'Book Appointment', 'href' => route('donor.book-appointment')],
             ['key' => 'eligibility', 'label' => 'Check Eligibility', 'href' => route('donor.check-eligibility')],
             ['key' => 'verification', 'label' => 'Verify Identity', 'href' => route('donor.verification.index')],
+            ['key' => 'blood-requests', 'label' => 'Blood Requests', 'href' => route('donor.blood-requests.index')],
             ['key' => 'history', 'label' => 'History', 'href' => route('donor.history')],
             ['key' => 'alerts', 'label' => 'Alerts', 'href' => route('donor.alerts')],
         ];
+    }
+
+    private function respondBloodRequest(Request $request, BloodRequest $bloodRequest, BloodRequestService $service, string $status): RedirectResponse|JsonResponse
+    {
+        $context = $this->buildContext($request, 'blood-requests');
+        if ($context instanceof RedirectResponse) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Please log in to continue.'], 401);
+            }
+
+            return $context;
+        }
+
+        $service->respond($bloodRequest, (int) $context['donor']->donor_id, $status);
+        $message = $status === 'interested'
+            ? 'Your interest has been sent to the admin team.'
+            : 'Your response has been recorded.';
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message]);
+        }
+
+        return redirect()->route('donor.blood-requests.show', $bloodRequest)->with('success', $message);
     }
 
     private function donorCanBookAppointment(Donor $donor): bool

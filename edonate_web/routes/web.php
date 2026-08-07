@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminAuthController;
+use App\Http\Controllers\Admin\BloodRequestController as AdminBloodRequestController;
 use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
 use App\Http\Controllers\Admin\DonationEventController as AdminDonationEventController;
 use App\Http\Controllers\Admin\FacilityController as AdminFacilityController;
@@ -43,6 +44,16 @@ Route::get('/verification', [DonorVerificationController::class, 'index'])->name
 Route::post('/verification', [DonorVerificationController::class, 'store'])->name('donor.verification.store');
 Route::get('/history', [DonorPortalController::class, 'history'])->name('donor.history');
 Route::get('/alerts', [DonorPortalController::class, 'alerts'])->name('donor.alerts');
+Route::get('/blood-requests', [DonorPortalController::class, 'bloodRequests'])->name('donor.blood-requests.index');
+Route::get('/blood-requests/{bloodRequest}', [DonorPortalController::class, 'showBloodRequest'])
+    ->whereNumber('bloodRequest')
+    ->name('donor.blood-requests.show');
+Route::post('/blood-requests/{bloodRequest}/interested', [DonorPortalController::class, 'respondBloodRequestInterested'])
+    ->whereNumber('bloodRequest')
+    ->name('donor.blood-requests.interested');
+Route::post('/blood-requests/{bloodRequest}/decline', [DonorPortalController::class, 'respondBloodRequestDecline'])
+    ->whereNumber('bloodRequest')
+    ->name('donor.blood-requests.decline');
 Route::post('/profile/complete', [DonorDashboardController::class, 'completeProfile'])->name('donor.profile.complete');
 Route::post('/logout', [DonorLoginController::class, 'destroy'])->name('donor.logout');
 
@@ -106,6 +117,31 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/facilities/{facility}/inventory/data', [AdminFacilityController::class, 'inventoryData'])
             ->whereNumber('facility')
             ->name('admin.facilities.inventory.data');
+        Route::get('/admin/blood-requests', [AdminBloodRequestController::class, 'index'])->name('admin.blood-requests.index');
+        Route::get('/admin/blood-requests/data', [AdminBloodRequestController::class, 'data'])->name('admin.blood-requests.data');
+        Route::post('/admin/blood-requests', [AdminBloodRequestController::class, 'store'])->name('admin.blood-requests.store');
+        Route::get('/admin/blood-requests/{bloodRequest}', [AdminBloodRequestController::class, 'show'])
+            ->whereNumber('bloodRequest')
+            ->name('admin.blood-requests.show');
+        Route::get('/admin/blood-requests/{bloodRequest}/details', [AdminBloodRequestController::class, 'details'])
+            ->whereNumber('bloodRequest')
+            ->name('admin.blood-requests.details');
+        Route::get('/admin/blood-requests/{bloodRequest}/candidates', [AdminBloodRequestController::class, 'candidates'])
+            ->whereNumber('bloodRequest')
+            ->name('admin.blood-requests.candidates');
+        Route::post('/admin/blood-requests/{bloodRequest}/notify', [AdminBloodRequestController::class, 'notify'])
+            ->whereNumber('bloodRequest')
+            ->name('admin.blood-requests.notify');
+        Route::patch('/admin/blood-requests/{bloodRequest}/donors/{donor}/status', [AdminBloodRequestController::class, 'updateDonorStatus'])
+            ->whereNumber('bloodRequest')
+            ->whereNumber('donor')
+            ->name('admin.blood-requests.donors.status');
+        Route::patch('/admin/blood-requests/{bloodRequest}/cancel', [AdminBloodRequestController::class, 'cancel'])
+            ->whereNumber('bloodRequest')
+            ->name('admin.blood-requests.cancel');
+        Route::patch('/admin/blood-requests/{bloodRequest}/fulfill', [AdminBloodRequestController::class, 'fulfill'])
+            ->whereNumber('bloodRequest')
+            ->name('admin.blood-requests.fulfill');
         Route::get('/admin/map/donors', [AdminAuthController::class, 'mapDonors'])->name('admin.map.donors');
         Route::get('/admin/map/barangays', [AdminAuthController::class, 'mapBarangays'])->name('admin.map.barangays');
         Route::get('/admin/map/summary', [AdminAuthController::class, 'mapSummary'])->name('admin.map.summary');
