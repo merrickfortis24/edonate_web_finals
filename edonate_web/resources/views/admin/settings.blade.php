@@ -44,6 +44,9 @@
 						<button class="nav-link active" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" type="button" role="tab" aria-controls="settings-general-pane" aria-selected="true">General</button>
 					</li>
 					<li class="nav-item" role="presentation">
+						<button class="nav-link" id="settings-appearance-tab" data-bs-toggle="tab" data-bs-target="#settings-appearance-pane" type="button" role="tab" aria-controls="settings-appearance-pane" aria-selected="false">Appearance</button>
+					</li>
+					<li class="nav-item" role="presentation">
 						<button class="nav-link" id="settings-account-tab" data-bs-toggle="tab" data-bs-target="#settings-account-pane" type="button" role="tab" aria-controls="settings-account-pane" aria-selected="false">Account</button>
 					</li>
 					<li class="nav-item" role="presentation">
@@ -97,6 +100,39 @@
 									</button>
 								</div>
 							</form>
+						</article>
+					</div>
+
+					<div class="tab-pane fade" id="settings-appearance-pane" role="tabpanel" aria-labelledby="settings-appearance-tab" tabindex="0">
+						<article class="settings-card">
+							<header class="settings-card__header">
+								<span class="settings-card__icon" aria-hidden="true">
+									<i class="bi bi-circle-half"></i>
+								</span>
+								<div>
+									<h2 class="settings-card__title">Appearance</h2>
+									<p class="settings-card__subtitle">Choose how the eDonate Admin Portal looks.</p>
+								</div>
+							</header>
+
+							<div class="settings-theme-control" role="radiogroup" aria-labelledby="settingsThemeLabel">
+								<div class="settings-theme-copy">
+									<h3 id="settingsThemeLabel">Theme</h3>
+									<p>Light mode is the default. Your choice is saved on this browser.</p>
+								</div>
+
+								<div class="settings-theme-options">
+									<input class="btn-check" type="radio" name="settingsTheme" id="settingsThemeLight" value="light" autocomplete="off">
+									<label class="btn btn-outline-danger settings-theme-option" for="settingsThemeLight">
+										<i class="bi bi-sun me-2" aria-hidden="true"></i>Light
+									</label>
+
+									<input class="btn-check" type="radio" name="settingsTheme" id="settingsThemeDark" value="dark" autocomplete="off">
+									<label class="btn btn-outline-danger settings-theme-option" for="settingsThemeDark">
+										<i class="bi bi-moon-stars me-2" aria-hidden="true"></i>Dark
+									</label>
+								</div>
+							</div>
 						</article>
 					</div>
 
@@ -338,6 +374,7 @@
 		var sessionTimeoutSelect = document.getElementById('settingsSessionTimeoutSelect');
 		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
+		var themeInputs = document.querySelectorAll('input[name="settingsTheme"]');
 
 		function escapeHtml(value) {
 			return String(value || '')
@@ -467,6 +504,44 @@
 			twoFactorEnrollmentHint.textContent = 'Current account: not yet enrolled. If global 2FA is enabled, this account will be redirected to setup before dashboard access.';
 		}
 
+		function getPortalTheme() {
+			if (window.eDonateTheme && typeof window.eDonateTheme.getTheme === 'function') {
+				return window.eDonateTheme.getTheme();
+			}
+
+			try {
+				var storedTheme = window.localStorage.getItem('lte-theme');
+				return storedTheme === 'dark' ? 'dark' : 'light';
+			} catch (error) {
+				return 'light';
+			}
+		}
+
+		function setPortalTheme(theme) {
+			var nextTheme = theme === 'dark' ? 'dark' : 'light';
+
+			if (window.eDonateTheme && typeof window.eDonateTheme.setTheme === 'function') {
+				nextTheme = window.eDonateTheme.setTheme(nextTheme);
+			} else {
+				document.documentElement.setAttribute('data-bs-theme', nextTheme);
+				try {
+					window.localStorage.setItem('lte-theme', nextTheme);
+				} catch (error) {
+					// localStorage may be unavailable in restricted browsing modes.
+				}
+			}
+
+			syncThemeControl(nextTheme);
+		}
+
+		function syncThemeControl(theme) {
+			var selectedTheme = theme === 'dark' ? 'dark' : 'light';
+
+			themeInputs.forEach(function (input) {
+				input.checked = input.value === selectedTheme;
+			});
+		}
+
 		function hydrateFromPayload() {
 			if (systemNameInput) {
 				systemNameInput.value = settingsData.general.systemName;
@@ -493,7 +568,20 @@
 			}
 
 			renderTwoFactorEnrollmentHint();
+			syncThemeControl(getPortalTheme());
 		}
+
+		themeInputs.forEach(function (input) {
+			input.addEventListener('change', function () {
+				if (input.checked) {
+					setPortalTheme(input.value);
+				}
+			});
+		});
+
+		window.addEventListener('edonate:themechange', function (event) {
+			syncThemeControl(event.detail && event.detail.theme);
+		});
 
 		if (confirmSaveButton) {
 			confirmSaveButton.addEventListener('click', function () {

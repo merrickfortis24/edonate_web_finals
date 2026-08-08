@@ -40,7 +40,7 @@
                         <div class="row g-2">
                             @foreach ($codes as $code)
                                 <div class="col-12 col-md-6">
-                                    <div class="form-control bg-light fw-semibold">{{ $code }}</div>
+                                    <div class="form-control bg-body-secondary fw-semibold">{{ $code }}</div>
                                 </div>
                             @endforeach
                         </div>
@@ -76,7 +76,7 @@
                             Open Google Authenticator, tap <strong>+</strong>, then scan this QR code.
                         </p>
 
-                        <div class="d-flex justify-content-center align-items-center p-3 bg-light rounded border mb-3" style="min-height: 250px;">
+                        <div class="d-flex justify-content-center align-items-center p-3 bg-body-secondary rounded border mb-3" style="min-height: 250px;">
                             @if (!empty($qrSvg))
                                 {!! $qrSvg !!}
                             @else
@@ -87,7 +87,7 @@
                         @if (!empty($secret))
                             <div class="mb-2">
                                 <label class="form-label fw-semibold mb-1">Manual Secret Key</label>
-                                <div class="form-control bg-light">{{ $secret }}</div>
+                                <div class="form-control bg-body-secondary">{{ $secret }}</div>
                             </div>
                         @endif
                     </div>

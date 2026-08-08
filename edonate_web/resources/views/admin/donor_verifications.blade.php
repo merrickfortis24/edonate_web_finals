@@ -88,7 +88,7 @@
         </form>
 
         <div class="table-responsive mt-4">
-            <table class="table table-hover align-middle bg-white">
+            <table class="table table-hover align-middle">
                 <thead>
                     <tr>
                         <th>Donor Name</th>

@@ -160,7 +160,7 @@
             <div class="modal-body" style="padding:24px; display:flex; flex-direction:column; gap:20px;">
 
                 {{-- Appointment info --}}
-                <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px 16px;">
+                <div style="background:var(--bs-success-bg-subtle); border:1px solid var(--bs-success-border-subtle); border-radius:12px; padding:14px 16px;">
                     <p style="font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.6px; color:#129800; margin-bottom:6px;">Completing Appointment</p>
                     <p class="complete-info-code" style="font-size:15px; font-weight:700; color:#111; margin:0;">—</p>
                     <p class="complete-info-donor" style="font-size:13px; color:#555; margin-top:3px;">—</p>
@@ -168,7 +168,7 @@
 
                 {{-- Blood units input --}}
                 <div style="display:flex; flex-direction:column; gap:7px;">
-                    <label for="completeBloodUnits" style="font-size:13px; font-weight:600; color:#1f1f1f;">
+                    <label for="completeBloodUnits" style="font-size:13px; font-weight:600; color:var(--bs-body-color);">
                         Blood Units Donated <span style="color:#b60c0c;">*</span>
                     </label>
                     <input
@@ -178,27 +178,28 @@
                         max="10"
                         step="1"
                         placeholder="e.g. 1"
-                        style="height:44px; padding:0 14px; border:1.5px solid #d7d7d7; border-radius:10px; background:#f3f3f3; font-size:15px; font-weight:500; outline:none; width:100%;"
+                        class="form-control"
+                        style="height:44px; padding:0 14px; border-radius:10px; font-size:15px; font-weight:500; outline:none; width:100%;"
                     />
-                    <span style="font-size:11px; color:#888;">Standard whole blood donation = 1 unit (450 mL)</span>
+                    <span style="font-size:11px; color:var(--bs-secondary-color);">Standard whole blood donation = 1 unit (450 mL)</span>
                 </div>
 
                 {{-- Next eligible date preview --}}
-                <div id="completeEligiblePreview" style="display:none; background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:12px 14px;">
-                    <p style="font-size:12px; font-weight:600; color:#92400e; margin:0;">
+                <div id="completeEligiblePreview" style="display:none; background:var(--bs-warning-bg-subtle); border:1px solid var(--bs-warning-border-subtle); border-radius:10px; padding:12px 14px;">
+                    <p style="font-size:12px; font-weight:600; color:var(--bs-warning-text-emphasis); margin:0;">
                         📅 Next eligible donation date: <span id="completeNextEligible" style="font-weight:700;">—</span>
                     </p>
                 </div>
 
                 {{-- Error --}}
-                <div id="completeError" style="display:none; background:#fff0f0; border:1px solid #ffc5c5; border-radius:10px; padding:13px 15px; font-size:13px; color:#8b0000; font-weight:500;">
+                <div id="completeError" style="display:none; background:var(--bs-danger-bg-subtle); border:1px solid var(--bs-danger-border-subtle); border-radius:10px; padding:13px 15px; font-size:13px; color:var(--bs-danger-text-emphasis); font-weight:500;">
                     <span id="completeErrorText"></span>
                 </div>
 
             </div>
 
-            <div class="modal-footer" style="padding:16px 24px; border-top:1px solid rgba(0,0,0,0.08); gap:10px; justify-content:flex-end;">
-                <button type="button" data-bs-dismiss="modal" style="height:42px; padding:0 22px; border-radius:10px; border:1.5px solid #ccc; background:#fff; font-size:14px; font-weight:600; color:#555; cursor:pointer;">
+            <div class="modal-footer" style="padding:16px 24px; border-top:1px solid var(--bs-border-color); gap:10px; justify-content:flex-end;">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="height:42px; padding:0 22px; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer;">
                     Cancel
                 </button>
                 <button type="button" id="completeConfirmBtn" style="height:42px; padding:0 24px; border-radius:10px; border:none; background:#129800; font-size:14px; font-weight:600; color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:8px;">

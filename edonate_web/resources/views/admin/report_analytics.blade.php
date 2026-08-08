@@ -354,6 +354,11 @@
 		var reportData = (window.AdminPageData && window.AdminPageData.reportAnalytics) ? window.AdminPageData.reportAnalytics : {};
 		var resizeTimer = null;
 
+		function themeColor(name, fallback) {
+			var value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+			return value || fallback;
+		}
+
 		function setupCanvas(canvas) {
 			var parent = canvas.parentElement;
 			if (!parent) {
@@ -437,9 +442,9 @@
 
 			ctx.clearRect(0, 0, w, h);
 
-			ctx.strokeStyle = '#ececec';
+			ctx.strokeStyle = themeColor('--bs-border-color', '#ececec');
 			ctx.lineWidth = 1;
-			ctx.fillStyle = '#666';
+			ctx.fillStyle = themeColor('--bs-secondary-color', '#666');
 			ctx.font = '11px Poppins, sans-serif';
 			ctx.textAlign = 'right';
 			ctx.textBaseline = 'middle';
@@ -459,7 +464,7 @@
 
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'top';
-			ctx.fillStyle = '#333';
+			ctx.fillStyle = themeColor('--bs-body-color', '#333');
 
 			for (var labelIndex = 0; labelIndex < labels.length; labelIndex += 1) {
 				var xPos = leftPad + (chartW / Math.max(1, labels.length - 1)) * labelIndex;
@@ -530,9 +535,9 @@
 
 			ctx.clearRect(0, 0, w, h);
 
-			ctx.strokeStyle = '#ececec';
+			ctx.strokeStyle = themeColor('--bs-border-color', '#ececec');
 			ctx.lineWidth = 1;
-			ctx.fillStyle = '#666';
+			ctx.fillStyle = themeColor('--bs-secondary-color', '#666');
 			ctx.font = '11px Poppins, sans-serif';
 			ctx.textAlign = 'right';
 			ctx.textBaseline = 'middle';
@@ -564,7 +569,7 @@
 				ctx.fillStyle = color;
 				ctx.fillRect(barX, barY, barWidth, barHeight);
 
-				ctx.fillStyle = '#333';
+				ctx.fillStyle = themeColor('--bs-body-color', '#333');
 				ctx.fillText(item.label, centerX, h - bottomPad + 8);
 			}
 		}
@@ -583,6 +588,8 @@
 
 			resizeTimer = window.setTimeout(renderCharts, 120);
 		});
+
+		window.addEventListener('edonate:themechange', renderCharts);
 	})();
 </script>
 @endpush

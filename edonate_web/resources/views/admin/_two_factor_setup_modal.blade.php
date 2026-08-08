@@ -46,7 +46,7 @@
                                 <div class="row g-2">
                                     @foreach ($recoveryCodes as $code)
                                         <div class="col-12 col-md-6">
-                                            <div class="form-control bg-light fw-semibold">{{ $code }}</div>
+                                            <div class="form-control bg-body-secondary fw-semibold">{{ $code }}</div>
                                         </div>
                                     @endforeach
                                 </div>
@@ -58,7 +58,7 @@
                         <p class="mb-2">Account: <strong>{{ $maskedEmail !== '' ? $maskedEmail : 'your account' }}</strong></p>
                         <p class="text-secondary mb-3">Scan the QR code using Google Authenticator, then enter the 6-digit code to complete enrollment.</p>
 
-                        <div class="d-flex justify-content-center align-items-center p-3 bg-light rounded border mb-3" style="min-height: 250px;">
+                        <div class="d-flex justify-content-center align-items-center p-3 bg-body-secondary rounded border mb-3" style="min-height: 250px;">
                             @if ($qrSvg !== '')
                                 {!! $qrSvg !!}
                             @else
@@ -69,7 +69,7 @@
                         @if ($secret !== '')
                             <div class="mb-3">
                                 <label class="form-label fw-semibold mb-1">Manual Secret Key</label>
-                                <div class="form-control bg-light">{{ $secret }}</div>
+                                <div class="form-control bg-body-secondary">{{ $secret }}</div>
                             </div>
                         @endif
 

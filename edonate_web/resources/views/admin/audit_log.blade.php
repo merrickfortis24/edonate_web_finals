@@ -105,7 +105,7 @@
 				</div>
 
 				<div class="col-12 col-xl-3">
-					<div class="form-check form-switch px-3 py-2 rounded border bg-white h-100 d-flex align-items-center">
+					<div class="form-check form-switch px-3 py-2 rounded border bg-body h-100 d-flex align-items-center">
 						<input class="form-check-input me-2" type="checkbox" role="switch" id="auditSecurityPolicyFilter" aria-label="Filter global security policy changes only">
 						<label class="form-check-label small fw-semibold" for="auditSecurityPolicyFilter">Global Security Policy Changes Only</label>
 					</div>

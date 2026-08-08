@@ -51,6 +51,27 @@ class AdminLteLayoutTest extends TestCase
         $this->assertLessThanOrEqual(1, substr_count($html, '/@vite/client'));
     }
 
+    public function test_adminlte_theme_is_bootstrapped_before_assets_and_settings_exposes_appearance_control(): void
+    {
+        $shell = $this->renderPageForRole('admin.unauthorized', 'admin', '/admin/settings');
+        $settings = $this->renderPageForRole('admin.settings', 'admin', '/admin/settings');
+        $themeScriptPosition = strpos($shell, "var storageKey = 'lte-theme'");
+        $viteAssetPosition = strpos($shell, 'resources/css/adminlte.css');
+
+        if ($viteAssetPosition === false) {
+            $viteAssetPosition = strpos($shell, '/build/assets/adminlte-');
+        }
+
+        $this->assertIsInt($themeScriptPosition);
+        $this->assertIsInt($viteAssetPosition);
+        $this->assertLessThan($viteAssetPosition, $themeScriptPosition);
+        $this->assertStringContainsString("document.documentElement.setAttribute('data-bs-theme', nextTheme)", $shell);
+        $this->assertStringContainsString('settings-appearance-pane', $settings);
+        $this->assertStringContainsString('id="settingsThemeLight"', $settings);
+        $this->assertStringContainsString('id="settingsThemeDark"', $settings);
+        $this->assertStringContainsString("window.localStorage.setItem('lte-theme', nextTheme)", $settings);
+    }
+
     public function test_every_configured_adminlte_menu_route_exists(): void
     {
         $inspect = function (array $items) use (&$inspect): void {

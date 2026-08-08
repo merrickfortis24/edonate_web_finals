@@ -212,6 +212,11 @@
 
 		var dashboardData = (window.AdminPageData && window.AdminPageData.dashboard) ? window.AdminPageData.dashboard : {};
 
+		function themeColor(name, fallback) {
+			var value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+			return value || fallback;
+		}
+
 		function setupCanvas(canvas) {
 			var parent = canvas.parentElement;
 			var ratio = window.devicePixelRatio || 1;
@@ -277,10 +282,10 @@
 
 			ctx.clearRect(0, 0, w, h);
 			ctx.font = '11px Poppins, sans-serif';
-			ctx.fillStyle = '#666';
+			ctx.fillStyle = themeColor('--bs-secondary-color', '#666');
 			ctx.textAlign = 'right';
 			ctx.textBaseline = 'middle';
-			ctx.strokeStyle = '#e8e8e8';
+			ctx.strokeStyle = themeColor('--bs-border-color', '#e8e8e8');
 			ctx.lineWidth = 1;
 
 			for (var y = 0; y <= yMax; y += yStep) {
@@ -294,7 +299,7 @@
 
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'top';
-			ctx.fillStyle = '#333';
+			ctx.fillStyle = themeColor('--bs-body-color', '#333');
 
 			for (var i = 0; i < months.length; i += 1) {
 				var x = mL + (i / (months.length - 1)) * plotW;
@@ -332,7 +337,7 @@
 				ctx.beginPath();
 				ctx.arc(points[k].x, points[k].y, 4, 0, Math.PI * 2);
 				ctx.fillStyle = '#b60c0c';
-				ctx.strokeStyle = '#fff';
+				ctx.strokeStyle = themeColor('--bs-body-bg', '#fff');
 				ctx.lineWidth = 2;
 				ctx.fill();
 				ctx.stroke();
@@ -340,7 +345,7 @@
 
 			ctx.fillStyle = '#b60c0c';
 			ctx.fillRect(w - 120, 14, 12, 12);
-			ctx.fillStyle = '#333';
+			ctx.fillStyle = themeColor('--bs-body-color', '#333');
 			ctx.font = '11px Poppins, sans-serif';
 			ctx.textAlign = 'left';
 			ctx.textBaseline = 'middle';
@@ -385,7 +390,7 @@
 				ctx.textAlign = 'center';
 				ctx.textBaseline = 'middle';
 				ctx.font = '600 13px Poppins, sans-serif';
-				ctx.fillStyle = '#666';
+				ctx.fillStyle = themeColor('--bs-secondary-color', '#666');
 				ctx.fillText('No donor blood type data yet', w / 2, h / 2);
 				return;
 			}
@@ -400,7 +405,7 @@
 				ctx.closePath();
 				ctx.fillStyle = seg.color;
 				ctx.fill();
-				ctx.strokeStyle = '#fff';
+				ctx.strokeStyle = themeColor('--bs-body-bg', '#fff');
 				ctx.lineWidth = 2;
 				ctx.stroke();
 				start = end;
@@ -408,13 +413,13 @@
 
 			ctx.beginPath();
 			ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
-			ctx.fillStyle = '#fff';
+			ctx.fillStyle = themeColor('--bs-body-bg', '#fff');
 			ctx.fill();
 
 			ctx.textAlign = 'center';
 			ctx.textBaseline = 'middle';
 			ctx.font = '700 13px Poppins, sans-serif';
-			ctx.fillStyle = '#333';
+			ctx.fillStyle = themeColor('--bs-body-color', '#333');
 			ctx.fillText('Blood', cx, cy - 8);
 			ctx.fillText('Types', cx, cy + 8);
 
@@ -428,7 +433,7 @@
 				var legend = segments[j];
 				ctx.fillStyle = legend.color;
 				ctx.fillRect(lx, ly - 6, 12, 12);
-				ctx.fillStyle = '#333';
+				ctx.fillStyle = themeColor('--bs-body-color', '#333');
 				ctx.fillText(legend.label + '  ' + Math.round(legend.value * 100) + '%', lx + 16, ly);
 				ly += 22;
 			}
@@ -444,6 +449,8 @@
 			clearTimeout(resizeTimer);
 			resizeTimer = setTimeout(renderCharts, 120);
 		});
+
+		window.addEventListener('edonate:themechange', renderCharts);
 
 		renderCharts();
 	})();

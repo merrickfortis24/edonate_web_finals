@@ -22,32 +22,32 @@
 <main class="container-fluid py-3">
     <section class="row g-3 mb-3">
         <div class="col-12 col-xl-3">
-            <article class="stat-card h-100 p-3 bg-white border rounded">
+            <article class="stat-card h-100 p-3 bg-body border rounded">
                 <p class="text-muted text-uppercase fw-bold small mb-1">Status</p>
                 <span class="badge {{ $badgeClass }}">{{ \Illuminate\Support\Str::headline($eventPayload['status'] ?? 'closed') }}</span>
             </article>
         </div>
         <div class="col-12 col-xl-3">
-            <article class="stat-card h-100 p-3 bg-white border rounded">
+            <article class="stat-card h-100 p-3 bg-body border rounded">
                 <p class="text-muted text-uppercase fw-bold small mb-1">Confirmed Bookings</p>
                 <p class="fs-4 fw-bold mb-0">{{ number_format($eventPayload['confirmed_count'] ?? 0) }}</p>
             </article>
         </div>
         <div class="col-12 col-xl-3">
-            <article class="stat-card h-100 p-3 bg-white border rounded">
+            <article class="stat-card h-100 p-3 bg-body border rounded">
                 <p class="text-muted text-uppercase fw-bold small mb-1">Remaining Slots</p>
                 <p class="fs-4 fw-bold mb-0">{{ number_format($eventPayload['remaining_slots'] ?? 0) }}</p>
             </article>
         </div>
         <div class="col-12 col-xl-3">
-            <article class="stat-card h-100 p-3 bg-white border rounded">
+            <article class="stat-card h-100 p-3 bg-body border rounded">
                 <p class="text-muted text-uppercase fw-bold small mb-1">Capacity</p>
                 <p class="fs-4 fw-bold mb-0">{{ number_format($eventPayload['max_capacity'] ?? 0) }}</p>
             </article>
         </div>
     </section>
 
-    <section class="bg-white border rounded p-3 mb-3">
+    <section class="bg-body border rounded p-3 mb-3">
         <div class="row g-3">
             <div class="col-12 col-lg-4">
                 <p class="text-muted small fw-bold text-uppercase mb-1">Date and Time</p>
@@ -73,7 +73,7 @@
         </div>
     </section>
 
-    <section class="bg-white border rounded p-3">
+    <section class="bg-body border rounded p-3">
         <form method="GET" class="row g-3 align-items-center mb-3">
             <div class="col-12 col-md-4 col-xl-3">
                 <select name="status" class="form-select">

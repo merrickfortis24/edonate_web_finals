@@ -954,8 +954,8 @@
 						'<td><span class="rbac-role-pill">' + escapeHtml(role.name) + '</span></td>' +
 						'<td><code class="rbac-code">' + escapeHtml(role.slug) + '</code></td>' +
 						'<td>' + escapeHtml(role.description || '-') + '</td>' +
-						'<td class="text-center"><span class="badge text-bg-light">' + getPermissionsCountForRole(role.id) + '</span></td>' +
-						'<td class="text-center"><span class="badge text-bg-light">' + getUsersCountForRole(role.id) + '</span></td>' +
+						'<td class="text-center"><span class="badge text-bg-secondary">' + getPermissionsCountForRole(role.id) + '</span></td>' +
+						'<td class="text-center"><span class="badge text-bg-secondary">' + getUsersCountForRole(role.id) + '</span></td>' +
 						'<td>' + escapeHtml(role.createdAt || '-') + '</td>' +
 						'<td>' + actionMarkup + '</td>' +
 						'</tr>';
@@ -1060,7 +1060,7 @@
 						'<td>' + escapeHtml(permission.module) + '</td>' +
 						'<td>' + (assigned
 							? '<span class="badge text-bg-success">Assigned</span>'
-							: '<span class="badge text-bg-light">Not Assigned</span>') + '</td>' +
+							: '<span class="badge text-bg-secondary">Not Assigned</span>') + '</td>' +
 						'</tr>';
 				}).join('');
 			}
