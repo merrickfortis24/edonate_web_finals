@@ -115,22 +115,24 @@
 								</div>
 							</header>
 
-							<div class="settings-theme-control" role="radiogroup" aria-labelledby="settingsThemeLabel">
+							<div class="settings-theme-control" aria-labelledby="settingsThemeLabel">
 								<div class="settings-theme-copy">
 									<h3 id="settingsThemeLabel">Theme</h3>
 									<p>Light mode is the default. Your choice is saved on this browser.</p>
 								</div>
 
 								<div class="settings-theme-options">
-									<input class="btn-check" type="radio" name="settingsTheme" id="settingsThemeLight" value="light" autocomplete="off">
-									<label class="btn btn-outline-danger settings-theme-option" for="settingsThemeLight">
-										<i class="bi bi-sun me-2" aria-hidden="true"></i>Light
-									</label>
-
-									<input class="btn-check" type="radio" name="settingsTheme" id="settingsThemeDark" value="dark" autocomplete="off">
-									<label class="btn btn-outline-danger settings-theme-option" for="settingsThemeDark">
-										<i class="bi bi-moon-stars me-2" aria-hidden="true"></i>Dark
-									</label>
+									<div class="form-check form-switch settings-theme-switch mb-0">
+										<input class="form-check-input" type="checkbox" id="settingsThemeToggle" role="switch" autocomplete="off">
+										<label class="form-check-label" for="settingsThemeToggle">
+											<span class="settings-theme-switch__state settings-theme-switch__state--light">
+												<i class="bi bi-sun me-2" aria-hidden="true"></i>Light
+											</span>
+											<span class="settings-theme-switch__state settings-theme-switch__state--dark">
+												<i class="bi bi-moon-stars me-2" aria-hidden="true"></i>Dark
+											</span>
+										</label>
+									</div>
 								</div>
 							</div>
 						</article>
@@ -374,7 +376,7 @@
 		var sessionTimeoutSelect = document.getElementById('settingsSessionTimeoutSelect');
 		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
-		var themeInputs = document.querySelectorAll('input[name="settingsTheme"]');
+		var themeToggle = document.getElementById('settingsThemeToggle');
 
 		function escapeHtml(value) {
 			return String(value || '')
@@ -535,11 +537,11 @@
 		}
 
 		function syncThemeControl(theme) {
-			var selectedTheme = theme === 'dark' ? 'dark' : 'light';
+			if (!themeToggle) {
+				return;
+			}
 
-			themeInputs.forEach(function (input) {
-				input.checked = input.value === selectedTheme;
-			});
+			themeToggle.checked = theme === 'dark';
 		}
 
 		function hydrateFromPayload() {
@@ -571,13 +573,11 @@
 			syncThemeControl(getPortalTheme());
 		}
 
-		themeInputs.forEach(function (input) {
-			input.addEventListener('change', function () {
-				if (input.checked) {
-					setPortalTheme(input.value);
-				}
+		if (themeToggle) {
+			themeToggle.addEventListener('change', function () {
+				setPortalTheme(themeToggle.checked ? 'dark' : 'light');
 			});
-		});
+		}
 
 		window.addEventListener('edonate:themechange', function (event) {
 			syncThemeControl(event.detail && event.detail.theme);

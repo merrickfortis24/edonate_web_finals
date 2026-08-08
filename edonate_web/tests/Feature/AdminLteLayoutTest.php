@@ -67,8 +67,8 @@ class AdminLteLayoutTest extends TestCase
         $this->assertLessThan($viteAssetPosition, $themeScriptPosition);
         $this->assertStringContainsString("document.documentElement.setAttribute('data-bs-theme', nextTheme)", $shell);
         $this->assertStringContainsString('settings-appearance-pane', $settings);
-        $this->assertStringContainsString('id="settingsThemeLight"', $settings);
-        $this->assertStringContainsString('id="settingsThemeDark"', $settings);
+        $this->assertStringContainsString('id="settingsThemeToggle"', $settings);
+        $this->assertStringContainsString('role="switch"', $settings);
         $this->assertStringContainsString("window.localStorage.setItem('lte-theme', nextTheme)", $settings);
     }
 

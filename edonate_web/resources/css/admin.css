@@ -351,14 +351,46 @@
 
 .edonate-admin-page .settings-theme-options {
     display: inline-flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    align-items: center;
+    justify-content: flex-end;
 }
 
-.edonate-admin-page .settings-theme-option {
-    border-radius: 999px;
+.edonate-admin-page .settings-theme-switch {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin: 0;
+    padding-left: 2.75rem;
+}
+
+.edonate-admin-page .settings-theme-switch .form-check-input {
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+.edonate-admin-page .settings-theme-switch .form-check-label {
+    color: var(--bs-body-color);
+    cursor: pointer;
     font-weight: 600;
-    min-width: 6.5rem;
+    line-height: 1.25;
+    margin: 0;
+}
+
+.edonate-admin-page .settings-theme-switch__state {
+    align-items: center;
+    display: inline-flex;
+}
+
+.edonate-admin-page .settings-theme-switch__state--dark {
+    display: none;
+}
+
+.edonate-admin-page .settings-theme-switch .form-check-input:checked ~ .form-check-label .settings-theme-switch__state--light {
+    display: none;
+}
+
+.edonate-admin-page .settings-theme-switch .form-check-input:checked ~ .form-check-label .settings-theme-switch__state--dark {
+    display: inline-flex;
 }
 
 .edonate-admin-page .complete-info-code {
