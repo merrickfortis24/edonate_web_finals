@@ -113,15 +113,27 @@ button {
 	flex-direction: column;
 }
 
-.admin-page .app {
+.admin-page .app,
+.admin-page .layout {
 	display: flex;
 	min-height: 100vh;
 	width: 100%;
+	align-items: stretch;
 }
 
-.admin-page .app > .admin-layout-content {
+.admin-page .app > .admin-layout-content,
+.admin-page .layout > .admin-layout-content {
 	flex: 1;
 	min-width: 0;
+}
+
+.admin-page .layout > .sidebar {
+	flex: 0 0 var(--admin-sidebar-w);
+	min-height: 100vh;
+	position: sticky;
+	top: 0;
+	height: 100vh;
+	z-index: 1000;
 }
 
 /* ===== Shared Admin Layout ===== */
@@ -1683,6 +1695,308 @@ button {
 	stroke-width: 2;
 }
 
+/* ===== Admin Resource Pages: Events, Facilities, Blood Requests ===== */
+.admin-donation-events-page,
+.admin-facilities-page,
+.admin-blood-requests-page {
+	background: var(--c-bg);
+}
+
+.admin-donation-events-page .header,
+.admin-facilities-page .header,
+.admin-blood-requests-page .header {
+	position: sticky;
+	top: 0;
+	flex-shrink: 0;
+}
+
+.event-main,
+.facility-content,
+.request-content {
+	flex: 1;
+	min-width: 0;
+	width: 100%;
+	padding: 28px var(--admin-content-pl) 40px;
+}
+
+.event-shell {
+	width: 100%;
+	max-width: 100%;
+	margin: 0;
+}
+
+.event-stats,
+.facility-summary,
+.request-summary {
+	margin-bottom: 20px;
+}
+
+.facility-summary,
+.request-summary {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	gap: 16px;
+}
+
+.event-stats > [class*="col-"] {
+	display: flex;
+}
+
+.event-stats > [class*="col-"] .stat-card {
+	width: 100%;
+}
+
+.admin-donation-events-page .stat-card,
+.facility-stat,
+.request-stat,
+.facility-panel,
+.request-panel,
+.event-toolbar,
+.event-table {
+	background: var(--c-white);
+	border: 1px solid rgba(0, 0, 0, 0.08);
+	border-radius: 8px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.admin-donation-events-page .stat-card,
+.facility-stat,
+.request-stat {
+	min-height: 108px;
+	padding: 18px;
+}
+
+.event-stat__label,
+.facility-stat span,
+.request-stat span {
+	display: block;
+	margin: 0;
+	color: #6b7280;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.25;
+	text-transform: uppercase;
+}
+
+.event-stat__value,
+.facility-stat strong,
+.request-stat strong {
+	display: block;
+	margin: 8px 0 0;
+	color: #171717;
+	font-size: 28px;
+	font-weight: 800;
+	line-height: 1.1;
+}
+
+.event-toolbar,
+.facility-panel,
+.request-panel {
+	padding: 16px;
+}
+
+.event-toolbar {
+	margin-top: 0;
+	margin-bottom: 20px;
+}
+
+.facility-toolbar,
+.request-toolbar {
+	display: grid;
+	align-items: end;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.facility-toolbar {
+	grid-template-columns: minmax(220px, 1fr) minmax(160px, 180px) minmax(140px, 150px) auto;
+}
+
+.request-toolbar {
+	grid-template-columns: minmax(220px, 1fr) minmax(140px, 150px) minmax(140px, 150px) minmax(160px, 180px) auto;
+}
+
+.facility-toolbar label,
+.request-toolbar label {
+	display: block;
+	margin-bottom: 6px;
+	color: #333;
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.event-table {
+	margin-top: 0;
+	overflow-x: auto;
+}
+
+.facility-table-wrap,
+.request-table-wrap {
+	width: 100%;
+	overflow-x: auto;
+}
+
+.event-table table,
+.facility-table,
+.request-table {
+	margin-bottom: 0;
+}
+
+.event-table table {
+	min-width: 1040px;
+}
+
+.facility-table {
+	min-width: 960px;
+}
+
+.request-table {
+	min-width: 1120px;
+}
+
+.event-table th,
+.facility-table th,
+.request-table th {
+	background: #f8fafc;
+	color: #475569;
+	font-size: 12px;
+	font-weight: 800;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.event-table td,
+.facility-table td,
+.request-table td {
+	font-size: 13px;
+	vertical-align: middle;
+}
+
+.event-title {
+	color: #111827;
+	font-weight: 800;
+}
+
+.event-meta {
+	color: #64748b;
+	font-size: 12px;
+}
+
+.event-badge,
+.facility-badge,
+.request-badge {
+	display: inline-block;
+	border-radius: 999px;
+	font-size: 11px;
+	font-weight: 800;
+	line-height: 1;
+	padding: 6px 10px;
+	white-space: nowrap;
+}
+
+.event-badge--open,
+.facility-badge--active,
+.request-badge--open,
+.request-badge--in_progress {
+	background: #dff3e4;
+	color: #196b31;
+}
+
+.event-badge--closed,
+.request-badge--fulfilled {
+	background: #e7f1ff;
+	color: #194f90;
+}
+
+.event-badge--completed {
+	background: #eef2f7;
+	color: #475569;
+}
+
+.event-badge--cancelled,
+.event-badge--full,
+.request-badge--emergency {
+	background: #ffe0e0;
+	color: #a11212;
+}
+
+.request-badge--urgent {
+	background: #fff3cd;
+	color: #7a5200;
+}
+
+.facility-badge--inactive,
+.request-badge--cancelled,
+.request-badge--expired {
+	background: #eeeeee;
+	color: #555555;
+}
+
+.event-actions,
+.facility-actions,
+.request-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.event-action-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 32px;
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: var(--c-white);
+	color: #111827;
+	padding: 6px 10px;
+	font-size: 12px;
+	font-weight: 800;
+	white-space: nowrap;
+}
+
+.event-action-btn--danger {
+	border-color: #fecaca;
+	color: #b91c1c;
+}
+
+.event-pagination {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: 14px 0 0;
+	color: #64748b;
+	font-size: 13px;
+}
+
+.event-page-btn {
+	border: 1px solid #d1d5db;
+	border-radius: 6px;
+	background: var(--c-white);
+	min-width: 32px;
+	min-height: 32px;
+	padding: 5px 10px;
+	margin-left: 4px;
+}
+
+.event-page-btn.is-active {
+	background: #991b1b;
+	border-color: #991b1b;
+	color: var(--c-white);
+}
+
+.event-error {
+	display: none;
+	border: 1px solid #fecaca;
+	background: #fef2f2;
+	color: #991b1b;
+	border-radius: 8px;
+	padding: 10px 12px;
+	font-size: 13px;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
 	.admin-page .overlay {
@@ -1698,6 +2012,10 @@ button {
 	}
 
 	.admin-page .sidebar.sidebar--open {
+		transform: translateX(0);
+	}
+
+	.admin-page .sidebar.is-open {
 		transform: translateX(0);
 	}
 
@@ -6644,6 +6962,167 @@ button {
 /* ===== Question Management Page Layout ===== */
 .admin-questions-page .questions-content {
     padding: 28px var(--admin-content-pl);
+}
+
+@media (max-width: 1024px) {
+	.admin-page .layout {
+		display: block;
+	}
+
+	.admin-page .layout > .admin-layout-content {
+		width: 100%;
+	}
+
+	.admin-donation-events-page .header,
+	.admin-facilities-page .header,
+	.admin-blood-requests-page .header {
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+
+	.event-main,
+	.facility-content,
+	.request-content {
+		padding: 20px;
+	}
+
+	.facility-summary,
+	.request-summary {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 14px;
+	}
+
+	.event-stats {
+		--bs-gutter-x: 14px;
+		--bs-gutter-y: 14px;
+	}
+
+	.event-toolbar,
+	.facility-panel,
+	.request-panel {
+		padding: 14px;
+	}
+
+	.facility-toolbar,
+	.request-toolbar {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.facility-toolbar .btn,
+	.request-toolbar .btn {
+		width: 100%;
+	}
+}
+
+@media (max-width: 768px) {
+	.admin-donation-events-page .header__left-group,
+	.admin-facilities-page .header__left-group,
+	.admin-blood-requests-page .header__left-group {
+		width: 100%;
+		min-width: 0;
+	}
+
+	.admin-donation-events-page .header__right,
+	.admin-facilities-page .header__right,
+	.admin-blood-requests-page .header__right {
+		width: 100%;
+		justify-content: flex-start;
+	}
+
+	.admin-donation-events-page .header__right .btn,
+	.admin-facilities-page .header__right .btn,
+	.admin-blood-requests-page .header__right .btn {
+		width: 100%;
+	}
+
+	.facility-summary,
+	.request-summary {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.admin-donation-events-page .stat-card,
+	.facility-stat,
+	.request-stat {
+		min-height: 96px;
+		padding: 14px;
+	}
+
+	.event-stat__value,
+	.facility-stat strong,
+	.request-stat strong {
+		font-size: 24px;
+	}
+
+	.facility-toolbar,
+	.request-toolbar {
+		grid-template-columns: 1fr;
+	}
+
+	.event-pagination,
+	.facility-panel > .d-flex,
+	.request-panel > .d-flex {
+		align-items: flex-start !important;
+		flex-direction: column;
+	}
+
+	.event-pagination > div,
+	.facility-panel .btn-group,
+	.request-panel .btn-group {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		width: 100%;
+	}
+
+	.event-page-btn {
+		margin-left: 0;
+	}
+
+	.facility-panel .btn-group .btn,
+	.request-panel .btn-group .btn {
+		flex: 1 1 120px;
+	}
+}
+
+@media (max-width: 575.98px) {
+	.event-main,
+	.facility-content,
+	.request-content {
+		padding: 16px 12px 28px;
+	}
+
+	.event-stats {
+		--bs-gutter-x: 10px;
+		--bs-gutter-y: 10px;
+	}
+
+	.facility-summary,
+	.request-summary {
+		grid-template-columns: 1fr;
+		gap: 10px;
+	}
+
+	.event-toolbar,
+	.facility-panel,
+	.request-panel {
+		padding: 12px;
+	}
+
+	.event-table th,
+	.facility-table th,
+	.request-table th,
+	.event-table td,
+	.facility-table td,
+	.request-table td {
+		font-size: 12px;
+	}
+
+	.event-action-btn,
+	.facility-actions .btn,
+	.request-actions .btn {
+		min-height: 32px;
+		font-size: 12px;
+	}
 }
 
 .admin-eligibility-page .eligibility-content,

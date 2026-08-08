@@ -12,28 +12,6 @@
 <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar"><span class="hamburger__bar"></span><span class="hamburger__bar"></span><span class="hamburger__bar"></span></button>
 @endsection
 
-@push('admin_head')
-<style>
-    .facility-content { padding: 24px 32px 40px; }
-    .facility-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin-bottom: 18px; }
-    .facility-stat,.facility-panel { background:#fff; border:1px solid rgba(0,0,0,.12); border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
-    .facility-stat { padding:16px; min-height:96px; }
-    .facility-stat span { color:#666; font-size:12px; font-weight:600; }
-    .facility-stat strong { color:#9f1010; display:block; font-size:26px; margin-top:6px; }
-    .facility-panel { padding:18px; }
-    .facility-toolbar { align-items:end; display:grid; gap:12px; grid-template-columns:minmax(220px,1fr) 180px 150px auto; margin-bottom:16px; }
-    .facility-toolbar label { display:block; font-size:12px; font-weight:600; margin-bottom:5px; }
-    .facility-table-wrap { overflow-x:auto; }
-    .facility-table { min-width:960px; }
-    .facility-table td,.facility-table th { font-size:13px; vertical-align:middle; }
-    .facility-badge { border-radius:999px; display:inline-block; font-size:11px; font-weight:700; padding:4px 8px; }
-    .facility-badge--active { background:#dff3e4; color:#196b31; } .facility-badge--inactive { background:#eee; color:#666; }
-    .facility-actions { display:flex; flex-wrap:wrap; gap:6px; }
-    @media(max-width:900px){.facility-summary{grid-template-columns:repeat(2,1fr)}.facility-toolbar{grid-template-columns:repeat(2,1fr)}}
-    @media(max-width:600px){.facility-content{padding:16px}.facility-summary,.facility-toolbar{grid-template-columns:1fr}}
-</style>
-@endpush
-
 @section('header_actions')
 @if($canManage)<button class="btn btn-danger" type="button" id="createFacilityButton">Create Facility</button>@endif
 @endsection

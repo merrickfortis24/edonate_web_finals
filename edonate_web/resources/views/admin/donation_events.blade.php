@@ -42,32 +42,6 @@
 @endsection
 
 @section('main_content')
-<style>
-    .event-main { padding: 18px; }
-    .event-shell { max-width: 1400px; margin: 0 auto; }
-    .event-stats .stat-card { border: 1px solid rgba(0,0,0,.08); border-radius: 8px; padding: 18px; background: #fff; }
-    .event-stat__label { margin: 0; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; }
-    .event-stat__value { margin: 6px 0 0; color: #171717; font-size: 28px; font-weight: 800; }
-    .event-toolbar { margin-top: 18px; padding: 14px; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; background: #fff; }
-    .event-table { margin-top: 18px; border: 1px solid rgba(0,0,0,.08); border-radius: 8px; overflow: hidden; background: #fff; }
-    .event-table th { background: #f8fafc; color: #475569; font-size: 12px; text-transform: uppercase; }
-    .event-title { font-weight: 800; color: #111827; }
-    .event-meta { color: #64748b; font-size: 12px; }
-    .event-badge { border-radius: 999px; padding: 5px 10px; font-size: 12px; font-weight: 700; }
-    .event-badge--open { background: #ecfdf5; color: #047857; }
-    .event-badge--closed { background: #eff6ff; color: #1d4ed8; }
-    .event-badge--completed { background: #f1f5f9; color: #475569; }
-    .event-badge--cancelled { background: #fef2f2; color: #b91c1c; }
-    .event-badge--full { background: #fff7ed; color: #c2410c; }
-    .event-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-    .event-action-btn { border: 1px solid #d1d5db; border-radius: 6px; background: #fff; padding: 6px 9px; font-size: 12px; font-weight: 700; }
-    .event-action-btn--danger { border-color: #fecaca; color: #b91c1c; }
-    .event-pagination { margin: 12px 0 0; display: flex; justify-content: space-between; gap: 12px; align-items: center; color: #64748b; font-size: 13px; }
-    .event-page-btn { border: 1px solid #d1d5db; border-radius: 6px; background: #fff; padding: 6px 10px; margin-left: 4px; }
-    .event-page-btn.is-active { background: #991b1b; border-color: #991b1b; color: #fff; }
-    .event-error { display: none; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; border-radius: 8px; padding: 10px 12px; font-size: 13px; }
-</style>
-
 <main class="event-main container-fluid px-0">
     <div class="event-shell">
         <section class="event-stats row g-3" aria-label="Donation event summary">

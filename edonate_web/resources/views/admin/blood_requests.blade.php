@@ -12,12 +12,6 @@
 <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar"><span class="hamburger__bar"></span><span class="hamburger__bar"></span><span class="hamburger__bar"></span></button>
 @endsection
 
-@push('admin_head')
-<style>
-    .request-content{padding:24px 32px 40px}.request-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:18px}.request-stat,.request-panel{background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06)}.request-stat{padding:16px}.request-stat span{color:#666;font-size:12px;font-weight:600}.request-stat strong{color:#9f1010;display:block;font-size:26px;margin-top:6px}.request-panel{padding:18px}.request-toolbar{align-items:end;display:grid;gap:12px;grid-template-columns:minmax(220px,1fr) 150px 150px 180px auto;margin-bottom:16px}.request-toolbar label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}.request-table-wrap{overflow-x:auto}.request-table{min-width:1040px}.request-table td,.request-table th{font-size:13px;vertical-align:middle}.request-badge{border-radius:999px;display:inline-block;font-size:11px;font-weight:700;padding:4px 8px}.request-badge--open,.request-badge--in_progress{background:#dff3e4;color:#196b31}.request-badge--emergency{background:#ffe0e0;color:#a11212}.request-badge--urgent{background:#fff3cd;color:#7a5200}.request-badge--fulfilled{background:#e7f1ff;color:#194f90}.request-badge--cancelled,.request-badge--expired{background:#eee;color:#555}.request-actions{display:flex;gap:6px;flex-wrap:wrap}@media(max-width:900px){.request-summary{grid-template-columns:repeat(2,1fr)}.request-toolbar{grid-template-columns:repeat(2,1fr)}}@media(max-width:600px){.request-content{padding:16px}.request-summary,.request-toolbar{grid-template-columns:1fr}}
-</style>
-@endpush
-
 @section('header_actions')
 <button class="btn btn-danger" type="button" id="createRequestButton">Create Request</button>
 @endsection
