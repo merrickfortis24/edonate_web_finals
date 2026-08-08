@@ -2,15 +2,8 @@
 
 @section('title', 'eDonate - Blood Request Details')
 @section('admin_page_class', 'admin-blood-request-detail-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('render_default_hamburger', 'false')
 @section('header_title', $details['request']['request_reference'])
 @section('header_subtitle', $details['request']['facility_name'])
-
-@section('header_slot')
-<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar"><span class="hamburger__bar"></span><span class="hamburger__bar"></span><span class="hamburger__bar"></span></button>
-@endsection
 
 @push('admin_head')
 <style>

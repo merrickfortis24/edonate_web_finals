@@ -2,22 +2,8 @@
 
 @section('title', 'eDonate - Donation Records / Check-in')
 @section('admin_page_class', 'admin-donor-records-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Donation Records / Check-in')
 @section('header_subtitle', 'Manage donor arrival, completion, on-site deferral, and no-show records')
-
-@section('header_slot')
-  <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-    <span class="hamburger__bar"></span>
-    <span class="hamburger__bar"></span>
-    <span class="hamburger__bar"></span>
-  </button>
-@endsection
 
 @section('admin_page_data')
 {!! json_encode([

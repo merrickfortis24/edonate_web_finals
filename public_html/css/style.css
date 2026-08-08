@@ -52,297 +52,45 @@
 	--r-md: 20px;
 
 	--shadow-card: 0 4px 4px rgba(0, 0, 0, 0.25);
-	--shadow-header: 0 4px 10px 1px rgba(0, 0, 0, 0.50);
 	--shadow-inset: inset 0 4px 4px rgba(0, 0, 0, 0.25);
 
-	--admin-sidebar-w: 220px;
-	--admin-header-h: 100px;
 	--admin-content-pl: 32px;
 }
 
 /* ===== Base ===== */
-*,
-*::before,
-*::after {
+:where(.edonate-admin-page) *,
+:where(.edonate-admin-page) *::before,
+:where(.edonate-admin-page) *::after {
 	box-sizing: border-box;
-	margin: 0;
-	padding: 0;
 }
 
-html,
-body {
+.edonate-admin-page {
 	font-family: var(--font-base);
-	background: var(--c-bg);
-	min-height: 100vh;
+	min-height: 0;
 	color: var(--c-black);
 }
 
-a {
+:where(.edonate-admin-page) a {
 	text-decoration: none;
 	color: inherit;
 }
 
-ul {
+:where(.edonate-admin-page) ul {
 	list-style: none;
 }
 
-button {
+:where(.edonate-admin-page) button {
 	font-family: var(--font-base);
 	cursor: pointer;
 }
 
-.overlay {
-	display: none;
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.50);
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 0.3s ease;
-}
-
-.overlay--visible {
-	opacity: 1;
-	pointer-events: all;
-}
-
-.admin-layout-content {
-	flex: 1;
-	min-width: 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.admin-page .app,
-.admin-page .layout {
-	display: flex;
-	min-height: 100vh;
-	width: 100%;
-	align-items: stretch;
-}
-
-.admin-page .app > .admin-layout-content,
-.admin-page .layout > .admin-layout-content {
-	flex: 1;
-	min-width: 0;
-}
-
-.admin-page .layout > .sidebar {
-	flex: 0 0 var(--admin-sidebar-w);
-	min-height: 100vh;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
-/* ===== Shared Admin Layout ===== */
-.sidebar {
-	width: var(--admin-sidebar-w);
-	background: var(--c-primary);
-	display: flex;
-	flex-direction: column;
-	overflow-y: auto;
-	transition: transform 0.3s ease;
-}
-
-.sidebar__logo,
-.sidebar__brand {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	padding: 28px 24px 24px;
-	flex-shrink: 0;
-}
-
-.sidebar__logo-icon,
-.sidebar__brand-icon {
-	width: 36px;
-	height: 36px;
-	flex-shrink: 0;
-}
-
-.sidebar__logo-icon {
-	display: grid;
-	place-items: center;
-	border-radius: var(--r-sm);
-	background: rgba(255, 255, 255, 0.15);
-}
-
-.sidebar__logo-name,
-.sidebar__brand-name {
-	font-size: var(--fs-xl);
-	font-weight: 700;
-	color: var(--c-white);
-	line-height: 1.15;
-}
-
-.sidebar__logo-sub,
-.sidebar__brand-sub {
-	font-size: var(--fs-13);
-	font-weight: 400;
-	color: var(--c-white);
-	opacity: 0.9;
-}
-
-.sidebar__nav {
-	flex: 1;
-	padding: 8px 0;
-	display: flex;
-	flex-direction: column;
-}
-
-.sidebar__nav > ul {
-	display: flex;
-	flex-direction: column;
-	flex: 1;
-	margin: 0;
-	padding: 0;
-	list-style: none;
-}
-
-.sidebar__nav > ul > li {
-	list-style: none;
-}
-
-.sidebar__nav-link,
-.sidebar__link {
-	display: block;
-	font-size: 18px;
-	font-weight: 500;
-	color: var(--c-white);
-	padding: 14px 28px;
-	line-height: 1.35;
-	transition: background 0.2s;
-}
-
-.sidebar__nav-link:hover,
-.sidebar__link:hover {
-	background: rgba(255, 255, 255, 0.12);
-}
-
-.sidebar__nav-link--active,
-.sidebar__link--active {
-	text-shadow: 0 4px 4px rgba(0, 0, 0, 0.8);
-}
-
-.sidebar__nav-button,
-.sidebar__link-button {
-	width: 100%;
-	text-align: left;
-	background: transparent;
-	border: none;
-}
-
-.sidebar__divider {
-	height: 1px;
-	background: rgba(255, 255, 255, 0.25);
-	margin: 16px 28px;
-}
-
-.sidebar__nav-bottom {
-	margin-top: auto;
-	padding-bottom: 40px;
-}
-
-.sidebar__link--multiline {
-	line-height: 21px;
-}
-
-.header {
-	background: var(--c-white);
-	box-shadow: var(--shadow-header);
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: var(--sp-md);
-	min-height: var(--admin-header-h);
-	padding: 20px var(--admin-content-pl);
-	z-index: 800;
-}
-
-.header__title {
-	font-size: var(--fs-3xl);
-	font-weight: 700;
-	color: var(--c-primary);
-	line-height: 1.15;
-}
-
-.header__subtitle {
-	font-size: var(--fs-2xl);
-	font-weight: 400;
-	color: var(--c-black);
-	margin-top: var(--sp-xs);
-}
-
-.hamburger {
-	display: none;
-	flex-direction: column;
-	gap: 5px;
-	background: none;
-	border: none;
-	padding: var(--sp-sm);
-	border-radius: 6px;
-	flex-shrink: 0;
-}
-
-.hamburger__bar {
-	display: block;
-	width: 24px;
-	height: 2px;
-	background: var(--c-black);
-	border-radius: 2px;
-	transition: transform 0.3s, opacity 0.3s;
-}
-
-.hamburger[aria-expanded="true"] .hamburger__bar:nth-child(1) {
-	transform: translateY(7px) rotate(45deg);
-}
-
-.hamburger[aria-expanded="true"] .hamburger__bar:nth-child(2) {
-	opacity: 0;
-}
-
-.hamburger[aria-expanded="true"] .hamburger__bar:nth-child(3) {
-	transform: translateY(-7px) rotate(-45deg);
-}
-
 /* ===== Dashboard Page ===== */
-.admin-dashboard-page .app {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-dashboard-page .overlay {
-	z-index: 900;
-}
-
-.admin-dashboard-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
 
 .admin-dashboard-page .main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-}
-
-.admin-dashboard-page .header {
-	position: sticky;
-	top: 0;
-}
-
-.admin-dashboard-page .header__right {
-	display: flex;
-	align-items: center;
-	gap: 12px;
-	text-align: right;
 }
 
 .admin-dashboard-page .header__date-group {
@@ -397,17 +145,6 @@ button {
 	background: var(--c-primary);
 	border: 1.5px solid var(--c-white);
 	line-height: 1;
-}
-
-.header__left-group {
-	display: flex;
-	align-items: center;
-	gap: var(--sp-md);
-}
-
-.header__right {
-	text-align: right;
-	flex-shrink: 0;
 }
 
 .header__date-label {
@@ -732,38 +469,6 @@ button {
 }
 
 /* ===== User Management Page ===== */
-.admin-users-page .layout {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-users-page .overlay {
-	z-index: 120;
-}
-
-.admin-users-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
-.admin-users-page .header {
-	position: sticky;
-	top: 0;
-	z-index: 800;
-}
-
-.header__text {
-	flex: 1;
-}
-
-.header__actions {
-	flex-shrink: 0;
-	padding-top: var(--sp-sm);
-}
 
 .btn-export {
 	display: inline-flex;
@@ -1126,97 +831,12 @@ button {
 }
 
 /* ===== Appointment Management Page ===== */
-.admin-appointments-page .layout {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-appointments-page .sidebar {
-	width: var(--admin-sidebar-w);
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
-.appointment-overlay {
-	display: none;
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.4);
-	z-index: 99;
-	opacity: 0;
-	pointer-events: none;
-	transition: opacity 0.35s ease;
-}
-
-.appointment-overlay.is-visible {
-	opacity: 1;
-	pointer-events: auto;
-}
-
-.appointment-hamburger {
-	display: none;
-	position: fixed;
-	top: 18px;
-	left: 18px;
-	z-index: 200;
-	background: var(--c-primary);
-	border: none;
-	border-radius: 8px;
-	padding: 10px;
-	flex-direction: column;
-	gap: 5px;
-}
-
-.appointment-hamburger span {
-	display: block;
-	width: 24px;
-	height: 2px;
-	background: var(--c-white);
-	border-radius: 2px;
-	transition: all 0.3s ease;
-}
 
 .appointment-main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-}
-
-.appointment-header {
-	background: var(--c-white);
-	box-shadow: var(--shadow-header);
-	min-height: var(--admin-header-h);
-	display: flex;
-	align-items: center;
-	padding: 20px var(--admin-content-pl);
-	gap: var(--sp-md);
-	position: relative;
-	flex-wrap: nowrap;
-}
-
-.appointment-header__titles {
-	flex: 1;
-}
-
-.appointment-header .header__title,
-.appointment-header__title {
-	font-size: var(--fs-3xl);
-	font-weight: 700;
-	color: var(--c-primary);
-	line-height: 1.2;
-}
-
-.appointment-header .header__subtitle,
-.appointment-header__subtitle {
-	font-size: var(--fs-2xl);
-	font-weight: 400;
-	margin-top: 0;
-	line-height: 1.3;
 }
 
 .appointment-header__views {
@@ -1702,14 +1322,6 @@ button {
 	background: var(--c-bg);
 }
 
-.admin-donation-events-page .header,
-.admin-facilities-page .header,
-.admin-blood-requests-page .header {
-	position: sticky;
-	top: 0;
-	flex-shrink: 0;
-}
-
 .event-main,
 .facility-content,
 .request-content {
@@ -1999,43 +1611,6 @@ button {
 
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
-	.admin-page .overlay {
-		display: block;
-	}
-
-	.admin-page .sidebar {
-		position: fixed;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		transform: translateX(-100%);
-	}
-
-	.admin-page .sidebar.sidebar--open {
-		transform: translateX(0);
-	}
-
-	.admin-page .sidebar.is-open {
-		transform: translateX(0);
-	}
-
-	.admin-page .hamburger {
-		display: flex;
-	}
-
-	.header {
-		left: 0;
-		padding: 16px 20px;
-		min-height: 80px;
-	}
-
-	.header__title {
-		font-size: 24px;
-	}
-
-	.header__subtitle {
-		font-size: var(--fs-md);
-	}
 
 	.admin-dashboard-page .content,
 	.admin-users-page .content {
@@ -2100,51 +1675,6 @@ button {
 		min-width: 780px;
 	}
 
-	.appointment-overlay {
-		display: block;
-	}
-
-	.appointment-hamburger {
-		display: flex;
-	}
-
-	.admin-appointments-page .sidebar {
-		position: fixed;
-		left: 0;
-		top: 0;
-		height: 100vh;
-		transform: translateX(-100%);
-		transition: transform 0.35s ease;
-		overflow-y: auto;
-		z-index: 1000;
-	}
-
-	.admin-appointments-page .sidebar.is-open {
-		transform: translateX(0);
-	}
-
-	.admin-appointments-page .sidebar__nav-bottom {
-		padding-bottom: 40px;
-	}
-
-	.appointment-header {
-		padding: 16px 20px;
-		min-height: 80px;
-		flex-wrap: wrap;
-		gap: 12px;
-	}
-
-	.appointment-header .header__title,
-	.appointment-header__title {
-		font-size: 24px;
-		margin-top: 0;
-	}
-
-	.appointment-header .header__subtitle,
-	.appointment-header__subtitle {
-		font-size: 16px;
-	}
-
 	.appointment-header__views {
 		margin-top: 0;
 		align-self: flex-end;
@@ -2203,26 +1733,6 @@ button {
 		gap: 14px;
 	}
 
-	.header {
-		padding: 14px 16px;
-		min-height: auto;
-	}
-
-	.header__title {
-		font-size: var(--fs-lg);
-	}
-
-	.header__subtitle {
-		font-size: var(--fs-sm);
-	}
-
-	.admin-dashboard-page .header__right {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-left: auto;
-	}
-
 	.admin-dashboard-page .header__date-group {
 		display: none;
 	}
@@ -2258,16 +1768,6 @@ button {
 		width: 100%;
 	}
 
-	.admin-users-page .header {
-		flex-direction: column;
-		align-items: flex-start;
-		gap: var(--sp-sm);
-	}
-
-	.admin-users-page .header__actions {
-		padding-top: 0;
-	}
-
 	.btn-export {
 		width: 140px;
 		font-size: var(--fs-13);
@@ -2294,23 +1794,8 @@ button {
 		width: 100%;
 	}
 
-	.appointment-header .header__title,
-	.appointment-header__title {
-		font-size: var(--fs-lg);
-	}
-
 	.appointment-content {
 		padding: 14px;
-	}
-
-	.appointment-header {
-		padding: 14px 16px;
-		min-height: auto;
-	}
-
-	.appointment-header .header__subtitle,
-	.appointment-header__subtitle {
-		font-size: var(--fs-sm);
 	}
 
 	.appointment-header__views {
@@ -2709,58 +2194,12 @@ button {
 	background: #f5f5f5;
 }
 
-.admin-donor-records-page .layout {
-	display: flex;
-	width: 100%;
-	min-height: 100vh;
-}
-
-.admin-donor-records-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
 .admin-donor-records-page .main {
 	flex: 1;
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
 	position: relative;
-}
-
-.admin-donor-records-page .page-header {
-	background: var(--c-white);
-	height: 180px;
-	box-shadow: var(--shadow-header);
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0 40px 0 73px;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	z-index: 50;
-}
-
-.admin-donor-records-page .page-header .header__title,
-.admin-donor-records-page .page-header__title {
-	font-size: 32px;
-	font-weight: 700;
-	color: var(--c-primary);
-	line-height: 1.2;
-}
-
-.admin-donor-records-page .page-header .header__subtitle,
-.admin-donor-records-page .page-header__subtitle {
-	font-size: 24px;
-	font-weight: 400;
-	color: var(--c-black);
-	line-height: 1.3;
-	margin-top: 4px;
 }
 
 .admin-donor-records-page .btn-export {
@@ -3172,39 +2611,10 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-donor-records-page .sidebar {
-		position: fixed;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		height: 100%;
-		transform: translateX(-100%);
-		transition: transform 0.3s ease;
-		overflow-y: auto;
-		z-index: 1000;
-	}
-
-	.admin-donor-records-page .sidebar.sidebar--open {
-		transform: translateX(0);
-	}
 
 	.admin-donor-records-page .main {
 		width: 100%;
 		margin-left: 0;
-	}
-
-	.admin-donor-records-page .page-header {
-		padding: 0 24px 0 64px;
-	}
-
-	.admin-donor-records-page .page-header .header__title,
-	.admin-donor-records-page .page-header__title {
-		font-size: 26px;
-	}
-
-	.admin-donor-records-page .page-header .header__subtitle,
-	.admin-donor-records-page .page-header__subtitle {
-		font-size: 18px;
 	}
 
 	.admin-donor-records-page .page-body {
@@ -3233,23 +2643,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-donor-records-page .page-header {
-		height: auto;
-		padding: 60px 16px 20px;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 14px;
-	}
-
-	.admin-donor-records-page .page-header .header__title,
-	.admin-donor-records-page .page-header__title {
-		font-size: 22px;
-	}
-
-	.admin-donor-records-page .page-header .header__subtitle,
-	.admin-donor-records-page .page-header__subtitle {
-		font-size: 15px;
-	}
 
 	.admin-donor-records-page .page-body {
 		padding: 24px 16px 40px;
@@ -3297,92 +2690,12 @@ button {
 	background: #f5f5f5;
 }
 
-.admin-blood-availability-page .layout {
-	display: flex;
-	width: 100%;
-	min-height: 100vh;
-}
-
-.admin-blood-availability-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
-.admin-blood-availability-page .sidebar__hamburger {
-	position: fixed;
-	left: 18px;
-	top: 18px;
-	z-index: 1100;
-	background: var(--c-primary);
-	border: none;
-	border-radius: 8px;
-	padding: 10px;
-	box-shadow: var(--shadow-card);
-}
-
-.admin-blood-availability-page .sidebar__hamburger .hamburger__bar {
-	background: var(--c-white);
-}
-
 .admin-blood-availability-page .main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
 	padding-bottom: 40px;
-}
-
-.admin-blood-availability-page .page-header {
-	background: var(--c-white);
-	box-shadow: var(--shadow-header);
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	min-height: var(--admin-header-h);
-	padding: 20px var(--admin-content-pl);
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	z-index: 50;
-}
-
-.admin-blood-availability-page .page-header__left {
-	align-items: center;
-	flex: 1;
-	min-width: 0;
-}
-
-.admin-blood-availability-page .page-header .header__title {
-	font-size: 32px;
-	font-weight: 700;
-	line-height: 1.2;
-}
-
-.admin-blood-availability-page .page-header .header__subtitle {
-	font-size: 24px;
-	font-weight: 400;
-	line-height: 1.3;
-	margin-top: 4px;
-}
-
-.admin-blood-availability-page .page-header__date {
-	text-align: right;
-}
-
-.admin-blood-availability-page .page-header__date-label {
-	font-size: 16px;
-	font-weight: 300;
-	line-height: 1.2;
-}
-
-.admin-blood-availability-page .page-header__date-value {
-	font-size: 20px;
-	font-weight: 400;
-	line-height: 1.2;
 }
 
 .admin-blood-availability-page .panels-row {
@@ -3792,37 +3105,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-blood-availability-page .sidebar {
-		position: fixed;
-		left: 0;
-		top: 0;
-		transform: translateX(-100%);
-		transition: transform 0.3s ease;
-		z-index: 1100;
-	}
-
-	.admin-blood-availability-page .sidebar.is-open {
-		transform: translateX(0);
-	}
-
-	.admin-blood-availability-page .page-header {
-		padding: 16px 20px 16px 64px;
-		min-height: 80px;
-		flex-wrap: wrap;
-		gap: 12px;
-	}
-
-	.admin-blood-availability-page .page-header .header__title {
-		font-size: 26px;
-	}
-
-	.admin-blood-availability-page .page-header .header__subtitle {
-		font-size: 18px;
-	}
-
-	.admin-blood-availability-page .page-header__date {
-		display: none;
-	}
 
 	.admin-blood-availability-page .panels-row {
 		grid-template-columns: 1fr;
@@ -3843,25 +3125,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-blood-availability-page .sidebar__hamburger {
-		left: 14px;
-		top: 14px;
-		padding: 9px;
-	}
-
-	.admin-blood-availability-page .page-header {
-		padding: 14px 16px 14px 54px;
-		min-height: auto;
-		gap: 8px;
-	}
-
-	.admin-blood-availability-page .page-header .header__title {
-		font-size: 22px;
-	}
-
-	.admin-blood-availability-page .page-header .header__subtitle {
-		font-size: 15px;
-	}
 
 	.admin-blood-availability-page .panels-row {
 		padding: 14px;
@@ -4108,83 +3371,11 @@ button {
 	background: var(--c-bg);
 }
 
-.admin-notification-center-page .layout {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-notification-center-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
-.admin-notification-center-page .sidebar__hamburger {
-	position: fixed;
-	top: 18px;
-	left: 18px;
-	z-index: 1100;
-	width: 44px;
-	height: 44px;
-	background: var(--c-primary);
-	border-radius: 8px;
-	border: none;
-	padding: 8px;
-	box-shadow: var(--shadow-card);
-}
-
-.admin-notification-center-page .sidebar__hamburger .hamburger__bar {
-	width: 26px;
-	background: var(--c-white);
-}
-
 .admin-notification-center-page .main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-}
-
-.admin-notification-center-page .page-header {
-	background: var(--c-white);
-	box-shadow: var(--shadow-header);
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	min-height: var(--admin-header-h);
-	padding: 20px var(--admin-content-pl);
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	z-index: 50;
-}
-
-.admin-notification-center-page .page-header__left {
-	align-items: center;
-	flex: 1;
-	min-width: 0;
-}
-
-.admin-notification-center-page .page-header__actions {
-	margin-left: auto;
-	flex-shrink: 0;
-	padding-top: 0;
-}
-
-.admin-notification-center-page .page-header .header__title {
-	font-size: 32px;
-	font-weight: 700;
-	line-height: 1.2;
-}
-
-.admin-notification-center-page .page-header .header__subtitle {
-	font-size: 24px;
-	font-weight: 400;
-	line-height: 1.3;
-	margin-top: 4px;
 }
 
 .admin-notification-center-page .btn-send {
@@ -4552,35 +3743,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-notification-center-page .sidebar {
-		position: fixed;
-		top: 0;
-		left: 0;
-		height: 100%;
-		transform: translateX(-100%);
-		transition: transform 0.3s ease;
-		overflow-y: auto;
-		z-index: 1000;
-	}
-
-	.admin-notification-center-page .sidebar.is-open {
-		transform: translateX(0);
-	}
-
-	.admin-notification-center-page .page-header {
-		padding: 16px 20px 16px 64px;
-		min-height: 80px;
-		flex-wrap: wrap;
-		gap: 12px;
-	}
-
-	.admin-notification-center-page .page-header .header__title {
-		font-size: 26px;
-	}
-
-	.admin-notification-center-page .page-header .header__subtitle {
-		font-size: 18px;
-	}
 
 	.admin-notification-center-page .page-body {
 		padding: 20px;
@@ -4624,28 +3786,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-notification-center-page .sidebar__hamburger {
-		top: 14px;
-		left: 14px;
-	}
-
-	.admin-notification-center-page .page-header {
-		padding: 14px 16px 14px 54px;
-		min-height: auto;
-		gap: 8px;
-	}
-
-	.admin-notification-center-page .page-header .header__title {
-		font-size: 22px;
-	}
-
-	.admin-notification-center-page .page-header .header__subtitle {
-		font-size: 15px;
-	}
-
-	.admin-notification-center-page .page-header__actions {
-		margin-left: auto;
-	}
 
 	.admin-notification-center-page .page-body {
 		padding: 14px;
@@ -4703,40 +3843,11 @@ button {
 	background: var(--c-bg);
 }
 
-.admin-report-analytics-page .layout {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-report-analytics-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
 .admin-report-analytics-page .main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-}
-
-.admin-report-analytics-page .header {
-	position: sticky;
-	top: 0;
-	z-index: 50;
-}
-
-.admin-report-analytics-page .header__left-group {
-	min-width: 0;
-}
-
-.admin-report-analytics-page .header__right {
-	margin-left: auto;
-	flex-shrink: 0;
 }
 
 .admin-report-analytics-page .report-header-export {
@@ -5096,35 +4207,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-report-analytics-page .sidebar {
-		position: fixed;
-		top: 0;
-		left: 0;
-		height: 100%;
-		transform: translateX(-100%);
-		transition: transform 0.3s ease;
-		overflow-y: auto;
-		z-index: 1000;
-	}
-
-	.admin-report-analytics-page .sidebar.sidebar--open {
-		transform: translateX(0);
-	}
-
-	.admin-report-analytics-page .header {
-		padding: 16px 20px 16px 64px;
-		min-height: 80px;
-		gap: 12px;
-		flex-wrap: wrap;
-	}
-
-	.admin-report-analytics-page .header .header__title {
-		font-size: 26px;
-	}
-
-	.admin-report-analytics-page .header .header__subtitle {
-		font-size: 18px;
-	}
 
 	.admin-report-analytics-page .page-body {
 		padding: 20px;
@@ -5155,24 +4237,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-report-analytics-page .header {
-		padding: 14px 16px 14px 54px;
-		min-height: auto;
-		gap: 8px;
-	}
-
-	.admin-report-analytics-page .header .header__title {
-		font-size: 22px;
-	}
-
-	.admin-report-analytics-page .header .header__subtitle {
-		font-size: 15px;
-	}
-
-	.admin-report-analytics-page .header__right {
-		width: 100%;
-		margin-left: 0;
-	}
 
 	.admin-report-analytics-page .report-header-export {
 		width: 100%;
@@ -5228,40 +4292,11 @@ button {
 	background: var(--c-bg);
 }
 
-.admin-audit-logs-page .layout {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-audit-logs-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
-
 .admin-audit-logs-page .main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-}
-
-.admin-audit-logs-page .header {
-	position: sticky;
-	top: 0;
-	z-index: 50;
-}
-
-.admin-audit-logs-page .header__left-group {
-	min-width: 0;
-}
-
-.admin-audit-logs-page .header__right {
-	margin-left: auto;
-	flex-shrink: 0;
 }
 
 .admin-audit-logs-page .audit-export-btn {
@@ -5785,35 +4820,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-audit-logs-page .sidebar {
-		position: fixed;
-		left: 0;
-		top: 0;
-		height: 100%;
-		transform: translateX(-100%);
-		transition: transform 0.3s ease;
-		overflow-y: auto;
-		z-index: 1000;
-	}
-
-	.admin-audit-logs-page .sidebar.sidebar--open {
-		transform: translateX(0);
-	}
-
-	.admin-audit-logs-page .header {
-		padding: 16px 20px 16px 64px;
-		min-height: 80px;
-		gap: 12px;
-		flex-wrap: wrap;
-	}
-
-	.admin-audit-logs-page .header .header__title {
-		font-size: 26px;
-	}
-
-	.admin-audit-logs-page .header .header__subtitle {
-		font-size: 18px;
-	}
 
 	.admin-audit-logs-page .page-body {
 		padding: 20px;
@@ -5830,24 +4836,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-audit-logs-page .header {
-		padding: 14px 16px 14px 54px;
-		min-height: auto;
-		gap: 8px;
-	}
-
-	.admin-audit-logs-page .header .header__title {
-		font-size: 22px;
-	}
-
-	.admin-audit-logs-page .header .header__subtitle {
-		font-size: 15px;
-	}
-
-	.admin-audit-logs-page .header__right {
-		width: 100%;
-		margin-left: 0;
-	}
 
 	.admin-audit-logs-page .audit-export-btn {
 		width: 100%;
@@ -5887,35 +4875,12 @@ button {
 }
 
 /* ===== RBAC Management Page ===== */
-.admin-rbac-page .layout {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-rbac-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
 
 .admin-rbac-page .main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-}
-
-.admin-rbac-page .header {
-	position: sticky;
-	top: 0;
-	z-index: 800;
-}
-
-.admin-rbac-page .header__right {
-	margin-left: auto;
 }
 
 .admin-rbac-page .rbac-add-role-btn {
@@ -6221,35 +5186,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-rbac-page .sidebar {
-		position: fixed;
-		left: 0;
-		top: 0;
-		height: 100%;
-		transform: translateX(-100%);
-		transition: transform 0.3s ease;
-		overflow-y: auto;
-		z-index: 1000;
-	}
-
-	.admin-rbac-page .sidebar.sidebar--open {
-		transform: translateX(0);
-	}
-
-	.admin-rbac-page .header {
-		padding: 16px 20px 16px 64px;
-		min-height: 80px;
-		gap: 12px;
-		flex-wrap: wrap;
-	}
-
-	.admin-rbac-page .header .header__title {
-		font-size: 26px;
-	}
-
-	.admin-rbac-page .header .header__subtitle {
-		font-size: 18px;
-	}
 
 	.admin-rbac-page .rbac-body {
 		padding: 20px;
@@ -6257,24 +5193,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-rbac-page .header {
-		padding: 14px 16px 14px 54px;
-		min-height: auto;
-		gap: 8px;
-	}
-
-	.admin-rbac-page .header .header__title {
-		font-size: 22px;
-	}
-
-	.admin-rbac-page .header .header__subtitle {
-		font-size: 15px;
-	}
-
-	.admin-rbac-page .header__right {
-		width: 100%;
-		margin-left: 0;
-	}
 
 	.admin-rbac-page .rbac-add-role-btn {
 		width: 100%;
@@ -6309,35 +5227,12 @@ button {
 }
 
 /* ===== Settings Page ===== */
-.admin-settings-page .layout {
-	display: flex;
-	min-height: 100vh;
-}
-
-.admin-settings-page .sidebar {
-	min-height: 100vh;
-	flex-shrink: 0;
-	position: sticky;
-	top: 0;
-	height: 100vh;
-	z-index: 1000;
-}
 
 .admin-settings-page .main {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-}
-
-.admin-settings-page .header {
-	position: sticky;
-	top: 0;
-	z-index: 800;
-}
-
-.admin-settings-page .header__right {
-	margin-left: auto;
 }
 
 .admin-settings-page .settings-header-pill {
@@ -6556,35 +5451,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-settings-page .sidebar {
-		position: fixed;
-		left: 0;
-		top: 0;
-		height: 100%;
-		transform: translateX(-100%);
-		transition: transform 0.3s ease;
-		overflow-y: auto;
-		z-index: 1000;
-	}
-
-	.admin-settings-page .sidebar.sidebar--open {
-		transform: translateX(0);
-	}
-
-	.admin-settings-page .header {
-		padding: 16px 20px 16px 64px;
-		min-height: 80px;
-		gap: 12px;
-		flex-wrap: wrap;
-	}
-
-	.admin-settings-page .header .header__title {
-		font-size: 26px;
-	}
-
-	.admin-settings-page .header .header__subtitle {
-		font-size: 18px;
-	}
 
 	.admin-settings-page .settings-body {
 		padding: 20px;
@@ -6592,24 +5458,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-settings-page .header {
-		padding: 14px 16px 14px 54px;
-		min-height: auto;
-		gap: 8px;
-	}
-
-	.admin-settings-page .header .header__title {
-		font-size: 22px;
-	}
-
-	.admin-settings-page .header .header__subtitle {
-		font-size: 15px;
-	}
-
-	.admin-settings-page .header__right {
-		width: 100%;
-		margin-left: 0;
-	}
 
 	.admin-settings-page .settings-header-pill {
 		width: 100%;
@@ -6914,41 +5762,6 @@ button {
 }
 
 /* ===== Eligibility Review Page Layout ===== */
-.admin-eligibility-page .app,
-.admin-questions-page .app {
-    display: flex;
-    min-height: 100vh;
-}
-
-.admin-eligibility-page .overlay,
-.admin-questions-page .overlay {
-    z-index: 900;
-}
-
-.admin-eligibility-page .sidebar,
-.admin-questions-page .sidebar {
-    min-height: 100vh;
-    flex-shrink: 0;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    z-index: 1000;
-}
-
-.admin-eligibility-page .header,
-.admin-questions-page .header {
-    position: sticky;
-    top: 0;
-    z-index: 800;
-}
-
-.admin-eligibility-page .admin-layout-content,
-.admin-questions-page .admin-layout-content {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-}
 
 .admin-eligibility-page .eligibility-main,
 .admin-questions-page .questions-main {
@@ -6965,20 +5778,6 @@ button {
 }
 
 @media (max-width: 1024px) {
-	.admin-page .layout {
-		display: block;
-	}
-
-	.admin-page .layout > .admin-layout-content {
-		width: 100%;
-	}
-
-	.admin-donation-events-page .header,
-	.admin-facilities-page .header,
-	.admin-blood-requests-page .header {
-		flex-wrap: wrap;
-		gap: 12px;
-	}
 
 	.event-main,
 	.facility-content,
@@ -7015,25 +5814,6 @@ button {
 }
 
 @media (max-width: 768px) {
-	.admin-donation-events-page .header__left-group,
-	.admin-facilities-page .header__left-group,
-	.admin-blood-requests-page .header__left-group {
-		width: 100%;
-		min-width: 0;
-	}
-
-	.admin-donation-events-page .header__right,
-	.admin-facilities-page .header__right,
-	.admin-blood-requests-page .header__right {
-		width: 100%;
-		justify-content: flex-start;
-	}
-
-	.admin-donation-events-page .header__right .btn,
-	.admin-facilities-page .header__right .btn,
-	.admin-blood-requests-page .header__right .btn {
-		width: 100%;
-	}
 
 	.facility-summary,
 	.request-summary {
@@ -7236,29 +6016,6 @@ button {
 
 /* ===== Responsive for both ===== */
 @media (max-width: 1024px) {
-    .admin-eligibility-page .sidebar,
-    .admin-questions-page .sidebar {
-        position: fixed;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        transform: translateX(-100%);
-        transition: transform 0.3s ease;
-        overflow-y: auto;
-    }
-
-    .admin-eligibility-page .sidebar.is-open,
-    .admin-questions-page .sidebar.is-open,
-    .admin-eligibility-page .sidebar.sidebar--open,
-    .admin-questions-page .sidebar.sidebar--open {
-        transform: translateX(0);
-    }
-
-    .admin-eligibility-page .header,
-    .admin-questions-page .header {
-        padding: 16px 20px;
-        min-height: 80px;
-    }
 
     .admin-eligibility-page .eligibility-content,
     .admin-questions-page .questions-content {
@@ -7272,35 +6029,12 @@ button {
         --bs-gutter-x: 12px;
         --bs-gutter-y: 12px;
     }
-
-    .admin-eligibility-page .header__left-group,
-    .admin-questions-page .header__left-group {
-        min-width: 0;
-    }
-
-    .admin-questions-page .header__right {
-        margin-left: auto;
-    }
 }
 
 @media (max-width: 768px) {
     .admin-eligibility-page .eligibility-content,
     .admin-questions-page .questions-content {
         padding: 14px;
-    }
-
-    .admin-eligibility-page .header,
-    .admin-questions-page .header {
-        align-items: flex-start;
-        gap: 12px;
-    }
-
-    .admin-questions-page .header {
-        flex-wrap: wrap;
-    }
-
-    .admin-questions-page .header__right {
-        width: 100%;
     }
 
     .admin-questions-page #addQuestionBtn {

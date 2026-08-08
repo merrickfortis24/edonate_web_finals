@@ -1,29 +1,15 @@
-@extends('layouts.app')
+@extends('layouts.admin')
 
 @section('title', 'eDonate - Admin Two-Factor Authentication')
 @section('admin_page_class', 'admin-settings-page admin-two-factor-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Two-Factor Authentication')
 @section('header_subtitle', 'Manage Google Authenticator for your admin account')
-
-@section('header_slot')
-    <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
 
 @section('header_actions')
     <a href="{{ route('admin.settings') }}" class="btn btn-outline-danger btn-sm">Back to Settings</a>
 @endsection
 
-@section('content')
+@section('main_content')
     <main class="main container-fluid px-0">
         <div class="container-fluid py-3">
             @if (session('success'))

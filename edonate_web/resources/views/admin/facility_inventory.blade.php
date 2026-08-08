@@ -2,12 +2,8 @@
 
 @section('title', 'eDonate - Facility Inventory')
 @section('admin_page_class', 'admin-facility-inventory-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('render_default_hamburger', 'false')
 @section('header_title', $facility->facility_name)
 @section('header_subtitle', 'Blood inventory and update history')
-@section('header_slot')<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar"><span class="hamburger__bar"></span><span class="hamburger__bar"></span><span class="hamburger__bar"></span></button>@endsection
 @section('header_actions')<a class="btn btn-outline-secondary" href="{{ route('admin.facilities.index') }}">Back to Facilities</a>@endsection
 
 @push('admin_head')

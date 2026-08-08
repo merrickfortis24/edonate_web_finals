@@ -2,22 +2,8 @@
 
 @section('title', 'eDonate - Reports & Analytics')
 @section('admin_page_class', 'admin-report-analytics-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Reports and Analytics')
 @section('header_subtitle', 'Visual charts summarizing donation trends and user activity')
-
-@section('header_slot')
-	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-	</button>
-@endsection
 
 @section('header_actions')
 	<button class="report-header-export btn" type="button" aria-label="Export all reports">

@@ -1,1 +1,113 @@
 @import '../../../public_html/css/style.css';
+
+:root {
+    --edonate-red: #b60c0c;
+    --edonate-red-dark: #780606;
+    --edonate-red-soft: #fff1f1;
+}
+
+.edonate-adminlte .edonate-sidebar {
+    background: linear-gradient(180deg, var(--edonate-red) 0%, var(--edonate-red-dark) 100%);
+}
+
+.edonate-adminlte .sidebar-brand {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.edonate-adminlte .brand-link,
+.edonate-adminlte .sidebar-menu .nav-link {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+.edonate-adminlte .sidebar-menu .nav-link:hover,
+.edonate-adminlte .sidebar-menu .nav-link.active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.edonate-adminlte .sidebar-menu .nav-link.active {
+    box-shadow: inset 3px 0 0 #fff;
+}
+
+.edonate-adminlte .sidebar-menu .nav-header {
+    color: rgba(255, 255, 255, 0.58);
+    letter-spacing: 0.08em;
+}
+
+.edonate-adminlte .app-main,
+.edonate-adminlte .app-content {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.edonate-adminlte .app-content {
+    overflow-x: clip;
+}
+
+.edonate-adminlte .app-content-header {
+    padding-block: 1rem;
+}
+
+.edonate-content-header,
+.edonate-content-header > *,
+.edonate-admin-page,
+.edonate-admin-page .main,
+.edonate-admin-page main {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.edonate-admin-page {
+    color: var(--bs-body-color);
+    font-family: var(--font-base, system-ui, sans-serif);
+}
+
+.edonate-admin-page .table-responsive,
+.edonate-admin-page [class$="-table-wrap"],
+.edonate-admin-page [class$="-table-wrapper"] {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.edonate-admin-page .modal-dialog {
+    width: auto;
+    max-width: min(var(--bs-modal-width, 500px), calc(100vw - 2rem));
+    margin-inline: auto;
+}
+
+.edonate-user-avatar {
+    align-items: center;
+    background: var(--edonate-red-soft);
+    border: 1px solid rgba(182, 12, 12, 0.18);
+    border-radius: 50%;
+    color: var(--edonate-red-dark);
+    display: inline-flex;
+    flex: 0 0 2rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    height: 2rem;
+    justify-content: center;
+    width: 2rem;
+}
+
+@media (max-width: 767.98px) {
+    .edonate-adminlte .app-content-header,
+    .edonate-adminlte .app-content {
+        padding-inline: 0;
+    }
+
+    .edonate-content-actions {
+        width: 100%;
+    }
+
+    .edonate-content-actions > .btn,
+    .edonate-content-actions > a.btn {
+        width: 100%;
+    }
+
+    .edonate-admin-page .modal-dialog {
+        max-width: calc(100vw - 1rem);
+        margin: 0.5rem auto;
+    }
+}

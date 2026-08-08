@@ -25,6 +25,6 @@ $app = Application::configure(basePath: dirname(__DIR__))
         //
     })->create();
 
-$app->usePublicPath(dirname(__DIR__).'/..');
+$app->usePublicPath(dirname(__DIR__).'/../public_html');
 
 return $app;

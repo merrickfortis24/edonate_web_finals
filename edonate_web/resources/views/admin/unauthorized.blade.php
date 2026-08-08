@@ -2,22 +2,8 @@
 
 @section('title', 'eDonate - Unauthorized')
 @section('admin_page_class', 'admin-unauthorized-page')
-@section('layout_wrapper_class', 'app')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Unauthorized Access')
 @section('header_subtitle', 'You do not have permission to view this page')
-
-@section('header_slot')
-	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-	</button>
-@endsection
 
 @section('admin_page_data')
 {!! json_encode([

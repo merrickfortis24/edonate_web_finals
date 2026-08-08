@@ -2,23 +2,8 @@
 
 @section('title', 'eDonate - User Management')
 @section('admin_page_class', 'admin-users-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('hamburger_id', 'hamburger')
-@section('render_default_hamburger', 'false')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-
 @section('header_title', 'User Management')
 @section('header_subtitle', 'Manage donor registration, updates, and account validation')
-
-@section('header_slot')
-    <button class="hamburger" id="hamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
 
 @section('header_actions')
     <button class="btn-export btn" aria-label="Export donor data" type="button">

@@ -2,22 +2,8 @@
 
 @section('title', 'eDonate - Audit Logs')
 @section('admin_page_class', 'admin-audit-logs-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Audit Logs')
 @section('header_subtitle', 'Monitor and review all system activities and user actions')
-
-@section('header_slot')
-	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-	</button>
-@endsection
 
 @section('header_actions')
 	<button class="audit-export-btn btn" id="auditExportBtn" type="button" aria-label="Export logs">

@@ -2,13 +2,8 @@
 
 @section('title', 'eDonate - Blood Availability Map')
 @section('admin_page_class', 'admin-blood-availability-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_open_class', 'is-open')
-@section('render_default_hamburger', 'false')
 @section('header_title', 'Blood Availability Map')
 @section('header_subtitle', 'Verified donor availability and recorded facility inventory')
-@section('header_slot')<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar"><span class="hamburger__bar"></span><span class="hamburger__bar"></span><span class="hamburger__bar"></span></button>@endsection
 
 @push('admin_head')
 <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.min.css') }}">

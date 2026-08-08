@@ -2,28 +2,8 @@
 
 @section('title', 'eDonate - Event Management')
 @section('admin_page_class', 'admin-donation-events-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_id', 'donationEventsSidebar')
-@section('sidebar_aria_label', 'Admin navigation')
-@section('sidebar_nav_aria_label', 'Primary navigation')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_open_class', 'is-open')
-@section('overlay_id', 'donationEventsOverlay')
-@section('overlay_class', 'appointment-overlay overlay')
-@section('overlay_open_class', 'is-visible')
-@section('hamburger_id', 'donationEventsHamburger')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Event Management')
 @section('header_subtitle', 'Manage donation events, capacity, and booked donors')
-
-@section('header_slot')
-    <button class="hamburger" id="donationEventsHamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="donationEventsSidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
 
 @section('header_actions')
     <button class="btn btn-danger fw-semibold" type="button" id="createEventBtn">Create Event</button>

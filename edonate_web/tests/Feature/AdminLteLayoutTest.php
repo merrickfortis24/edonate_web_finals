@@ -1,0 +1,88 @@
+<?php
+
+namespace Tests\Feature;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Tests\TestCase;
+
+class AdminLteLayoutTest extends TestCase
+{
+    public function test_admin_shell_uses_adminlte_and_admin_navigation(): void
+    {
+        $html = $this->renderPageForRole('admin.unauthorized', 'admin', '/admin/users');
+
+        $this->assertStringContainsString('<div class="app-wrapper">', $html);
+        $this->assertStringContainsString('<title>eDonate - Unauthorized</title>', $html);
+        $this->assertStringContainsString('<aside class="app-sidebar edonate-sidebar shadow"', $html);
+        $this->assertStringContainsString('edonate-admin-page admin-unauthorized-page', $html);
+        $this->assertStringContainsString('User Management', $html);
+        $this->assertStringContainsString('RBAC', $html);
+        $this->assertStringContainsString('edonate-sidebar-logout-form', $html);
+        $this->assertStringNotContainsString('id="hamburgerBtn"', $html);
+        $this->assertStringNotContainsString('id="sidebar"', $html);
+    }
+
+    public function test_staff_shell_hides_admin_only_navigation(): void
+    {
+        $html = $this->renderPageForRole('admin.unauthorized', 'staff', '/staff/dashboard');
+
+        $this->assertStringContainsString('Staff Portal', $html);
+        $this->assertStringContainsString('Appointment Management', $html);
+        $this->assertStringContainsString('Donation Records / Check-in', $html);
+        $this->assertStringContainsString('Audit Logs', $html);
+        $this->assertStringNotContainsString('User Management', $html);
+        $this->assertStringNotContainsString('Question Management', $html);
+        $this->assertStringNotContainsString('RBAC', $html);
+        $this->assertStringNotContainsString('Settings', $html);
+    }
+
+    public function test_existing_page_data_and_scripts_are_preserved_inside_the_adminlte_shell(): void
+    {
+        $html = $this->renderPageForRole('admin.staff_dashboard', 'staff', '/staff/dashboard');
+        $payloadPosition = strpos($html, 'id="adminPageData"');
+        $pageScriptPosition = strpos($html, 'var dashboardData =');
+
+        $this->assertIsInt($payloadPosition);
+        $this->assertIsInt($pageScriptPosition);
+        $this->assertLessThan($pageScriptPosition, $payloadPosition);
+        $this->assertStringContainsString('"page":"staff-dashboard"', $html);
+        $this->assertMatchesRegularExpression('#(?:/build/assets/adminlte-|/resources/js/adminlte\.js)#', $html);
+        $this->assertLessThanOrEqual(1, substr_count($html, '/@vite/client'));
+    }
+
+    public function test_every_configured_adminlte_menu_route_exists(): void
+    {
+        $inspect = function (array $items) use (&$inspect): void {
+            foreach ($items as $item) {
+                if (isset($item['route'])) {
+                    $this->assertTrue(Route::has($item['route']), "Missing menu route [{$item['route']}].");
+                }
+
+                if (isset($item['submenu'])) {
+                    $inspect($item['submenu']);
+                }
+            }
+        };
+
+        $inspect(config('adminlte.menu', []));
+    }
+
+    private function renderPageForRole(string $view, string $role, string $path): string
+    {
+        $session = $this->app['session.store'];
+        $session->start();
+        $session->put([
+            'admin_id' => 1,
+            'admin_role' => $role,
+            'admin_username' => $role,
+            'admin_full_name' => ucfirst($role).' User',
+        ]);
+
+        $request = Request::create($path);
+        $request->setLaravelSession($session);
+        $this->app->instance('request', $request);
+
+        return view($view)->render();
+    }
+}

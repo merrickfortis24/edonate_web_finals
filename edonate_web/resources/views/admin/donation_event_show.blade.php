@@ -2,28 +2,8 @@
 
 @section('title', 'eDonate - Event Bookings')
 @section('admin_page_class', 'admin-donation-event-show-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_id', 'donationEventShowSidebar')
-@section('sidebar_aria_label', 'Admin navigation')
-@section('sidebar_nav_aria_label', 'Primary navigation')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_open_class', 'is-open')
-@section('overlay_id', 'donationEventShowOverlay')
-@section('overlay_class', 'appointment-overlay overlay')
-@section('overlay_open_class', 'is-visible')
-@section('hamburger_id', 'donationEventShowHamburger')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Event Bookings')
 @section('header_subtitle', $event->title)
-
-@section('header_slot')
-    <button class="hamburger" id="donationEventShowHamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="donationEventShowSidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
 
 @section('header_actions')
     <a class="btn btn-outline-secondary fw-semibold" href="{{ route('admin.donation-events.index') }}">Back to Events</a>

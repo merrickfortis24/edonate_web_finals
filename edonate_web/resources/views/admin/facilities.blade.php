@@ -2,15 +2,8 @@
 
 @section('title', 'eDonate - Facility Management')
 @section('admin_page_class', 'admin-facilities-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('render_default_hamburger', 'false')
 @section('header_title', 'Facility Management')
 @section('header_subtitle', 'Manage hospitals, clinics, blood banks, and health centers')
-
-@section('header_slot')
-<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar"><span class="hamburger__bar"></span><span class="hamburger__bar"></span><span class="hamburger__bar"></span></button>
-@endsection
 
 @section('header_actions')
 @if($canManage)<button class="btn btn-danger" type="button" id="createFacilityButton">Create Facility</button>@endif

@@ -7,10 +7,20 @@
         "dev": "vite"
     },
     "devDependencies": {
+        "@popperjs/core": "2.11",
         "@tailwindcss/vite": "^4.0.0",
+        "admin-lte": "4.1",
+        "apexcharts": "6.7",
         "axios": "^1.11.0",
+        "bootstrap": "5.3",
+        "bootstrap-icons": "1.13",
         "concurrently": "^9.0.1",
+        "fullcalendar": "6.1",
+        "jsvectormap": "1.7",
         "laravel-vite-plugin": "^2.0.0",
+        "overlayscrollbars": "2.16",
+        "sass": "1.102",
+        "sortablejs": "1.15",
         "tailwindcss": "^4.0.0",
         "vite": "^7.0.7"
     }

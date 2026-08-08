@@ -1,23 +1,9 @@
-@extends('layouts.app')
+@extends('layouts.admin')
 
 @section('title', 'eDonate - Admin Settings')
 @section('admin_page_class', 'admin-settings-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Settings')
 @section('header_subtitle', 'Manage system configuration, security, and preferences')
-
-@section('header_slot')
-	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-	</button>
-@endsection
 
 @section('header_actions')
 	<span class="settings-header-pill">Admin Control Panel</span>
@@ -47,7 +33,7 @@
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
-@section('content')
+@section('main_content')
 	<main class="main container-fluid px-0">
 		<div class="settings-body container-fluid py-3">
 			<div id="settingsAlertHost" class="settings-alert-host"></div>

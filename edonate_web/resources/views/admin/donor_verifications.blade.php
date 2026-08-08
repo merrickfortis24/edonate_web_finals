@@ -2,22 +2,8 @@
 
 @section('title', 'eDonate - Donor Verification')
 @section('admin_page_class', 'admin-donor-verifications-page')
-@section('layout_wrapper_class', 'app')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('sidebar_link_mode', 'link')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Donor Verification')
 @section('header_subtitle', 'Review identity documents and verify legitimate donor accounts')
-
-@section('header_slot')
-    <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
 
 @section('main_content')
 @php

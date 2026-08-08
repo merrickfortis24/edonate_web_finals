@@ -2,28 +2,8 @@
 
 @section('title', 'eDonate - Appointment Management')
 @section('admin_page_class', 'admin-appointments-page')
-@section('layout_wrapper_class', 'layout')
-@section('sidebar_id', 'appointmentSidebar')
-@section('sidebar_aria_label', 'Admin navigation')
-@section('sidebar_nav_aria_label', 'Primary navigation')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_open_class', 'is-open')
-@section('overlay_id', 'appointmentOverlay')
-@section('overlay_class', 'appointment-overlay overlay')
-@section('overlay_open_class', 'is-visible')
-@section('hamburger_id', 'appointmentHamburger')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Appointment Management')
 @section('header_subtitle', 'Track auto-confirmed appointments and manage operational exceptions')
-
-@section('header_slot')
-    <button class="hamburger" id="appointmentHamburger" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="appointmentSidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
 
 @section('header_actions')
     <div class="appointment-header__views" role="group" aria-label="Appointment view mode">
@@ -331,7 +311,6 @@
 @endsection
 
 @push('admin_scripts')
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     (function () {
         var payload = (window.AdminPageData && window.AdminPageData.appointmentManagement)

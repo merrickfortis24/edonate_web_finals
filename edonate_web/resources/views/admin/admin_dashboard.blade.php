@@ -2,22 +2,8 @@
 
 @section('title', 'eDonate - Admin Dashboard')
 @section('admin_page_class', 'admin-dashboard-page')
-@section('layout_wrapper_class', 'app')
-@section('sidebar_link_mode', 'link')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Admin Dashboard')
 @section('header_subtitle', 'Blood Donation Management System - Web Portal')
-
-@section('header_slot')
-	<button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-		<span class="hamburger__bar"></span>
-	</button>
-@endsection
 
 @section('header_actions')
 	<div class="header__date-group" aria-label="Current date">
@@ -463,4 +449,3 @@
 	})();
 </script>
 @endpush
-

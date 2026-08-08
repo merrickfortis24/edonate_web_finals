@@ -2,22 +2,8 @@
 
 @section('title', 'eDonate - Eligibility Review')
 @section('admin_page_class', 'admin-eligibility-page')
-@section('layout_wrapper_class', 'app')
-@section('sidebar_aria_label', 'Main navigation')
-@section('sidebar_nav_aria_label', 'Main navigation')
-@section('sidebar_link_mode', 'link')
-@section('render_default_hamburger', 'false')
-
 @section('header_title', 'Eligibility Review')
 @section('header_subtitle', 'Review donor eligibility outcomes and decide only for records needing manual review')
-
-@section('header_slot')
-    <button class="hamburger" id="hamburgerBtn" aria-label="Toggle navigation menu" aria-expanded="false" aria-controls="sidebar">
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-        <span class="hamburger__bar"></span>
-    </button>
-@endsection
 
 @section('admin_page_data')
     {!! json_encode([
@@ -195,4 +181,3 @@
 @push('admin_scripts')
     <script src="{{ asset('js/admin/eligibility-review.js') }}?v={{ file_exists(public_path('js/admin/eligibility-review.js')) ? filemtime(public_path('js/admin/eligibility-review.js')) : time() }}"></script>
 @endpush
-
