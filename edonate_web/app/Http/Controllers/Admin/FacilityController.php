@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Facility;
+use App\Services\AdminNotificationService;
 use App\Services\FacilityBloodInventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,10 @@ use Throwable;
 
 class FacilityController extends Controller
 {
-    public function __construct(private readonly FacilityBloodInventoryService $inventoryService)
+    public function __construct(
+        private readonly FacilityBloodInventoryService $inventoryService,
+        private readonly AdminNotificationService $adminNotificationService
+    )
     {
     }
 
@@ -186,6 +190,8 @@ class FacilityController extends Controller
                 'changes' => $changes,
                 'reason' => trim($validated['reason']),
             ], 'facility_blood_inventory');
+
+            $this->notifyInventoryStateChanges($facility, $changes);
         }
 
         return response()->json([
@@ -226,6 +232,52 @@ class FacilityController extends Controller
     private function isAdmin(Request $request): bool
     {
         return Str::lower((string) $request->session()->get('admin_role')) === 'admin';
+    }
+
+    /**
+     * Create one admin notification only when an inventory status changes.
+     * Re-saving the same low/out-of-stock value therefore does not spam staff.
+     *
+     * @param array<int, array<string, mixed>> $changes
+     */
+    private function notifyInventoryStateChanges(Facility $facility, array $changes): void
+    {
+        $bloodTypes = $this->inventoryService->bloodTypes()->keyBy('blood_type_id');
+
+        foreach ($changes as $change) {
+            $previous = $this->inventoryService->inventoryStatus(
+                (int) ($change['previous_units'] ?? 0),
+                (int) ($change['previous_threshold'] ?? $this->inventoryService->defaultThreshold())
+            );
+            $current = $this->inventoryService->inventoryStatus(
+                (int) ($change['new_units'] ?? 0),
+                (int) ($change['new_threshold'] ?? $this->inventoryService->defaultThreshold())
+            );
+
+            if ($previous === $current) {
+                continue;
+            }
+
+            $bloodType = (string) ($bloodTypes->get((int) ($change['blood_type_id'] ?? 0))?->blood_type ?? 'blood type');
+            $statusLabel = match ($current) {
+                'out_of_stock' => 'out of stock',
+                'low' => 'low',
+                default => 'available again',
+            };
+            $type = match ($current) {
+                'out_of_stock' => 'facility_out_of_stock',
+                'low' => 'facility_low_stock',
+                default => 'facility_stock_recovered',
+            };
+
+            $this->adminNotificationService->createAdminEvent(
+                $type,
+                $this->adminNotificationService->titleFromType($type),
+                $bloodType . ' stock at ' . $facility->facility_name . ' changed from ' . str_replace('_', ' ', $previous) . ' to ' . $statusLabel . '.',
+                'facility',
+                (int) $facility->facility_id
+            );
+        }
     }
 
     /** @param array<string, mixed> $metadata */

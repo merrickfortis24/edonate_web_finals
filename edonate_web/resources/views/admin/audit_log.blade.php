@@ -23,6 +23,7 @@
 		'api' => [
 			'listUrl' => $auditApi['listUrl'] ?? '',
 			'exportUrl' => $auditApi['exportUrl'] ?? '',
+			'detailUrlTemplate' => $auditApi['detailUrlTemplate'] ?? '',
 		],
 		'defaults' => [
 			'perPage' => 10,
@@ -33,6 +34,15 @@
 			],
 			'users' => [
 				['value' => '', 'label' => 'All Users'],
+			],
+			'roles' => [
+				['value' => '', 'label' => 'All Roles'],
+			],
+			'modules' => [
+				['value' => '', 'label' => 'All Modules'],
+			],
+			'results' => [
+				['value' => '', 'label' => 'All Results'],
 			],
 		],
 	],
@@ -104,6 +114,31 @@
 					</div>
 				</div>
 
+				<div class="col-12 col-md-6 col-xl-3">
+					<input type="text" class="form-control audit-filter-select" id="auditActorInput" placeholder="Filter actor name..." aria-label="Filter by actor name">
+				</div>
+
+				<div class="col-12 col-md-6 col-xl-2">
+					<select class="form-select audit-filter-select" id="auditRoleFilter" aria-label="Filter by actor role"></select>
+				</div>
+
+				<div class="col-12 col-md-6 col-xl-2">
+					<select class="form-select audit-filter-select" id="auditModuleFilter" aria-label="Filter by module"></select>
+				</div>
+
+				<div class="col-12 col-md-6 col-xl-2">
+					<select class="form-select audit-filter-select" id="auditResultFilter" aria-label="Filter by result"></select>
+				</div>
+
+				<div class="col-6 col-md-3 col-xl-2">
+					<label class="small fw-semibold text-muted" for="auditStartDate">From</label>
+					<input type="date" class="form-control" id="auditStartDate" aria-label="Audit start date">
+				</div>
+				<div class="col-6 col-md-3 col-xl-2">
+					<label class="small fw-semibold text-muted" for="auditEndDate">To</label>
+					<input type="date" class="form-control" id="auditEndDate" aria-label="Audit end date">
+				</div>
+
 				<div class="col-12 col-xl-3">
 					<div class="form-check form-switch px-3 py-2 rounded border bg-body h-100 d-flex align-items-center">
 						<input class="form-check-input me-2" type="checkbox" role="switch" id="auditSecurityPolicyFilter" aria-label="Filter global security policy changes only">
@@ -141,6 +176,19 @@
 			</section>
 		</div>
 	</main>
+
+	<div class="modal fade" id="auditDetailModal" tabindex="-1" aria-labelledby="auditDetailTitle" aria-hidden="true">
+		<div class="modal-dialog modal-lg modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h2 class="modal-title fs-5" id="auditDetailTitle">Audit Log Details</h2>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body" id="auditDetailBody"><div class="text-center text-muted py-4">Loading details…</div></div>
+				<div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>
+			</div>
+		</div>
+	</div>
 @endsection
 
 @push('admin_scripts')
@@ -152,12 +200,19 @@
 
 		var listUrl = String(api.listUrl || '');
 		var exportUrl = String(api.exportUrl || '');
+		var detailUrlTemplate = String(api.detailUrlTemplate || '');
 
 		var state = {
 			search: '',
+			actor: '',
+			actorRole: '',
 			actionType: '',
+			moduleType: '',
+			result: '',
 			userType: '',
 			securityPolicyOnly: false,
+			startDate: '',
+			endDate: '',
 			page: 1,
 			perPage: Math.max(1, Number(defaults.perPage || 10)),
 			total: 0,
@@ -176,14 +231,23 @@
 
 		var filtersCache = {
 			actions: Array.isArray(payload.filters && payload.filters.actions) ? payload.filters.actions : [{ value: '', label: 'All Actions' }],
-			users: Array.isArray(payload.filters && payload.filters.users) ? payload.filters.users : [{ value: '', label: 'All Users' }]
+			users: Array.isArray(payload.filters && payload.filters.users) ? payload.filters.users : [{ value: '', label: 'All Users' }],
+			roles: Array.isArray(payload.filters && payload.filters.roles) ? payload.filters.roles : [{ value: '', label: 'All Roles' }],
+			modules: Array.isArray(payload.filters && payload.filters.modules) ? payload.filters.modules : [{ value: '', label: 'All Modules' }],
+			results: Array.isArray(payload.filters && payload.filters.results) ? payload.filters.results : [{ value: '', label: 'All Results' }]
 		};
 
 		var searchDebounceHandle = null;
 
 		var searchInput = document.getElementById('auditSearchInput');
+		var actorInput = document.getElementById('auditActorInput');
 		var actionFilter = document.getElementById('auditActionFilter');
 		var userFilter = document.getElementById('auditUserFilter');
+		var roleFilter = document.getElementById('auditRoleFilter');
+		var moduleFilter = document.getElementById('auditModuleFilter');
+		var resultFilter = document.getElementById('auditResultFilter');
+		var startDateInput = document.getElementById('auditStartDate');
+		var endDateInput = document.getElementById('auditEndDate');
 		var securityPolicyFilter = document.getElementById('auditSecurityPolicyFilter');
 		var exportBtn = document.getElementById('auditExportBtn');
 		var tableBody = document.getElementById('auditTableBody');
@@ -194,6 +258,8 @@
 		var statSuccess = document.getElementById('auditStatSuccess');
 		var statFailed = document.getElementById('auditStatFailed');
 		var statWarnings = document.getElementById('auditStatWarnings');
+		var detailBody = document.getElementById('auditDetailBody');
+		var detailModal = document.getElementById('auditDetailModal');
 
 		function escapeHtml(value) {
 			return String(value || '')
@@ -357,7 +423,7 @@
 					'<td class="audit-col-module"><span class="audit-module-chip audit-module-chip--' + moduleType + '">' + escapeHtml(entry.moduleLabel) + '</span></td>' +
 					'<td class="audit-col-ip"><span class="audit-ip-text">' + escapeHtml(entry.ipAddress) + '</span></td>' +
 					'<td><span class="audit-result-pill audit-result-pill--' + resultType + '">' + getResultIcon(resultType) + escapeHtml(entry.resultLabel) + '</span></td>' +
-					'<td><button class="audit-view-link btn btn-link p-0" type="button" aria-label="View log details for ' + escapeHtml(entry.userName) + '"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View</button></td>' +
+					'<td><button class="audit-view-link btn btn-link p-0" type="button" data-audit-id="' + escapeHtml(entry.id) + '" aria-label="View log details for ' + escapeHtml(entry.userName) + '"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>View</button></td>' +
 					'</tr>';
 			}).join('');
 
@@ -374,11 +440,29 @@
 			if (state.search) {
 				params.set('search', state.search);
 			}
+			if (state.actor) {
+				params.set('actor', state.actor);
+			}
+			if (state.actorRole) {
+				params.set('actor_role', state.actorRole);
+			}
 			if (state.actionType) {
 				params.set('action_type', state.actionType);
 			}
+			if (state.moduleType) {
+				params.set('module_type', state.moduleType);
+			}
+			if (state.result) {
+				params.set('result', state.result);
+			}
 			if (state.userType) {
 				params.set('user_type', state.userType);
+			}
+			if (state.startDate) {
+				params.set('start_date', state.startDate);
+			}
+			if (state.endDate) {
+				params.set('end_date', state.endDate);
 			}
 			if (state.securityPolicyOnly) {
 				params.set('security_policy_only', '1');
@@ -449,10 +533,22 @@
 						filtersCache.users = Array.isArray(responsePayload.filters.users) && responsePayload.filters.users.length
 							? responsePayload.filters.users
 							: filtersCache.users;
+						filtersCache.roles = Array.isArray(responsePayload.filters.roles) && responsePayload.filters.roles.length
+							? responsePayload.filters.roles
+							: filtersCache.roles;
+						filtersCache.modules = Array.isArray(responsePayload.filters.modules) && responsePayload.filters.modules.length
+							? responsePayload.filters.modules
+							: filtersCache.modules;
+						filtersCache.results = Array.isArray(responsePayload.filters.results) && responsePayload.filters.results.length
+							? responsePayload.filters.results
+							: filtersCache.results;
 					}
 
 					populateSelect(actionFilter, filtersCache.actions, 'All Actions', state.actionType);
 					populateSelect(userFilter, filtersCache.users, 'All Users', state.userType);
+					populateSelect(roleFilter, filtersCache.roles, 'All Roles', state.actorRole);
+					populateSelect(moduleFilter, filtersCache.modules, 'All Modules', state.moduleType);
+					populateSelect(resultFilter, filtersCache.results, 'All Results', state.result);
 
 					state.isLoading = false;
 					renderStats();
@@ -472,6 +568,9 @@
 
 		populateSelect(actionFilter, filtersCache.actions, 'All Actions', state.actionType);
 		populateSelect(userFilter, filtersCache.users, 'All Users', state.userType);
+		populateSelect(roleFilter, filtersCache.roles, 'All Roles', state.actorRole);
+		populateSelect(moduleFilter, filtersCache.modules, 'All Modules', state.moduleType);
+		populateSelect(resultFilter, filtersCache.results, 'All Results', state.result);
 		renderStats();
 		renderRows();
 		renderPagination();
@@ -490,6 +589,14 @@
 			});
 		}
 
+		if (actorInput) {
+			actorInput.addEventListener('input', function () {
+				state.actor = actorInput.value.trim();
+				if (searchDebounceHandle) window.clearTimeout(searchDebounceHandle);
+				searchDebounceHandle = window.setTimeout(function () { fetchLogs(1); }, 250);
+			});
+		}
+
 		if (actionFilter) {
 			actionFilter.addEventListener('change', function () {
 				state.actionType = actionFilter.value;
@@ -503,6 +610,40 @@
 				fetchLogs(1);
 			});
 		}
+
+		if (roleFilter) {
+			roleFilter.addEventListener('change', function () {
+				state.actorRole = roleFilter.value;
+				fetchLogs(1);
+			});
+		}
+
+		if (moduleFilter) {
+			moduleFilter.addEventListener('change', function () {
+				state.moduleType = moduleFilter.value;
+				fetchLogs(1);
+			});
+		}
+
+		if (resultFilter) {
+			resultFilter.addEventListener('change', function () {
+				state.result = resultFilter.value;
+				fetchLogs(1);
+			});
+		}
+
+		[startDateInput, endDateInput].forEach(function (element) {
+			if (!element) return;
+			element.addEventListener('change', function () {
+				state.startDate = startDateInput ? startDateInput.value : '';
+				state.endDate = endDateInput ? endDateInput.value : '';
+				if (state.startDate && state.endDate && state.endDate < state.startDate) {
+					state.endDate = state.startDate;
+					endDateInput.value = state.endDate;
+				}
+				fetchLogs(1);
+			});
+		});
 
 		if (securityPolicyFilter) {
 			securityPolicyFilter.checked = !!state.securityPolicyOnly;
@@ -521,6 +662,35 @@
 				var query = buildQueryParams(false).toString();
 				var targetUrl = exportUrl + (query ? ('?' + query) : '');
 				window.location.href = targetUrl;
+			});
+		}
+
+		if (tableBody) {
+			tableBody.addEventListener('click', function (event) {
+				var button = event.target.closest ? event.target.closest('[data-audit-id]') : null;
+				if (!button || !detailUrlTemplate) return;
+				var id = button.getAttribute('data-audit-id');
+				var detailUrl = detailUrlTemplate.replace('__AUDIT_ID__', encodeURIComponent(id));
+				if (detailBody) detailBody.innerHTML = '<div class="text-center text-muted py-4">Loading details…</div>';
+				var modal = window.bootstrap && detailModal ? window.bootstrap.Modal.getOrCreateInstance(detailModal) : null;
+				if (modal) modal.show();
+				fetch(detailUrl, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+					.then(function (response) { return response.json().then(function (body) { if (!response.ok) throw new Error(body.message || 'Unable to load audit details.'); return body; }); })
+					.then(function (body) {
+						var entry = body.data || {};
+						if (!detailBody) return;
+						detailBody.innerHTML = '<dl class="row mb-0">' +
+							'<dt class="col-sm-4">Date &amp; time</dt><dd class="col-sm-8">' + escapeHtml(entry.timestamp) + '</dd>' +
+							'<dt class="col-sm-4">Actor</dt><dd class="col-sm-8">' + escapeHtml(entry.userName) + ' (' + escapeHtml(entry.userRole) + ')</dd>' +
+							'<dt class="col-sm-4">Action</dt><dd class="col-sm-8">' + escapeHtml(entry.actionLabel) + '</dd>' +
+							'<dt class="col-sm-4">Module</dt><dd class="col-sm-8">' + escapeHtml(entry.moduleLabel) + '</dd>' +
+							'<dt class="col-sm-4">Description</dt><dd class="col-sm-8">' + escapeHtml(entry.description) + '</dd>' +
+							'<dt class="col-sm-4">Target</dt><dd class="col-sm-8">' + escapeHtml(entry.targetTable || '-') + (entry.targetId ? ' #' + escapeHtml(entry.targetId) : '') + '</dd>' +
+							'<dt class="col-sm-4">Result</dt><dd class="col-sm-8">' + escapeHtml(entry.resultLabel) + '</dd>' +
+							'<dt class="col-sm-4">Details</dt><dd class="col-sm-8"><pre class="small bg-body-tertiary border rounded p-2 mb-0 audit-detail-json">' + escapeHtml(entry.metadataText || 'No additional details.') + '</pre></dd>' +
+							'</dl>';
+					})
+					.catch(function (error) { if (detailBody) detailBody.innerHTML = '<p class="text-danger mb-0">' + escapeHtml(error.message || 'Unable to load audit details.') + '</p>'; });
 			});
 		}
 

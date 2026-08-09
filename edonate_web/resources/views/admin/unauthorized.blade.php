@@ -22,14 +22,11 @@
 			<div class="card border-0 shadow-sm">
 				<div class="card-body p-4 p-md-5">
 					<h2 class="h4 mb-3">Access denied</h2>
-					<p class="text-muted mb-4">Your account role is not authorized to open this module. Please return to your dashboard or sign out and log in with an account that has permission.</p>
-					<div class="d-flex flex-wrap gap-2">
-						<a href="{{ $homeRoute }}" class="btn btn-danger">Go to Dashboard</a>
-						<form method="POST" action="{{ route('admin.logout') }}">
-							@csrf
-							<button type="submit" class="btn btn-outline-secondary">Sign out</button>
-						</form>
-					</div>
+                    <p class="text-muted mb-4">Your account role is not authorized to open this module. Please return to your dashboard or sign out and log in with an account that has permission.</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{{ $homeRoute }}" class="btn btn-danger">Go to Dashboard</a>
+                        <button type="button" class="btn btn-outline-secondary" data-logout-confirm>Sign out</button>
+                    </div>
 				</div>
 			</div>
 		</main>

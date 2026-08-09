@@ -23,6 +23,11 @@ class NotificationController extends Controller
         'appointment' => 'Appointment',
         'donation' => 'Donation',
         'blood_stock_alert' => 'Blood Stock Alert',
+        'low_stock' => 'Low Stock',
+        'blood_request' => 'Blood Request',
+        'donor_verification' => 'Donor Verification',
+        'eligibility' => 'Eligibility',
+        'event' => 'Donation Event',
         'report' => 'Report',
         'system' => 'System',
     ];
@@ -36,12 +41,27 @@ class NotificationController extends Controller
         'appointment_rescheduled' => 'Appointment Rescheduled',
         'appointment_approved' => 'Appointment Approved',
         'appointment_rejected' => 'Appointment Rejected',
+        'appointment_no_show' => 'Appointment No-Show',
         'donation' => 'Donation',
         'donation_completed' => 'Donation Completed',
         'blood_stock_alert' => 'Blood Stock Alert',
+        'facility_low_stock' => 'Low Blood Stock Alert',
+        'facility_out_of_stock' => 'Blood Type Out of Stock',
+        'facility_stock_recovered' => 'Blood Stock Recovered',
         'report' => 'Report',
         'eligibility_submitted' => 'Eligibility Submitted',
         'eligibility_reviewed' => 'Eligibility Reviewed',
+        'eligibility_auto_evaluated' => 'Eligibility Evaluated',
+        'donor_verification_submitted' => 'Donor Verification Submitted',
+        'donor_verification_approved' => 'Donor Verification Approved',
+        'donor_verification_rejected' => 'Donor Verification Rejected',
+        'blood_request_created' => 'Blood Request Created',
+        'blood_request_candidates_notified' => 'Blood Request Candidates Notified',
+        'blood_request_cancelled' => 'Blood Request Cancelled',
+        'blood_request_fulfilled' => 'Blood Request Fulfilled',
+        'blood_request_manually_fulfilled' => 'Blood Request Fulfilled',
+        'blood_request_donor_status_updated' => 'Blood Request Donor Updated',
+        'next_eligible_reminder' => 'Next Eligible Reminder',
     ];
 
     public function __construct(private readonly AdminNotificationService $notificationService)
@@ -293,6 +313,11 @@ class NotificationController extends Controller
             }) : $query,
             'donation' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['donation', 'donation_completed', 'donation_deferred', 'appointment_completed', 'appointment_deferred_on_site']) : $query,
             'blood_stock_alert' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['blood_stock_alert', 'low_blood_stock_alert']) : $query,
+            'low_stock' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['blood_stock_alert', 'low_blood_stock_alert', 'facility_low_stock', 'facility_out_of_stock', 'facility_stock_recovered']) : $query,
+            'blood_request' => $this->hasColumn('notification_type') ? $query->where('notification_type', 'like', 'blood_request%') : $query,
+            'donor_verification' => $this->hasColumn('notification_type') ? $query->where('notification_type', 'like', 'donor_verification%') : $query,
+            'eligibility' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['eligibility_submitted', 'eligibility_reviewed', 'eligibility_auto_evaluated']) : $query,
+            'event' => $this->hasColumn('notification_type') ? $query->where('notification_type', 'like', 'donation_event%') : $query,
             'report' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['report', 'monthly_report_generated', 'report_generated']) : $query,
             'system' => $this->hasColumn('notification_type') ? $query->whereIn('notification_type', ['system', 'admin', 'announcement']) : $query,
             default => $query,
@@ -549,6 +574,18 @@ class NotificationController extends Controller
 
         if ($type === 'report' && Route::has('admin.report-analytics')) {
             return ['label' => 'Open reports', 'url' => route('admin.report-analytics')];
+        }
+
+        if ($type === 'facility' && Route::has('admin.facilities.index')) {
+            return ['label' => 'Open facilities', 'url' => route('admin.facilities.index')];
+        }
+
+        if ($type === 'blood_request' && Route::has('admin.blood-requests.show')) {
+            return ['label' => 'Open blood request', 'url' => route('admin.blood-requests.show', $id)];
+        }
+
+        if ($type === 'event' && Route::has('admin.donation-events.show')) {
+            return ['label' => 'Open donation event', 'url' => route('admin.donation-events.show', $id)];
         }
 
         return null;

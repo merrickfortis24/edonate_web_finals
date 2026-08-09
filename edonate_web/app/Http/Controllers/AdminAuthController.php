@@ -1573,7 +1573,27 @@ class AdminAuthController extends BaseController
             'auditApi' => [
                 'listUrl' => route('admin.audit-logs.data'),
                 'exportUrl' => route('admin.audit-logs.export'),
+                'detailUrlTemplate' => url('/admin/audit-logs/__AUDIT_ID__'),
             ],
+        ]);
+    }
+
+    /**
+     * Return one append-only audit entry with redacted metadata for the detail modal.
+     */
+    public function showAuditLog(int $auditLog): JsonResponse
+    {
+        if (! Schema::hasTable('audit_logs')) {
+            return response()->json(['message' => 'Audit log storage is not available.'], 404);
+        }
+
+        $entry = DB::table('audit_logs')->where('audit_log_id', $auditLog)->first();
+        if (! $entry) {
+            return response()->json(['message' => 'Audit log entry not found.'], 404);
+        }
+
+        return response()->json([
+            'data' => $this->transformAuditLogEntry($entry, true),
         ]);
     }
 
@@ -1586,20 +1606,32 @@ class AdminAuthController extends BaseController
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
+            'actor' => ['nullable', 'string', 'max:150'],
+            'actor_role' => ['nullable', 'string', 'max:50'],
             'action_type' => ['nullable', 'string', 'max:50'],
+            'module_type' => ['nullable', 'string', 'max:80'],
+            'result' => ['nullable', 'string', Rule::in(['', 'success', 'failed', 'warning'])],
             'user_type' => ['nullable', 'string', Rule::in(['', 'admin', 'donor', 'system', 'other'])],
             'security_policy_only' => ['nullable', 'boolean'],
+            'start_date' => ['nullable', 'date_format:Y-m-d'],
+            'end_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
         $perPage = (int) ($validated['per_page'] ?? 10);
         $searchTerm = trim((string) ($validated['search'] ?? ''));
+        $actor = trim((string) ($validated['actor'] ?? ''));
+        $actorRole = Str::lower(trim((string) ($validated['actor_role'] ?? '')));
         $actionType = Str::lower(trim((string) ($validated['action_type'] ?? '')));
+        $moduleType = Str::lower(trim((string) ($validated['module_type'] ?? '')));
+        $result = Str::lower(trim((string) ($validated['result'] ?? '')));
         $userType = Str::lower(trim((string) ($validated['user_type'] ?? '')));
         $securityPolicyOnly = (bool) ($validated['security_policy_only'] ?? false);
+        $startDate = $validated['start_date'] ?? null;
+        $endDate = $validated['end_date'] ?? null;
 
         $baseQuery = DB::table('audit_logs');
-        $this->applyAuditLogFilters($baseQuery, $searchTerm, $actionType, $userType, $securityPolicyOnly);
+        $this->applyAuditLogFilters($baseQuery, $searchTerm, $actor, $actorRole, $actionType, $moduleType, $result, $userType, $securityPolicyOnly, $startDate, $endDate);
 
         $statsRows = (clone $baseQuery)
             ->selectRaw("LOWER(COALESCE(result, 'success')) as result_key, COUNT(*) as total")
@@ -1635,6 +1667,18 @@ class AdminAuthController extends BaseController
                 'users' => array_merge([
                     ['value' => '', 'label' => 'All Users'],
                 ], $this->getAuditLogUserOptions()),
+                'roles' => array_merge([
+                    ['value' => '', 'label' => 'All Roles'],
+                ], $this->getAuditLogRoleOptions()),
+                'modules' => array_merge([
+                    ['value' => '', 'label' => 'All Modules'],
+                ], $this->getAuditLogModuleOptions()),
+                'results' => [
+                    ['value' => '', 'label' => 'All Results'],
+                    ['value' => 'success', 'label' => 'Success'],
+                    ['value' => 'failed', 'label' => 'Failed'],
+                    ['value' => 'warning', 'label' => 'Warning'],
+                ],
             ],
         ]);
     }
@@ -1685,6 +1729,40 @@ class AdminAuthController extends BaseController
             ->all();
     }
 
+    /** @return array<int, array{value:string,label:string}> */
+    protected function getAuditLogRoleOptions(): array
+    {
+        return DB::table('audit_logs')
+            ->whereNotNull('actor_role')
+            ->where('actor_role', '!=', '')
+            ->distinct()
+            ->orderBy('actor_role')
+            ->pluck('actor_role')
+            ->map(fn (string $value): array => [
+                'value' => Str::lower(trim($value)),
+                'label' => $this->labelizeAuditValue($value),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** @return array<int, array{value:string,label:string}> */
+    protected function getAuditLogModuleOptions(): array
+    {
+        return DB::table('audit_logs')
+            ->whereNotNull('module_type')
+            ->where('module_type', '!=', '')
+            ->distinct()
+            ->orderBy('module_type')
+            ->pluck('module_type')
+            ->map(fn (string $value): array => [
+                'value' => Str::lower(trim($value)),
+                'label' => $this->labelizeAuditValue($value),
+            ])
+            ->values()
+            ->all();
+    }
+
     /**
      * Export filtered audit logs to CSV.
      */
@@ -1692,18 +1770,30 @@ class AdminAuthController extends BaseController
     {
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:150'],
+            'actor' => ['nullable', 'string', 'max:150'],
+            'actor_role' => ['nullable', 'string', 'max:50'],
             'action_type' => ['nullable', 'string', 'max:50'],
+            'module_type' => ['nullable', 'string', 'max:80'],
+            'result' => ['nullable', 'string', Rule::in(['', 'success', 'failed', 'warning'])],
             'user_type' => ['nullable', 'string', Rule::in(['', 'admin', 'donor', 'system', 'other'])],
             'security_policy_only' => ['nullable', 'boolean'],
+            'start_date' => ['nullable', 'date_format:Y-m-d'],
+            'end_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:start_date'],
         ]);
 
         $searchTerm = trim((string) ($validated['search'] ?? ''));
+        $actor = trim((string) ($validated['actor'] ?? ''));
+        $actorRole = Str::lower(trim((string) ($validated['actor_role'] ?? '')));
         $actionType = Str::lower(trim((string) ($validated['action_type'] ?? '')));
+        $moduleType = Str::lower(trim((string) ($validated['module_type'] ?? '')));
+        $result = Str::lower(trim((string) ($validated['result'] ?? '')));
         $userType = Str::lower(trim((string) ($validated['user_type'] ?? '')));
         $securityPolicyOnly = (bool) ($validated['security_policy_only'] ?? false);
+        $startDate = $validated['start_date'] ?? null;
+        $endDate = $validated['end_date'] ?? null;
 
         $query = DB::table('audit_logs');
-        $this->applyAuditLogFilters($query, $searchTerm, $actionType, $userType, $securityPolicyOnly);
+        $this->applyAuditLogFilters($query, $searchTerm, $actor, $actorRole, $actionType, $moduleType, $result, $userType, $securityPolicyOnly, $startDate, $endDate);
 
         $rows = $query
             ->orderByDesc('created_at')
@@ -1729,7 +1819,7 @@ class AdminAuthController extends BaseController
                 'Target ID',
                 'IP Address',
                 'Result',
-                'Metadata',
+                'Details',
             ]);
 
             foreach ($rows as $row) {
@@ -1744,7 +1834,7 @@ class AdminAuthController extends BaseController
                     (string) ($row->target_id ?? ''),
                     (string) ($row->ip_address ?? ''),
                     (string) ($row->result ?? ''),
-                    (string) ($row->metadata ?? ''),
+                    $this->safeAuditMetadataText($row->metadata ?? null),
                 ]);
             }
 
@@ -3228,6 +3318,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             })
             ->leftJoin('eligibility_status as es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
             ->leftJoin('admins as recorder', 'recorder.admin_id', '=', 'dr.recorded_by_admin_id')
+            ->leftJoin('admins as blood_type_verifier', 'blood_type_verifier.admin_id', '=', 'd.blood_type_verified_by_admin_id')
             ->select([
                 'ap.appointment_id',
                 'ap.donor_id',
@@ -3247,7 +3338,6 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 'd.blood_type_status',
                 'd.blood_type_verified_at',
                 'd.blood_type_verified_by_admin_id',
-                'd.blood_type_status',
                 'da.email',
                 'bt.blood_type',
                 'blood_type_verifier.full_name as blood_type_verified_by_name',
@@ -3637,6 +3727,44 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             ? (int) DB::table('donation_records')->count()
             : 0;
 
+        $verifiedDonorTotal = $this->dashboardTableHasColumns('donors', ['verification_status'])
+            ? (int) DB::table('donors')->whereRaw("LOWER(COALESCE(verification_status, '')) = ?", ['verified'])->count()
+            : 0;
+        $pendingVerificationTotal = $this->dashboardTableHasColumns('donors', ['verification_status'])
+            ? (int) DB::table('donors')->whereRaw("LOWER(COALESCE(verification_status, '')) = ?", ['pending'])->count()
+            : 0;
+        $eligibleDonorTotal = 0;
+        if ($this->dashboardTableHasColumns('eligibility_status', ['eligibility_id', 'donor_id', 'status'])) {
+            $latestEligibilityIds = DB::table('eligibility_status')
+                ->selectRaw('MAX(eligibility_id) as latest_eligibility_id')
+                ->groupBy('donor_id');
+            $eligibleDonorTotal = (int) DB::table('eligibility_status')
+                ->whereIn('eligibility_id', $latestEligibilityIds)
+                ->whereRaw("LOWER(COALESCE(status, '')) = ?", ['eligible'])
+                ->count();
+        }
+        $openBloodRequestTotal = $this->dashboardTableHasColumns('blood_requests', ['status'])
+            ? (int) DB::table('blood_requests')->whereIn('status', ['open', 'in_progress'])->count()
+            : 0;
+        $emergencyBloodRequestTotal = $this->dashboardTableHasColumns('blood_requests', ['status', 'urgency'])
+            ? (int) DB::table('blood_requests')->whereIn('status', ['open', 'in_progress'])->where('urgency', 'emergency')->count()
+            : 0;
+        $lowStockTotal = 0;
+        $outOfStockTotal = 0;
+        if ($this->dashboardTableHasColumns('facility_blood_inventory', ['available_units', 'low_stock_threshold'])) {
+            $inventoryRows = DB::table('facility_blood_inventory')
+                ->get(['available_units', 'low_stock_threshold']);
+            foreach ($inventoryRows as $inventoryRow) {
+                $available = max(0, (int) $inventoryRow->available_units);
+                $threshold = max(0, (int) $inventoryRow->low_stock_threshold);
+                if ($available <= 0) {
+                    $outOfStockTotal++;
+                } elseif ($available <= $threshold) {
+                    $lowStockTotal++;
+                }
+            }
+        }
+
         [$currentStart, $currentEnd, $previousStart, $previousEnd] = $this->dashboardMonthRanges();
 
         $donorCurrent = $this->dashboardTableHasColumns('donors', ['date_registered'])
@@ -3699,6 +3827,15 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             'donation_records' => [
                 'value' => number_format($donationRecordTotal),
                 'change' => $this->dashboardMonthlyChangeLabel($donationRecordCurrent, $donationRecordPrevious),
+            ],
+            'operational' => [
+                'verified_donors' => $verifiedDonorTotal,
+                'pending_verification' => $pendingVerificationTotal,
+                'eligible_donors' => $eligibleDonorTotal,
+                'open_requests' => $openBloodRequestTotal,
+                'emergency_requests' => $emergencyBloodRequestTotal,
+                'low_stock' => $lowStockTotal,
+                'out_of_stock' => $outOfStockTotal,
             ],
         ];
     }
@@ -4997,9 +5134,15 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
     private function applyAuditLogFilters(
         $query,
         string $searchTerm,
+        string $actor,
+        string $actorRole,
         string $actionType,
+        string $moduleType,
+        string $result,
         string $userType,
-        bool $securityPolicyOnly = false
+        bool $securityPolicyOnly = false,
+        ?string $startDate = null,
+        ?string $endDate = null
     ): void {
         if ($searchTerm !== '') {
             $likeTerm = '%' . $searchTerm . '%';
@@ -5011,12 +5154,41 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                     ->orWhere('description', 'like', $likeTerm)
                     ->orWhere('module_type', 'like', $likeTerm)
                     ->orWhere('ip_address', 'like', $likeTerm)
-                    ->orWhere('target_table', 'like', $likeTerm);
+                    ->orWhere('target_table', 'like', $likeTerm)
+                    ->orWhere('created_at', 'like', $likeTerm);
             });
+        }
+
+        if ($actor !== '') {
+            $query->where(function ($builder) use ($actor): void {
+                $likeTerm = '%' . $actor . '%';
+                $builder->where('actor_name', 'like', $likeTerm)
+                    ->orWhere('actor_admin_id', $actor);
+            });
+        }
+
+        if ($actorRole !== '') {
+            $query->whereRaw('LOWER(COALESCE(actor_role, \'\')) = ?', [$actorRole]);
         }
 
         if ($actionType !== '') {
             $query->whereRaw('LOWER(action_type) = ?', [$actionType]);
+        }
+
+        if ($moduleType !== '') {
+            $query->whereRaw('LOWER(COALESCE(module_type, \'\')) = ?', [$moduleType]);
+        }
+
+        if ($result !== '') {
+            $query->whereRaw("LOWER(COALESCE(result, 'success')) = ?", [$result]);
+        }
+
+        if ($startDate !== null && trim($startDate) !== '') {
+            $query->where('created_at', '>=', Carbon::parse($startDate)->startOfDay());
+        }
+
+        if ($endDate !== null && trim($endDate) !== '') {
+            $query->where('created_at', '<=', Carbon::parse($endDate)->endOfDay());
         }
 
         if ($securityPolicyOnly) {
@@ -5054,7 +5226,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      *
      * @return array<string, mixed>
      */
-    private function transformAuditLogEntry(object $entry): array
+    private function transformAuditLogEntry(object $entry, bool $withDetails = false): array
     {
         $actionType = Str::lower(trim((string) ($entry->action_type ?? '')));
         $moduleType = Str::lower(trim((string) ($entry->module_type ?? '')));
@@ -5070,7 +5242,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             }
         }
 
-        return [
+        $data = [
             'id' => (int) ($entry->audit_log_id ?? 0),
             'timestamp' => $timestamp,
             'userName' => (string) ($entry->actor_name ?: 'System'),
@@ -5085,6 +5257,68 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             'result' => $result,
             'resultLabel' => $this->labelizeAuditValue((string) ($entry->result ?? 'success')),
         ];
+
+        if ($withDetails) {
+            $data['actorAdminId'] = $entry->actor_admin_id === null ? null : (int) $entry->actor_admin_id;
+            $data['targetTable'] = (string) ($entry->target_table ?? '');
+            $data['targetId'] = $entry->target_id === null ? null : (int) $entry->target_id;
+            $data['metadata'] = $this->safeAuditMetadata($entry->metadata ?? null);
+            $data['metadataText'] = $this->safeAuditMetadataText($entry->metadata ?? null);
+        }
+
+        return $data;
+    }
+
+    /**
+     * Decode audit metadata and redact values that could contain credentials,
+     * tokens, personal contact data, uploaded documents, or answer payloads.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function safeAuditMetadata(mixed $metadata): ?array
+    {
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+        } elseif (is_array($metadata)) {
+            $decoded = $metadata;
+        } else {
+            $decoded = null;
+        }
+
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        return $this->redactAuditValue($decoded);
+    }
+
+    private function safeAuditMetadataText(mixed $metadata): string
+    {
+        $safe = $this->safeAuditMetadata($metadata);
+
+        return $safe === null ? '' : (string) json_encode($safe, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function redactAuditValue(mixed $value, ?string $key = null): mixed
+    {
+        if ($key !== null && preg_match('/password|token|secret|otp|2fa|two.factor|fcm|session|email|contact|phone|document_path|answer/i', $key)) {
+            return '[redacted]';
+        }
+
+        if (is_array($value)) {
+            $redacted = [];
+            foreach ($value as $childKey => $childValue) {
+                $redacted[(string) $childKey] = $this->redactAuditValue($childValue, (string) $childKey);
+            }
+
+            return $redacted;
+        }
+
+        if (is_scalar($value) || $value === null) {
+            return $value;
+        }
+
+        return '[redacted]';
     }
 
     /**

@@ -49,6 +49,36 @@ class Phase11BloodRequestTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action_type' => 'blood_request_created']);
     }
 
+    public function test_blood_request_listing_returns_rows_and_summary_for_the_management_page(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->createBloodRequest([
+            'request_reference' => 'DEMO-LIST-0001',
+            'patient_reference_code' => 'DEMO-LIST-PATIENT-0001',
+            'status' => 'open',
+            'urgency' => 'emergency',
+        ]);
+        $this->createBloodRequest([
+            'request_reference' => 'DEMO-LIST-0002',
+            'patient_reference_code' => 'DEMO-LIST-PATIENT-0002',
+            'status' => 'fulfilled',
+            'urgency' => 'normal',
+        ]);
+
+        $response = $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-requests/data?per_page=10');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('summary.open', 1)
+            ->assertJsonPath('summary.emergency', 1)
+            ->assertJsonPath('summary.fulfilled', 1);
+        $this->assertSame(
+            ['DEMO-LIST-0002', 'DEMO-LIST-0001'],
+            collect($response->json('data'))->pluck('request_reference')->all()
+        );
+    }
+
     public function test_validation_rejects_missing_facility_bad_blood_type_and_too_many_specific_matches(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);

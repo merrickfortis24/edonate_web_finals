@@ -96,16 +96,29 @@ class DonorVerificationController extends Controller
 
     public function document(DonorVerification $verification): BinaryFileResponse
     {
-        if (! Storage::disk('local')->exists($verification->document_path)) {
+        $path = trim((string) $verification->document_path);
+        $extension = strtolower((string) pathinfo($path, PATHINFO_EXTENSION));
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
+
+        if ($path === '' || ! str_starts_with($path, 'donor-verifications/') || str_contains($path, '..')
+            || ! in_array($extension, $allowedExtensions, true)
+            || ! Storage::disk('local')->exists($path)) {
             abort(404, 'Verification document not found.');
         }
 
-        $path = Storage::disk('local')->path($verification->document_path);
-        $mime = Storage::disk('local')->mimeType($verification->document_path) ?: 'application/octet-stream';
-        $extension = pathinfo($verification->document_path, PATHINFO_EXTENSION) ?: 'bin';
+        if ((int) Storage::disk('local')->size($path) > 5 * 1024 * 1024) {
+            abort(413, 'Verification document exceeds the permitted size.');
+        }
+
+        $mime = Storage::disk('local')->mimeType($path) ?: 'application/octet-stream';
+        if (! in_array($mime, ['image/jpeg', 'image/png', 'application/pdf'], true)) {
+            abort(415, 'Verification document type is not supported.');
+        }
+
+        $absolutePath = Storage::disk('local')->path($path);
         $filename = 'donor-verification-' . (int) $verification->verification_id . '.' . $extension;
 
-        return response()->file($path, [
+        return response()->file($absolutePath, [
             'Content-Type' => $mime,
             'Content-Disposition' => 'inline; filename="' . $filename . '"',
             'X-Content-Type-Options' => 'nosniff',

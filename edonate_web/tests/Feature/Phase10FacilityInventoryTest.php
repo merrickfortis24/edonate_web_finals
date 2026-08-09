@@ -73,6 +73,29 @@ class Phase10FacilityInventoryTest extends TestCase
         ])->assertRedirect(route('admin.unauthorized'));
     }
 
+    public function test_facility_listing_returns_rows_and_summary_for_the_management_page(): void
+    {
+        $facilityId = $this->createFacility(['facility_name' => 'Demo Listing Facility']);
+        DB::table('facility_blood_inventory')->insert([
+            'facility_id' => $facilityId,
+            'blood_type_id' => 1,
+            'available_units' => 8,
+            'reserved_units' => 0,
+            'low_stock_threshold' => 5,
+            'last_updated' => now(),
+        ]);
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $this->withSession($this->adminSession())->getJson('/admin/facilities/data?per_page=10')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('summary.total', 1)
+            ->assertJsonPath('summary.active', 1)
+            ->assertJsonPath('data.0.facility_id', $facilityId)
+            ->assertJsonPath('data.0.facility_name', 'Demo Listing Facility')
+            ->assertJsonPath('data.0.total_available_units', 8);
+    }
+
     public function test_inventory_update_is_atomic_and_creates_history_and_audit_records(): void
     {
         $facilityId = $this->createFacility();

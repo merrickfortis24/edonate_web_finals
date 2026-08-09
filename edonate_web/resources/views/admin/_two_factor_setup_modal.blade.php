@@ -99,19 +99,13 @@
 
                 @if ($requiresEnrollment)
                     <div class="modal-footer justify-content-start">
-                        <form method="POST" action="{{ route('admin.logout') }}" class="m-0">
-                            @csrf
-                            <button type="submit" class="btn btn-outline-secondary">Log Out</button>
-                        </form>
+                        <button type="button" class="btn btn-outline-secondary" data-logout-confirm>Log Out</button>
                     </div>
                 @elseif ($postLoginDashboardUrl !== '')
                     <div class="modal-footer justify-content-between">
                         <a href="{{ $postLoginDashboardUrl }}" class="btn btn-danger">Continue to Dashboard</a>
 
-                        <form method="POST" action="{{ route('admin.logout') }}" class="m-0">
-                            @csrf
-                            <button type="submit" class="btn btn-outline-secondary">Log Out</button>
-                        </form>
+                        <button type="button" class="btn btn-outline-secondary" data-logout-confirm>Log Out</button>
                     </div>
                 @endif
             </div>

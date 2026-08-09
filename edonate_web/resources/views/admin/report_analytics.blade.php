@@ -1,595 +1,346 @@
 @extends('layouts.admin')
 
+@php
+    $payload = $reportPayload ?? [];
+    $period = data_get($payload, 'period', []);
+    $summary = data_get($payload, 'summary', []);
+    $filters = data_get($payload, 'filters', []);
+    $facilities = data_get($filters, 'facilities', []);
+    $bloodTypes = data_get($filters, 'blood_types', []);
+    $range = data_get($filters, 'range', 'year');
+@endphp
+
 @section('title', 'eDonate - Reports & Analytics')
 @section('admin_page_class', 'admin-report-analytics-page')
 @section('header_title', 'Reports and Analytics')
-@section('header_subtitle', 'Visual charts summarizing donation trends and user activity')
+@section('header_subtitle', 'Database-backed operational summaries with privacy-safe exports')
 
 @section('header_actions')
-	<button class="report-header-export btn" type="button" aria-label="Export all reports">
-		<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-			<path d="M12 3V14" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-			<path d="M8 7L12 3L16 7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-			<path d="M4 17V20C4 20.5523 4.44772 21 5 21H19C19.5523 21 20 20.5523 20 20V17" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-		</svg>
-		Export All Reports
-	</button>
+    <a class="report-header-export btn" id="reportHeaderExport" href="{{ $reportApi['exportUrl'] ?? '#' }}" aria-label="Export aggregate reports">
+        <i class="bi bi-download me-2" aria-hidden="true"></i>
+        Export Reports
+    </a>
 @endsection
 
 @section('admin_page_data')
 {!! json_encode([
-	'page' => 'report-analytics',
-	'reportAnalytics' => [
-		'trend' => [
-			'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-			'donors' => [182, 194, 207, 228, 241, 256, 278, 291, 305, 324, 338, 352],
-			'donations' => [210, 225, 244, 259, 281, 297, 319, 334, 352, 370, 386, 401],
-		],
-		'distribution' => [
-			['label' => 'O+', 'value' => 425],
-			['label' => 'A+', 'value' => 340],
-			['label' => 'B+', 'value' => 280],
-			['label' => 'AB+', 'value' => 195],
-			['label' => 'A-', 'value' => 156],
-			['label' => 'O-', 'value' => 98],
-			['label' => 'B-', 'value' => 134],
-			['label' => 'AB-', 'value' => 87],
-		],
-	],
+    'page' => 'report-analytics',
+    'reportAnalytics' => $payload,
+    'reportApi' => $reportApi ?? ['dataUrl' => '', 'exportUrl' => ''],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
-	<main class="main container-fluid px-0">
-		<div class="page-body container-fluid py-3">
-			<section class="report-filter row g-3 align-items-center" role="region" aria-label="Report filters">
-				<div class="col-12 col-md-6 col-xl-3">
-					<div class="report-filter__control">
-						<span class="report-filter__icon" aria-hidden="true">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-								<rect x="3" y="4" width="18" height="17" rx="2" stroke="#444" stroke-width="1.5"/>
-								<path d="M8 2V6M16 2V6M3 9H21" stroke="#444" stroke-width="1.5" stroke-linecap="round"/>
-							</svg>
-						</span>
-						<select class="report-filter__select form-select" aria-label="Filter by date range">
-							<option selected>Last 30 Days</option>
-							<option>Last 7 Days</option>
-							<option>Last 90 Days</option>
-							<option>This Year</option>
-						</select>
-					</div>
-				</div>
+    <main class="main container-fluid px-0">
+        <div class="page-body container-fluid py-3">
+            <section class="report-filter row g-3 align-items-end" role="region" aria-label="Report filters">
+                <div class="col-12 col-md-6 col-xl-2">
+                    <label class="form-label small fw-semibold" for="reportRangeFilter">Date range</label>
+                    <select class="report-filter__select form-select" id="reportRangeFilter" aria-label="Filter by date range">
+                        @foreach ([
+                            'today' => 'Today',
+                            'week' => 'This week',
+                            'month' => 'This month',
+                            'year' => 'This year',
+                            'custom' => 'Custom range',
+                        ] as $value => $label)
+                            <option value="{{ $value }}" @selected($range === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                </div>
 
-				<div class="col-12 col-md-6 col-xl-3">
-					<div class="report-filter__control">
-						<span class="report-filter__icon" aria-hidden="true">
-							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-								<path d="M12 2C8.13 2 5 5.13 5 9C5 14.25 12 22 12 22C12 22 19 14.25 19 9C19 5.13 15.87 2 12 2Z" fill="#555"/>
-								<circle cx="12" cy="9" r="2.2" fill="white"/>
-							</svg>
-						</span>
-						<select class="report-filter__select form-select" aria-label="Filter by location">
-							<option selected>All Locations</option>
-							<option>Lipa Medix</option>
-							<option>Mary Mediatrix</option>
-							<option>Ospital ng Lipa</option>
-						</select>
-					</div>
-				</div>
+                <div class="col-6 col-md-3 col-xl-2 report-custom-date d-none">
+                    <label class="form-label small fw-semibold" for="reportStartDate">Start date</label>
+                    <input class="form-control" type="date" id="reportStartDate" value="{{ data_get($filters, 'start_date') }}" aria-label="Report start date">
+                </div>
+                <div class="col-6 col-md-3 col-xl-2 report-custom-date d-none">
+                    <label class="form-label small fw-semibold" for="reportEndDate">End date</label>
+                    <input class="form-control" type="date" id="reportEndDate" value="{{ data_get($filters, 'end_date') }}" aria-label="Report end date">
+                </div>
 
-				<div class="col-12 col-md-6 col-xl-3">
-					<div class="report-filter__control">
-						<span class="report-filter__icon" aria-hidden="true">
-							<svg width="14" height="18" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-								<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0 0 10 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-							</svg>
-						</span>
-						<select class="report-filter__select form-select" aria-label="Filter by blood type">
-							<option selected>All Blood Types</option>
-							<option>A+</option>
-							<option>A-</option>
-							<option>B+</option>
-							<option>B-</option>
-							<option>AB+</option>
-							<option>AB-</option>
-							<option>O+</option>
-							<option>O-</option>
-						</select>
-					</div>
-				</div>
+                <div class="col-12 col-md-6 col-xl-2">
+                    <label class="form-label small fw-semibold" for="reportFacilityFilter">Facility</label>
+                    <select class="report-filter__select form-select" id="reportFacilityFilter" aria-label="Filter by facility">
+                        <option value="">All facilities</option>
+                        @foreach ($facilities as $facility)
+                            <option value="{{ (int) data_get($facility, 'value') }}" @selected((int) data_get($filters, 'facility_id') === (int) data_get($facility, 'value'))>{{ data_get($facility, 'label') }}</option>
+                        @endforeach
+                    </select>
+                </div>
 
-				<div class="col-12 col-md-6 col-xl-3">
-					<button class="report-filter__export btn" type="button" aria-label="Export filtered report">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-							<path d="M12 3V14" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							<path d="M8 7L12 3L16 7" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-							<path d="M4 17V20C4 20.5523 4.44772 21 5 21H19C19.5523 21 20 20.5523 20 20V17" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-						</svg>
-						Export Reports
-					</button>
-				</div>
-			</section>
+                <div class="col-12 col-md-6 col-xl-2">
+                    <label class="form-label small fw-semibold" for="reportBloodTypeFilter">Blood type</label>
+                    <select class="report-filter__select form-select" id="reportBloodTypeFilter" aria-label="Filter by blood type">
+                        <option value="">All blood types</option>
+                        @foreach ($bloodTypes as $bloodType)
+                            <option value="{{ (int) data_get($bloodType, 'value') }}" @selected((int) data_get($filters, 'blood_type_id') === (int) data_get($bloodType, 'value'))>{{ data_get($bloodType, 'label') }}</option>
+                        @endforeach
+                    </select>
+                </div>
 
-			<section class="report-stats row g-3" aria-label="Report summary metrics">
-				<div class="col-6 col-xl-3">
-					<article class="report-stat-card report-stat-card--red h-100">
-						<span class="report-stat-card__label">Total Donations</span>
-						<span class="report-stat-card__value">2,956</span>
-						<span class="report-stat-card__note report-stat-card__note--green">+15.3% vs last period</span>
-					</article>
-				</div>
+                <div class="col-12 col-xl-2 d-flex gap-2">
+                    <button class="report-filter__export btn flex-grow-1" type="button" id="reportApplyBtn">Apply</button>
+                    <button class="btn btn-outline-secondary" type="button" id="reportResetBtn" title="Reset report filters" aria-label="Reset report filters">
+                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </section>
 
-				<div class="col-6 col-xl-3">
-					<article class="report-stat-card report-stat-card--green h-100">
-						<span class="report-stat-card__label">Active Donors</span>
-						<span class="report-stat-card__value">1,847</span>
-						<span class="report-stat-card__note report-stat-card__note--green">+8.7% vs last period</span>
-					</article>
-				</div>
+            <div class="report-period-note small text-muted mt-3" id="reportPeriodNote">
+                Showing aggregate data for {{ data_get($period, 'label', 'the selected period') }}.
+            </div>
 
-				<div class="col-6 col-xl-3">
-					<article class="report-stat-card report-stat-card--blue h-100">
-						<span class="report-stat-card__label">Avg. per Month</span>
-						<span class="report-stat-card__value">369</span>
-						<span class="report-stat-card__note report-stat-card__note--blue">Steady growth</span>
-					</article>
-				</div>
+            <section class="report-stats row g-3 mt-1" aria-label="Report summary metrics">
+                @foreach ([
+                    ['key' => 'total_donations', 'label' => 'Donation Records', 'class' => 'red'],
+                    ['key' => 'active_donors', 'label' => 'Verified Donors', 'class' => 'green'],
+                    ['key' => 'completed_donations', 'label' => 'Completed Donations', 'class' => 'blue'],
+                    ['key' => 'success_rate', 'label' => 'Success Rate', 'class' => 'gold', 'suffix' => '%'],
+                    ['key' => 'upcoming_appointments', 'label' => 'Upcoming Appointments', 'class' => 'red'],
+                    ['key' => 'open_requests', 'label' => 'Open Blood Requests', 'class' => 'green'],
+                    ['key' => 'low_stock_blood_types', 'label' => 'Low Stock Types', 'class' => 'blue'],
+                    ['key' => 'out_of_stock_blood_types', 'label' => 'Out of Stock', 'class' => 'gold'],
+                ] as $metric)
+                    <div class="col-6 col-xl-3">
+                        <article class="report-stat-card report-stat-card--{{ $metric['class'] }} h-100">
+                            <span class="report-stat-card__label">{{ $metric['label'] }}</span>
+                            <span class="report-stat-card__value" data-report-metric="{{ $metric['key'] }}">{{ number_format((float) data_get($summary, $metric['key'], 0), $metric['key'] === 'success_rate' ? 1 : 0) }}{{ $metric['suffix'] ?? '' }}</span>
+                            <span class="report-stat-card__note report-stat-card__note--blue">Selected period</span>
+                        </article>
+                    </div>
+                @endforeach
+            </section>
 
-				<div class="col-6 col-xl-3">
-					<article class="report-stat-card report-stat-card--gold h-100">
-						<span class="report-stat-card__label">Success Rate</span>
-						<span class="report-stat-card__value">94.6%</span>
-						<span class="report-stat-card__note report-stat-card__note--green">+2.1% vs last period</span>
-					</article>
-				</div>
-			</section>
+            <section class="report-charts row g-3" aria-label="Report charts">
+                <div class="col-12 col-xl-6">
+                    <article class="report-chart-card h-100">
+                        <h2 class="report-chart-card__title">Donors and Completed Donations</h2>
+                        <div class="report-chart-card__canvas-wrap">
+                            <canvas id="reportsLineChart" aria-label="Donors and completed donations trend chart"></canvas>
+                        </div>
+                        <div class="report-chart-card__legend" aria-label="Trend chart legend">
+                            <span class="report-chart-card__legend-item"><span class="report-chart-card__dot report-chart-card__dot--red" aria-hidden="true"></span>Donors registered</span>
+                            <span class="report-chart-card__legend-item"><span class="report-chart-card__dot report-chart-card__dot--pink" aria-hidden="true"></span>Completed donations</span>
+                        </div>
+                    </article>
+                </div>
 
-			<section class="report-charts row g-3" aria-label="Report charts">
-				<div class="col-12 col-xl-6">
-					<article class="report-chart-card h-100">
-						<h2 class="report-chart-card__title">Monthly Donations Trend</h2>
-						<div class="report-chart-card__canvas-wrap">
-							<canvas id="reportsLineChart" aria-label="Monthly donations trend chart"></canvas>
-						</div>
-						<div class="report-chart-card__legend" aria-label="Trend chart legend">
-							<span class="report-chart-card__legend-item">
-								<span class="report-chart-card__dot report-chart-card__dot--red" aria-hidden="true"></span>
-								Donors
-							</span>
-							<span class="report-chart-card__legend-item">
-								<span class="report-chart-card__dot report-chart-card__dot--pink" aria-hidden="true"></span>
-								Donations
-							</span>
-						</div>
-					</article>
-				</div>
+                <div class="col-12 col-xl-6">
+                    <article class="report-chart-card h-100">
+                        <h2 class="report-chart-card__title">Verified Blood Type Distribution</h2>
+                        <p class="report-chart-card__caption" id="reportDistributionCaption">The chart uses verified blood type records. Self-reported values are shown separately below.</p>
+                        <div class="report-chart-card__canvas-wrap">
+                            <canvas id="reportsBarChart" aria-label="Verified blood type distribution chart"></canvas>
+                        </div>
+                    </article>
+                </div>
+            </section>
 
-				<div class="col-12 col-xl-6">
-					<article class="report-chart-card h-100">
-						<h2 class="report-chart-card__title">Blood Type Distribution</h2>
-						<div class="report-chart-card__canvas-wrap">
-							<canvas id="reportsBarChart" aria-label="Blood type distribution chart"></canvas>
-						</div>
-					</article>
-				</div>
-			</section>
-
-			<section class="report-inventory-card" aria-label="Blood type inventory and demand">
-				<h2 class="report-inventory-card__title">Blood Type Inventory &amp; Demand</h2>
-
-				<div class="table-responsive">
-					<table class="table report-inventory-table align-middle mb-0">
-						<thead>
-							<tr>
-								<th scope="col">Blood Type</th>
-								<th scope="col">Quantity (Units)</th>
-								<th scope="col" class="col-demand">Demand Level</th>
-								<th scope="col">Status</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										A+
-									</div>
-								</td>
-								<td>340</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--high">High</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="A+ stock status" aria-valuenow="87" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--green" style="width: 87%"></div>
-									</div>
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										O+
-									</div>
-								</td>
-								<td>425</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--critical">Critical</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="O+ stock status" aria-valuenow="94" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--green" style="width: 94%"></div>
-									</div>
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										B+
-									</div>
-								</td>
-								<td>280</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--medium">Medium</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="B+ stock status" aria-valuenow="69" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--yellow" style="width: 69%"></div>
-									</div>
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										AB+
-									</div>
-								</td>
-								<td>195</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--low">Low</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="AB+ stock status" aria-valuenow="49" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--orange" style="width: 49%"></div>
-									</div>
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										A-
-									</div>
-								</td>
-								<td>156</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--high">High</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="A- stock status" aria-valuenow="12" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--red" style="width: 12%"></div>
-									</div>
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										O-
-									</div>
-								</td>
-								<td>98</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--critical">Critical</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="O- stock status" aria-valuenow="35" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--orange" style="width: 35%"></div>
-									</div>
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										B-
-									</div>
-								</td>
-								<td>134</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--medium">Medium</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="B- stock status" aria-valuenow="28" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--orange" style="width: 28%"></div>
-									</div>
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<div class="report-inventory-table__blood-cell">
-										<span class="report-inventory-table__blood-icon" aria-hidden="true">
-											<svg width="10" height="16" viewBox="0 0 10 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-												<path d="M5 0C5 0 0 6.5 0 10A5 5 0 0010 10C10 6.5 5 0 5 0Z" fill="#b60c0c"/>
-											</svg>
-										</span>
-										AB-
-									</div>
-								</td>
-								<td>87</td>
-								<td class="col-demand"><span class="report-demand-badge report-demand-badge--low">Low</span></td>
-								<td>
-									<div class="progress report-status-progress" role="progressbar" aria-label="AB- stock status" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100">
-										<div class="progress-bar report-status-progress__bar report-status-progress__bar--orange" style="width: 38%"></div>
-									</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-			</section>
-		</div>
-	</main>
+            <section class="report-inventory-card" aria-label="Blood type inventory and demand">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <h2 class="report-inventory-card__title mb-0">Blood Type Inventory &amp; Demand</h2>
+                    <span class="small text-muted">Aggregated across selected facilities</span>
+                </div>
+                <div class="table-responsive mt-3">
+                    <table class="table report-inventory-table align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Blood type</th>
+                                <th scope="col">Available units</th>
+                                <th scope="col">Reserved</th>
+                                <th scope="col">Open request demand</th>
+                                <th scope="col">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportInventoryBody">
+                            <tr><td colspan="5" class="text-center text-muted py-4">Loading inventory…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
 @endsection
 
 @push('admin_scripts')
 <script>
-	(function () {
-		var reportData = (window.AdminPageData && window.AdminPageData.reportAnalytics) ? window.AdminPageData.reportAnalytics : {};
-		var resizeTimer = null;
+    (function () {
+        var pageData = window.AdminPageData && window.AdminPageData.reportAnalytics ? window.AdminPageData.reportAnalytics : {};
+        var api = window.AdminPageData && window.AdminPageData.reportApi ? window.AdminPageData.reportApi : {};
+        var dataUrl = String(api.dataUrl || '');
+        var exportUrl = String(api.exportUrl || '');
+        var reportPayload = pageData;
+        var resizeTimer = null;
 
-		function themeColor(name, fallback) {
-			var value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-			return value || fallback;
-		}
+        var rangeFilter = document.getElementById('reportRangeFilter');
+        var startDate = document.getElementById('reportStartDate');
+        var endDate = document.getElementById('reportEndDate');
+        var facilityFilter = document.getElementById('reportFacilityFilter');
+        var bloodTypeFilter = document.getElementById('reportBloodTypeFilter');
+        var applyButton = document.getElementById('reportApplyBtn');
+        var resetButton = document.getElementById('reportResetBtn');
+        var headerExport = document.getElementById('reportHeaderExport');
+        var inventoryBody = document.getElementById('reportInventoryBody');
+        var periodNote = document.getElementById('reportPeriodNote');
+        var distributionCaption = document.getElementById('reportDistributionCaption');
 
-		function setupCanvas(canvas) {
-			var parent = canvas.parentElement;
-			if (!parent) {
-				return null;
-			}
+        function escapeHtml(value) {
+            return String(value === null || typeof value === 'undefined' ? '' : value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
-			var ratio = window.devicePixelRatio || 1;
-			var width = Math.max(1, Math.floor(parent.clientWidth));
-			var height = Math.max(1, Math.floor(parent.clientHeight));
+        function number(value, decimals) {
+            var parsed = Number(value || 0);
+            return parsed.toLocaleString(undefined, { minimumFractionDigits: decimals || 0, maximumFractionDigits: decimals || 0 });
+        }
 
-			canvas.width = Math.floor(width * ratio);
-			canvas.height = Math.floor(height * ratio);
-			canvas.style.width = width + 'px';
-			canvas.style.height = height + 'px';
+        function queryParams() {
+            var params = new URLSearchParams();
+            params.set('range', rangeFilter ? rangeFilter.value : 'year');
+            if (rangeFilter && rangeFilter.value === 'custom') {
+                if (startDate && startDate.value) params.set('start_date', startDate.value);
+                if (endDate && endDate.value) params.set('end_date', endDate.value);
+            }
+            if (facilityFilter && facilityFilter.value) params.set('facility_id', facilityFilter.value);
+            if (bloodTypeFilter && bloodTypeFilter.value) params.set('blood_type_id', bloodTypeFilter.value);
+            return params;
+        }
 
-			var ctx = canvas.getContext('2d');
-			ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        function updateExportLink() {
+            if (headerExport && exportUrl) {
+                var query = queryParams().toString();
+                headerExport.href = exportUrl + (query ? '?' + query : '');
+            }
+        }
 
-			return { ctx: ctx, width: width, height: height };
-		}
+        function toggleCustomDates() {
+            var isCustom = rangeFilter && rangeFilter.value === 'custom';
+            document.querySelectorAll('.report-custom-date').forEach(function (element) {
+                element.classList.toggle('d-none', !isCustom);
+            });
+            updateExportLink();
+        }
 
-		function drawLineSeries(ctx, points, color) {
-			if (points.length < 2) {
-				return;
-			}
+        function themeColor(name, fallback) {
+            var value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            return value || fallback;
+        }
 
-			ctx.beginPath();
-			ctx.strokeStyle = color;
-			ctx.lineWidth = 2;
-			ctx.moveTo(points[0].x, points[0].y);
+        function setupCanvas(canvas) {
+            if (!canvas || !canvas.parentElement) return null;
+            var ratio = window.devicePixelRatio || 1;
+            var width = Math.max(1, Math.floor(canvas.parentElement.clientWidth));
+            var height = Math.max(1, Math.floor(canvas.parentElement.clientHeight));
+            canvas.width = Math.floor(width * ratio);
+            canvas.height = Math.floor(height * ratio);
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            var ctx = canvas.getContext('2d');
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            return { ctx: ctx, width: width, height: height };
+        }
 
-			for (var i = 1; i < points.length; i += 1) {
-				ctx.lineTo(points[i].x, points[i].y);
-			}
+        function drawTrend() {
+            var setup = setupCanvas(document.getElementById('reportsLineChart'));
+            if (!setup) return;
+            var ctx = setup.ctx, w = setup.width, h = setup.height;
+            var trend = reportPayload.trend || {};
+            var labels = Array.isArray(trend.labels) ? trend.labels : [];
+            var donors = Array.isArray(trend.donors) ? trend.donors : [];
+            var donations = Array.isArray(trend.donations) ? trend.donations : [];
+            var maxValue = Math.max(1, ...donors, ...donations);
+            var left = 42, right = 12, top = 14, bottom = 32;
+            var chartW = Math.max(1, w - left - right), chartH = Math.max(1, h - top - bottom);
+            ctx.clearRect(0, 0, w, h);
+            ctx.strokeStyle = themeColor('--bs-border-color', '#e2e8f0');
+            ctx.fillStyle = themeColor('--bs-secondary-color', '#64748b');
+            ctx.font = '11px Poppins, sans-serif';
+            ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            for (var tick = 0; tick <= 4; tick += 1) {
+                var y = top + chartH - (tick / 4) * chartH;
+                ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + chartW, y); ctx.stroke();
+                ctx.fillText(String(Math.round((maxValue / 4) * tick)), left - 6, y);
+            }
+            ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+            labels.forEach(function (label, index) {
+                var x = left + (chartW / Math.max(1, labels.length - 1)) * index;
+                ctx.fillText(label, x, h - bottom + 8);
+            });
+            function series(values, color) {
+                if (!labels.length) return;
+                var points = values.map(function (value, index) {
+                    return { x: left + (chartW / Math.max(1, labels.length - 1)) * index, y: top + chartH - ((Number(value) || 0) / maxValue) * chartH };
+                });
+                ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.moveTo(points[0].x, points[0].y);
+                points.slice(1).forEach(function (point) { ctx.lineTo(point.x, point.y); }); ctx.stroke();
+                ctx.fillStyle = color; points.forEach(function (point) { ctx.beginPath(); ctx.arc(point.x, point.y, 2.5, 0, Math.PI * 2); ctx.fill(); });
+            }
+            series(donors, '#b60c0c');
+            series(donations, '#f28b8b');
+        }
 
-			ctx.stroke();
+        function drawDistribution() {
+            var setup = setupCanvas(document.getElementById('reportsBarChart'));
+            if (!setup) return;
+            var ctx = setup.ctx, w = setup.width, h = setup.height;
+            var items = reportPayload.distribution && Array.isArray(reportPayload.distribution.items) ? reportPayload.distribution.items : [];
+            var labels = items.map(function (item) { return item.label; });
+            var values = items.map(function (item) { return Number(item.count) || 0; });
+            var maxValue = Math.max(1, ...values);
+            var left = 36, right = 12, top = 14, bottom = 34;
+            var chartW = Math.max(1, w - left - right), chartH = Math.max(1, h - top - bottom);
+            ctx.clearRect(0, 0, w, h); ctx.strokeStyle = themeColor('--bs-border-color', '#e2e8f0'); ctx.fillStyle = themeColor('--bs-secondary-color', '#64748b'); ctx.font = '11px Poppins, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+            for (var tick = 0; tick <= 4; tick += 1) { var y = top + chartH - (tick / 4) * chartH; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + chartW, y); ctx.stroke(); ctx.fillText(String(Math.round((maxValue / 4) * tick)), left - 6, y); }
+            var slot = chartW / Math.max(1, values.length), width = slot * 0.56;
+            labels.forEach(function (label, index) { var height = (values[index] / maxValue) * chartH; var x = left + slot * index + (slot - width) / 2; ctx.fillStyle = ['#b60c0c', '#850000', '#e83333', '#f07070', '#cc2f2f', '#ff9a9a'][index % 6]; ctx.fillRect(x, top + chartH - height, width, height); ctx.fillStyle = themeColor('--bs-body-color', '#334155'); ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(label, x + width / 2, h - bottom + 8); });
+        }
 
-			ctx.fillStyle = color;
-			for (var j = 0; j < points.length; j += 1) {
-				ctx.beginPath();
-				ctx.arc(points[j].x, points[j].y, 2.4, 0, Math.PI * 2);
-				ctx.fill();
-			}
-		}
+        function renderInventory() {
+            if (!inventoryBody) return;
+            var rows = Array.isArray(reportPayload.inventory) ? reportPayload.inventory : [];
+            if (!rows.length) { inventoryBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No inventory data available.</td></tr>'; return; }
+            inventoryBody.innerHTML = rows.map(function (row) {
+                var status = String(row.status || 'available');
+                var statusClass = status === 'out_of_stock' ? 'report-demand-badge--critical' : (status === 'low' ? 'report-demand-badge--high' : 'report-demand-badge--low');
+                return '<tr><td><strong>' + escapeHtml(row.blood_type) + '</strong></td><td>' + number(row.available_units) + '</td><td>' + number(row.reserved_units) + '</td><td>' + number(row.open_request_demand) + '</td><td><span class="report-demand-badge ' + statusClass + '">' + escapeHtml(row.status_label) + '</span></td></tr>';
+            }).join('');
+        }
 
-		function drawTrendChart() {
-			var canvas = document.getElementById('reportsLineChart');
-			if (!canvas) {
-				return;
-			}
+        function render() {
+            var summary = reportPayload.summary || {};
+            document.querySelectorAll('[data-report-metric]').forEach(function (element) {
+                var key = element.getAttribute('data-report-metric');
+                element.textContent = number(summary[key], key === 'success_rate' ? 1 : 0) + (key === 'success_rate' ? '%' : '');
+            });
+            var period = reportPayload.period || {};
+            if (periodNote) periodNote.textContent = 'Showing aggregate data for ' + (period.label || 'the selected period') + '.';
+            var distribution = reportPayload.distribution || {};
+            if (distributionCaption) distributionCaption.textContent = 'Verified records: ' + number(distribution.verified_total) + '. Self-reported: ' + number(distribution.self_reported_total) + '. Unknown: ' + number(distribution.unknown_total) + '.';
+            renderInventory(); drawTrend(); drawDistribution(); updateExportLink();
+        }
 
-			var setup = setupCanvas(canvas);
-			if (!setup) {
-				return;
-			}
+        function fetchReport() {
+            if (!dataUrl) return;
+            var query = queryParams().toString();
+            document.body.classList.add('report-loading');
+            fetch(dataUrl + (query ? '?' + query : ''), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+                .then(function (response) { return response.json().then(function (body) { if (!response.ok) throw new Error(body.message || 'Unable to load report data.'); return body; }); })
+                .then(function (body) { reportPayload = body; render(); })
+                .catch(function (error) { if (periodNote) periodNote.textContent = error.message || 'Unable to load report data.'; })
+                .finally(function () { document.body.classList.remove('report-loading'); });
+        }
 
-			var ctx = setup.ctx;
-			var w = setup.width;
-			var h = setup.height;
-
-			var trend = reportData && reportData.trend ? reportData.trend : {};
-			var labels = Array.isArray(trend.labels) && trend.labels.length ? trend.labels : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-			var donors = Array.isArray(trend.donors) && trend.donors.length ? trend.donors : [120, 150, 180, 200, 230, 260];
-			var donations = Array.isArray(trend.donations) && trend.donations.length ? trend.donations : [150, 170, 200, 240, 280, 310];
-
-			var maxValue = 10;
-			for (var i = 0; i < donors.length; i += 1) {
-				maxValue = Math.max(maxValue, donors[i]);
-			}
-			for (var j = 0; j < donations.length; j += 1) {
-				maxValue = Math.max(maxValue, donations[j]);
-			}
-			maxValue = Math.ceil(maxValue / 50) * 50;
-
-			var leftPad = 40;
-			var rightPad = 12;
-			var topPad = 14;
-			var bottomPad = 30;
-			var chartW = w - leftPad - rightPad;
-			var chartH = h - topPad - bottomPad;
-
-			ctx.clearRect(0, 0, w, h);
-
-			ctx.strokeStyle = themeColor('--bs-border-color', '#ececec');
-			ctx.lineWidth = 1;
-			ctx.fillStyle = themeColor('--bs-secondary-color', '#666');
-			ctx.font = '11px Poppins, sans-serif';
-			ctx.textAlign = 'right';
-			ctx.textBaseline = 'middle';
-
-			var yTicks = 5;
-			for (var tick = 0; tick <= yTicks; tick += 1) {
-				var yValue = (maxValue / yTicks) * tick;
-				var y = topPad + chartH - (yValue / maxValue) * chartH;
-
-				ctx.beginPath();
-				ctx.moveTo(leftPad, y);
-				ctx.lineTo(leftPad + chartW, y);
-				ctx.stroke();
-
-				ctx.fillText(String(Math.round(yValue)), leftPad - 6, y);
-			}
-
-			ctx.textAlign = 'center';
-			ctx.textBaseline = 'top';
-			ctx.fillStyle = themeColor('--bs-body-color', '#333');
-
-			for (var labelIndex = 0; labelIndex < labels.length; labelIndex += 1) {
-				var xPos = leftPad + (chartW / Math.max(1, labels.length - 1)) * labelIndex;
-				ctx.fillText(labels[labelIndex], xPos, h - bottomPad + 8);
-			}
-
-			var donorPoints = [];
-			var donationPoints = [];
-			for (var pointIndex = 0; pointIndex < labels.length; pointIndex += 1) {
-				var x = leftPad + (chartW / Math.max(1, labels.length - 1)) * pointIndex;
-				var donorValue = donors[pointIndex] || 0;
-				var donationValue = donations[pointIndex] || 0;
-
-				donorPoints.push({
-					x: x,
-					y: topPad + chartH - (donorValue / maxValue) * chartH,
-				});
-
-				donationPoints.push({
-					x: x,
-					y: topPad + chartH - (donationValue / maxValue) * chartH,
-				});
-			}
-
-			drawLineSeries(ctx, donorPoints, '#b60c0c');
-			drawLineSeries(ctx, donationPoints, '#f4a0a0');
-		}
-
-		function drawDistributionChart() {
-			var canvas = document.getElementById('reportsBarChart');
-			if (!canvas) {
-				return;
-			}
-
-			var setup = setupCanvas(canvas);
-			if (!setup) {
-				return;
-			}
-
-			var ctx = setup.ctx;
-			var w = setup.width;
-			var h = setup.height;
-
-			var distribution = Array.isArray(reportData.distribution) ? reportData.distribution : [];
-			if (!distribution.length) {
-				distribution = [
-					{ label: 'O+', value: 420 },
-					{ label: 'A+', value: 330 },
-					{ label: 'B+', value: 260 },
-					{ label: 'AB+', value: 180 },
-				];
-			}
-
-			var maxValue = 10;
-			for (var i = 0; i < distribution.length; i += 1) {
-				maxValue = Math.max(maxValue, Number(distribution[i].value) || 0);
-			}
-			maxValue = Math.ceil(maxValue / 50) * 50;
-
-			var leftPad = 34;
-			var rightPad = 12;
-			var topPad = 14;
-			var bottomPad = 30;
-			var chartW = w - leftPad - rightPad;
-			var chartH = h - topPad - bottomPad;
-			var barWidth = chartW / Math.max(1, distribution.length) * 0.56;
-			var colorPalette = ['#b60c0c', '#850000', '#f13939', '#f78a8a', '#ffb2b2', '#cc2f2f'];
-
-			ctx.clearRect(0, 0, w, h);
-
-			ctx.strokeStyle = themeColor('--bs-border-color', '#ececec');
-			ctx.lineWidth = 1;
-			ctx.fillStyle = themeColor('--bs-secondary-color', '#666');
-			ctx.font = '11px Poppins, sans-serif';
-			ctx.textAlign = 'right';
-			ctx.textBaseline = 'middle';
-
-			var yTicks = 5;
-			for (var tick = 0; tick <= yTicks; tick += 1) {
-				var yValue = (maxValue / yTicks) * tick;
-				var y = topPad + chartH - (yValue / maxValue) * chartH;
-
-				ctx.beginPath();
-				ctx.moveTo(leftPad, y);
-				ctx.lineTo(leftPad + chartW, y);
-				ctx.stroke();
-
-				ctx.fillText(String(Math.round(yValue)), leftPad - 6, y);
-			}
-
-			ctx.textAlign = 'center';
-			ctx.textBaseline = 'top';
-
-			for (var barIndex = 0; barIndex < distribution.length; barIndex += 1) {
-				var item = distribution[barIndex];
-				var centerX = leftPad + (chartW / distribution.length) * (barIndex + 0.5);
-				var barHeight = ((Number(item.value) || 0) / maxValue) * chartH;
-				var barX = centerX - (barWidth / 2);
-				var barY = topPad + chartH - barHeight;
-				var color = colorPalette[barIndex % colorPalette.length];
-
-				ctx.fillStyle = color;
-				ctx.fillRect(barX, barY, barWidth, barHeight);
-
-				ctx.fillStyle = themeColor('--bs-body-color', '#333');
-				ctx.fillText(item.label, centerX, h - bottomPad + 8);
-			}
-		}
-
-		function renderCharts() {
-			drawTrendChart();
-			drawDistributionChart();
-		}
-
-		renderCharts();
-
-		window.addEventListener('resize', function () {
-			if (resizeTimer) {
-				window.clearTimeout(resizeTimer);
-			}
-
-			resizeTimer = window.setTimeout(renderCharts, 120);
-		});
-
-		window.addEventListener('edonate:themechange', renderCharts);
-	})();
+        if (rangeFilter) rangeFilter.addEventListener('change', toggleCustomDates);
+        [startDate, endDate, facilityFilter, bloodTypeFilter].forEach(function (element) { if (element) element.addEventListener('change', updateExportLink); });
+        if (applyButton) applyButton.addEventListener('click', fetchReport);
+        if (resetButton) resetButton.addEventListener('click', function () { rangeFilter.value = 'year'; startDate.value = ''; endDate.value = ''; facilityFilter.value = ''; bloodTypeFilter.value = ''; toggleCustomDates(); fetchReport(); });
+        window.addEventListener('resize', function () { if (resizeTimer) window.clearTimeout(resizeTimer); resizeTimer = window.setTimeout(function () { drawTrend(); drawDistribution(); }, 120); });
+        window.addEventListener('edonate:themechange', function () { drawTrend(); drawDistribution(); });
+        toggleCustomDates(); render();
+    })();
 </script>
 @endpush

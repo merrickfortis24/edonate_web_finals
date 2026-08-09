@@ -15,7 +15,7 @@ return new class extends Migration
         if (! Schema::hasTable(self::VERIFICATIONS_TABLE)) {
             Schema::create(self::VERIFICATIONS_TABLE, function (Blueprint $table): void {
                 $table->increments('verification_id');
-                $table->unsignedInteger('donor_id');
+                $table->integer('donor_id');
                 $table->enum('document_type', [
                     'national_id',
                     'school_id',
@@ -27,7 +27,7 @@ return new class extends Migration
                 $table->string('document_path', 255);
                 $table->enum('status', ['pending', 'verified', 'rejected'])->default('pending');
                 $table->text('rejection_reason')->nullable();
-                $table->unsignedInteger('reviewed_by_admin_id')->nullable();
+                $table->integer('reviewed_by_admin_id')->nullable();
                 $table->dateTime('reviewed_at')->nullable();
                 $table->timestamp('created_at')->useCurrent();
                 $table->timestamp('updated_at')->nullable()->useCurrentOnUpdate();

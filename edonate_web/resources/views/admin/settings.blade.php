@@ -343,7 +343,6 @@
 		};
 
 		var confirmModalElement = document.getElementById('settingsConfirmModal');
-		var confirmModal = confirmModalElement ? bootstrap.Modal.getOrCreateInstance(confirmModalElement) : null;
 		var confirmBody = document.getElementById('settingsConfirmModalBody');
 		var confirmSaveButton = document.getElementById('settingsConfirmSaveBtn');
 
@@ -377,6 +376,15 @@
 		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
 		var themeToggle = document.getElementById('settingsThemeToggle');
+		var confirmModal = null;
+
+		function getConfirmModal() {
+			if (!confirmModal && confirmModalElement && window.bootstrap && window.bootstrap.Modal) {
+				confirmModal = window.bootstrap.Modal.getOrCreateInstance(confirmModalElement);
+			}
+
+			return confirmModal;
+		}
 
 		function escapeHtml(value) {
 			return String(value || '')
@@ -409,7 +417,11 @@
 
 			window.setTimeout(function () {
 				if (alertElement && alertElement.parentNode) {
-					bootstrap.Alert.getOrCreateInstance(alertElement).close();
+					if (window.bootstrap && window.bootstrap.Alert) {
+						window.bootstrap.Alert.getOrCreateInstance(alertElement).close();
+					} else {
+						alertElement.remove();
+					}
 				}
 			}, 2800);
 		}
@@ -459,7 +471,9 @@
 		}
 
 		function openConfirmModal(sectionLabel, onConfirm) {
-			if (!confirmModal) {
+			var modal = getConfirmModal();
+
+			if (!modal) {
 				onConfirm();
 				return;
 			}
@@ -468,7 +482,7 @@
 			if (confirmBody) {
 				confirmBody.textContent = 'Are you sure you want to save changes in ' + sectionLabel + '?';
 			}
-			confirmModal.show();
+			modal.show();
 		}
 
 		function validateAccountForm() {
@@ -590,8 +604,9 @@
 				}
 
 				pendingAction = null;
-				if (confirmModal) {
-					confirmModal.hide();
+				var modal = getConfirmModal();
+				if (modal) {
+					modal.hide();
 				}
 			});
 		}

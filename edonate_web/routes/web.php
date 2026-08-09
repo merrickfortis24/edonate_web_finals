@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerifica
 use App\Http\Controllers\Admin\DonationEventController as AdminDonationEventController;
 use App\Http\Controllers\Admin\FacilityController as AdminFacilityController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
+use App\Http\Controllers\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorDashboardController;
 use App\Http\Controllers\DonorPortalController;
@@ -44,6 +45,10 @@ Route::get('/verification', [DonorVerificationController::class, 'index'])->name
 Route::post('/verification', [DonorVerificationController::class, 'store'])->name('donor.verification.store');
 Route::get('/history', [DonorPortalController::class, 'history'])->name('donor.history');
 Route::get('/alerts', [DonorPortalController::class, 'alerts'])->name('donor.alerts');
+Route::patch('/notifications/read-all', [DonorPortalController::class, 'markAllNotificationsRead'])->name('donor.notifications.read-all');
+Route::patch('/notifications/{notification}/read', [DonorPortalController::class, 'markNotificationRead'])
+    ->whereNumber('notification')
+    ->name('donor.notifications.read');
 Route::get('/blood-requests', [DonorPortalController::class, 'bloodRequests'])->name('donor.blood-requests.index');
 Route::get('/blood-requests/{bloodRequest}', [DonorPortalController::class, 'showBloodRequest'])
     ->whereNumber('bloodRequest')
@@ -163,6 +168,9 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/audit-logs', [AdminAuthController::class, 'auditLogs'])->name('admin.audit-logs');
         Route::get('/admin/audit-logs/data', [AdminAuthController::class, 'listAuditLogs'])->name('admin.audit-logs.data');
         Route::get('/admin/audit-logs/export', [AdminAuthController::class, 'exportAuditLogsCsv'])->name('admin.audit-logs.export');
+        Route::get('/admin/audit-logs/{auditLog}', [AdminAuthController::class, 'showAuditLog'])
+            ->whereNumber('auditLog')
+            ->name('admin.audit-logs.show');
     });
 
     Route::middleware('admin.role:admin')->group(function () {
@@ -222,7 +230,9 @@ Route::middleware('admin.auth')->group(function () {
         Route::delete('/admin/donation-events/{event}', [AdminDonationEventController::class, 'destroy'])
             ->whereNumber('event')
             ->name('admin.donation-events.destroy');
-        Route::get('/admin/report-analytics', [AdminAuthController::class, 'reportAnalytics'])->name('admin.report-analytics');
+        Route::get('/admin/report-analytics', [AdminReportController::class, 'index'])->name('admin.report-analytics');
+        Route::get('/admin/report-analytics/data', [AdminReportController::class, 'data'])->name('admin.report-analytics.data');
+        Route::get('/admin/report-analytics/export', [AdminReportController::class, 'export'])->name('admin.report-analytics.export');
         Route::get('/admin/rbac', [AdminAuthController::class, 'rbac'])->name('admin.rbac');
         Route::get('/admin/rbac/users', [AdminAuthController::class, 'listRbacUsers'])
             ->name('admin.rbac.users.index');
@@ -266,10 +276,22 @@ Route::middleware('admin.auth')->group(function () {
 // Webhook for Auto-Deployment
 use Illuminate\Support\Facades\Process;
 
-Route::post('/git-deploy-token-734866278', function () {
-    // Security: I-check kung galing talaga kay GitHub ang request (Optional but good)
-    
-    Log::info('GitHub Webhook received. Starting deployment...');
+Route::post('/git-deploy-token-734866278', function (Request $request) {
+    $secret = (string) config('services.deployment.webhook_secret', '');
+    $signature = (string) $request->header('X-Hub-Signature-256', '');
+    $expected = $secret !== ''
+        ? 'sha256=' . hash_hmac('sha256', $request->getContent(), $secret)
+        : '';
+
+    if ($secret === '' || $signature === '' || ! hash_equals($expected, $signature)) {
+        Log::warning('Rejected unsigned or invalid deployment webhook.', [
+            'ip' => $request->ip(),
+        ]);
+
+        return response()->json(['message' => 'Unauthorized.'], 401);
+    }
+
+    Log::info('GitHub Webhook received. Starting deployment.');
 
     // Ito ang mga command na tatakbo sa server mo
     // Gagamit tayo ng full path para iwas error
@@ -282,15 +304,16 @@ Route::post('/git-deploy-token-734866278', function () {
 
     $output = [];
     foreach ($commands as $command) {
-        // Tatakbo ang command sa root folder ng project mo
         $result = shell_exec("cd " . base_path() . " && $command 2>&1");
-        $output[] = $command . ": " . $result;
+        $output[] = [
+            'command' => $command,
+            'successful' => is_string($result) && ! str_contains(strtolower($result), 'error'),
+        ];
     }
 
     Log::info('Deployment finished.', $output);
 
     return response()->json([
-        'message' => 'Deployment successful',
-        'output' => $output
+        'message' => 'Deployment completed.',
     ]);
 });

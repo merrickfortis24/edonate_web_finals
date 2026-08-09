@@ -24,12 +24,11 @@
         </ul>
     </li>
 @elseif (! empty($item['logout']))
-    <li class="nav-item">
-        <a href="{{ $item['href'] ?? '#' }}" class="nav-link" onclick="event.preventDefault(); document.getElementById('edonate-sidebar-logout-form').submit();">
+    <li class="nav-item edonate-sidebar-logout-form">
+        <a href="{{ $item['href'] ?? '#' }}" class="nav-link" data-logout-confirm>
             <i class="nav-icon {{ $item['icon'] ?? 'bi bi-box-arrow-right' }}" aria-hidden="true"></i>
             <p>{{ $item['text'] }}</p>
         </a>
-        <form id="edonate-sidebar-logout-form" method="POST" action="{{ route('admin.logout') }}" class="d-none">@csrf</form>
     </li>
 @else
     <li class="nav-item">

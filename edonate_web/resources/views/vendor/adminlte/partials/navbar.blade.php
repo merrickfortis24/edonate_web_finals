@@ -50,12 +50,9 @@
                     @endif
                     <li><hr class="dropdown-divider"></li>
                     <li>
-                        <form method="POST" action="{{ route('admin.logout') }}">
-                            @csrf
-                            <button class="dropdown-item text-danger" type="submit">
-                                <i class="bi bi-box-arrow-right me-2" aria-hidden="true"></i>Logout
-                            </button>
-                        </form>
+                        <button class="dropdown-item text-danger" type="button" data-logout-confirm>
+                            <i class="bi bi-box-arrow-right me-2" aria-hidden="true"></i>Logout
+                        </button>
                     </li>
                 </ul>
             </li>

@@ -9,6 +9,7 @@ use App\Models\Location;
 use App\Models\Notification;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -112,3 +113,11 @@ Artisan::command('firebase:sync-mirror', function () {
     $this->info('Firebase mirror sync completed.');
     return 0;
 })->purpose('Sync mirrored SQL tables to Firebase Realtime Database');
+
+// Scheduling is opt-in. Enable EDONATE_SCHEDULE_ELIGIBILITY_REMINDERS=true
+// and run the normal Laravel scheduler cron before turning this on.
+if (config('edonate.schedule_eligibility_reminders', false)) {
+    Schedule::command('edonate:eligibility-reminders')
+        ->dailyAt((string) config('edonate.reminder_time', '08:00'))
+        ->withoutOverlapping();
+}

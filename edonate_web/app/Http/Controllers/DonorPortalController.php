@@ -330,6 +330,62 @@ class DonorPortalController extends Controller
         ]);
     }
 
+    /**
+     * Mark one donor notification as read. The notification is always scoped
+     * through the authenticated donor session to prevent IDOR access.
+     */
+    public function markNotificationRead(Request $request, int $notificationId): RedirectResponse|JsonResponse
+    {
+        $context = $this->buildContext($request, 'alerts');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        if (! Schema::hasTable('notifications')) {
+            return $this->notificationActionResponse($request, 'Notification storage is not available.', 409);
+        }
+
+        $notification = $this->donorNotificationQuery((int) $context['donor']->donor_id)
+            ->where('notification_id', $notificationId)
+            ->first();
+
+        if (! $notification) {
+            return $this->notificationActionResponse($request, 'Notification not found.', 404);
+        }
+
+        if (Schema::hasColumn('notifications', 'is_read')) {
+            DB::table('notifications')
+                ->where('notification_id', (int) $notification->notification_id)
+                ->where('donor_id', (int) $context['donor']->donor_id)
+                ->update(['is_read' => 1]);
+        }
+
+        return $this->notificationActionResponse($request, 'Notification marked as read.');
+    }
+
+    /**
+     * Mark all notifications belonging to the current donor as read.
+     */
+    public function markAllNotificationsRead(Request $request): RedirectResponse|JsonResponse
+    {
+        $context = $this->buildContext($request, 'alerts');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        if (! Schema::hasTable('notifications') || ! Schema::hasColumn('notifications', 'is_read')) {
+            return $this->notificationActionResponse($request, 'Notification storage is not available.', 409);
+        }
+
+        $updated = $this->donorNotificationQuery((int) $context['donor']->donor_id)
+            ->where('is_read', 0)
+            ->update(['is_read' => 1]);
+
+        return $this->notificationActionResponse($request, $updated > 0
+            ? 'All notifications marked as read.'
+            : 'There are no unread notifications.');
+    }
+
     public function bloodRequests(Request $request)
     {
         $context = $this->buildContext($request, 'blood-requests');
@@ -516,6 +572,17 @@ class DonorPortalController extends Controller
         }
 
         return $query;
+    }
+
+    private function notificationActionResponse(Request $request, string $message, int $status = 200): RedirectResponse|JsonResponse
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message], $status);
+        }
+
+        return redirect()
+            ->route('donor.alerts')
+            ->with($status >= 400 ? 'error' : 'success', $message);
     }
 
     private function activeScreeningQuestions()

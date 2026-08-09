@@ -48,4 +48,8 @@ return [
         'timeout' => env('GEOCODING_TIMEOUT', 10),
     ],
 
+    'deployment' => [
+        'webhook_secret' => env('EDONATE_DEPLOY_WEBHOOK_SECRET'),
+    ],
+
 ];
