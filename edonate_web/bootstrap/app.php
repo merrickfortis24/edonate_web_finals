@@ -25,6 +25,16 @@ $app = Application::configure(basePath: dirname(__DIR__))
         //
     })->create();
 
-$app->usePublicPath(dirname(__DIR__).'/../public_html');
+$servedPublicPath = dirname(__DIR__).'/..';
+$checkedInPublicPath = dirname(__DIR__).'/../public_html';
+
+// Hostinger serves the outer directory after the public asset sync. The
+// repository keeps a checked-in public_html copy for local tests and builds,
+// so use it when the outer served directory is not present yet.
+$app->usePublicPath(
+    is_file($servedPublicPath.'/index.php') && is_file($servedPublicPath.'/build/manifest.json')
+        ? $servedPublicPath
+        : $checkedInPublicPath
+);
 
 return $app;

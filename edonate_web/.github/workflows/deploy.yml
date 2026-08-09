@@ -47,3 +47,7 @@ jobs:
             test -f /home/u156729731/domains/edonate.online/public_html/index.php
             test -f /home/u156729731/domains/edonate.online/public_html/.htaccess
             test -f /home/u156729731/domains/edonate.online/public_html/edonate_web/vendor/autoload.php
+            grep -Fq "edonate_web/vendor/autoload.php" /home/u156729731/domains/edonate.online/public_html/index.php
+            grep -Fq "edonate_web/bootstrap/app.php" /home/u156729731/domains/edonate.online/public_html/index.php
+            grep -Fq "RewriteRule ^ index.php" /home/u156729731/domains/edonate.online/public_html/.htaccess
+            php artisan route:list --path=admin/login --no-ansi | grep -Fq "admin/login"
