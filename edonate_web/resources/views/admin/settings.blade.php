@@ -6,7 +6,10 @@
 @section('header_subtitle', 'Manage system configuration, security, and preferences')
 
 @section('header_actions')
-	<span class="settings-header-pill">Admin Control Panel</span>
+	<span class="badge rounded-pill bg-danger-subtle text-danger-emphasis">
+		<i class="bi bi-sliders me-1" aria-hidden="true"></i>
+		Admin Control Panel
+	</span>
 @endsection
 
 @section('admin_page_data')
@@ -19,8 +22,9 @@
 			'contactNumber' => '+63 917 123 4567',
 		],
 		'notifications' => [
-			'email' => true,
-			'sms' => false,
+			'email' => false,
+			'emailAddress' => '',
+			'updateUrl' => route('admin.settings.notifications.update'),
 		],
 		'security' => [
 			'twoFactor' => false,
@@ -34,12 +38,12 @@
 @endsection
 
 @section('main_content')
-	<main class="main container-fluid px-0">
-		<div class="settings-body container-fluid py-3">
-			<div id="settingsAlertHost" class="settings-alert-host"></div>
+	<div class="container-fluid px-0">
+		<div id="settingsAlertHost" class="mb-3" aria-live="polite"></div>
 
-			<section class="settings-shell" aria-label="Admin settings sections">
-				<ul class="nav nav-tabs settings-tabs" id="settingsTabs" role="tablist">
+		<section class="card settings-shell border-0 shadow-sm" aria-label="Admin settings sections">
+			<div class="card-header bg-transparent border-bottom p-0">
+				<ul class="nav nav-tabs card-header-tabs settings-tabs flex-nowrap overflow-auto px-3 pt-3" id="settingsTabs" role="tablist">
 					<li class="nav-item" role="presentation">
 						<button class="nav-link active" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" type="button" role="tab" aria-controls="settings-general-pane" aria-selected="true">General</button>
 					</li>
@@ -56,23 +60,23 @@
 						<button class="nav-link" id="settings-security-tab" data-bs-toggle="tab" data-bs-target="#settings-security-pane" type="button" role="tab" aria-controls="settings-security-pane" aria-selected="false">Security</button>
 					</li>
 				</ul>
+			</div>
 
+			<div class="card-body p-3 p-lg-4">
 				<div class="tab-content settings-tab-content" id="settingsTabsContent">
 					<div class="tab-pane fade show active" id="settings-general-pane" role="tabpanel" aria-labelledby="settings-general-tab" tabindex="0">
-						<article class="settings-card">
-							<header class="settings-card__header">
-								<span class="settings-card__icon" aria-hidden="true">
-									<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none">
-										<path d="M4 7.5C4 5.57 5.57 4 7.5 4H16.5C18.43 4 20 5.57 20 7.5V16.5C20 18.43 18.43 20 16.5 20H7.5C5.57 20 4 18.43 4 16.5V7.5Z" stroke="currentColor" stroke-width="1.8"/>
-										<path d="M8 12H16M8 8.5H13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-									</svg>
+						<article class="card settings-card border-0 shadow-none">
+							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
+								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
+									<i class="bi bi-sliders2 fs-5"></i>
 								</span>
 								<div>
-									<h2 class="settings-card__title">General Settings</h2>
-									<p class="settings-card__subtitle">Basic platform information shown across your admin system.</p>
+									<h2 class="h5 mb-1 settings-card__title">General Settings</h2>
+									<p class="small text-body-secondary mb-0 settings-card__subtitle">Basic platform information shown across your admin system.</p>
 								</div>
 							</header>
 
+							<div class="card-body px-0 pb-0">
 							<form id="generalSettingsForm" class="settings-form needs-validation" novalidate>
 								<div class="row g-3">
 									<div class="col-12 col-lg-6">
@@ -94,28 +98,30 @@
 									</div>
 								</div>
 
-								<div class="settings-actions">
+								<div class="settings-actions d-flex justify-content-end mt-4 pt-3 border-top">
 									<button class="btn settings-btn settings-btn--primary" id="saveGeneralSettingsBtn" type="submit">
 										Save General Settings
 									</button>
 								</div>
 							</form>
+							</div>
 						</article>
 					</div>
 
 					<div class="tab-pane fade" id="settings-appearance-pane" role="tabpanel" aria-labelledby="settings-appearance-tab" tabindex="0">
-						<article class="settings-card">
-							<header class="settings-card__header">
-								<span class="settings-card__icon" aria-hidden="true">
-									<i class="bi bi-circle-half"></i>
+						<article class="card settings-card border-0 shadow-none">
+							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
+								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
+									<i class="bi bi-circle-half fs-5"></i>
 								</span>
 								<div>
-									<h2 class="settings-card__title">Appearance</h2>
-									<p class="settings-card__subtitle">Choose how the eDonate Admin Portal looks.</p>
+									<h2 class="h5 mb-1 settings-card__title">Appearance</h2>
+									<p class="small text-body-secondary mb-0 settings-card__subtitle">Choose how the eDonate Admin Portal looks.</p>
 								</div>
 							</header>
 
-							<div class="settings-theme-control" aria-labelledby="settingsThemeLabel">
+							<div class="card-body px-0 pb-0">
+							<div class="settings-theme-control card border bg-body-tertiary" aria-labelledby="settingsThemeLabel">
 								<div class="settings-theme-copy">
 									<h3 id="settingsThemeLabel">Theme</h3>
 									<p>Light mode is the default. Your choice is saved on this browser.</p>
@@ -135,24 +141,23 @@
 									</div>
 								</div>
 							</div>
+							</div>
 						</article>
 					</div>
 
 					<div class="tab-pane fade" id="settings-account-pane" role="tabpanel" aria-labelledby="settings-account-tab" tabindex="0">
-						<article class="settings-card">
-							<header class="settings-card__header">
-								<span class="settings-card__icon" aria-hidden="true">
-									<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none">
-										<circle cx="12" cy="9" r="3.2" stroke="currentColor" stroke-width="1.8"/>
-										<path d="M6 19C6 15.6863 8.68629 13 12 13C15.3137 13 18 15.6863 18 19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-									</svg>
+						<article class="card settings-card border-0 shadow-none">
+							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
+								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
+									<i class="bi bi-person fs-5"></i>
 								</span>
 								<div>
-									<h2 class="settings-card__title">Account Settings</h2>
-									<p class="settings-card__subtitle">Update your password securely with confirmation checks.</p>
+									<h2 class="h5 mb-1 settings-card__title">Account Settings</h2>
+									<p class="small text-body-secondary mb-0 settings-card__subtitle">Update your password securely with confirmation checks.</p>
 								</div>
 							</header>
 
+							<div class="card-body px-0 pb-0">
 							<form id="accountSettingsForm" class="settings-form needs-validation" novalidate>
 								<div class="row g-3">
 									<div class="col-12 col-lg-6">
@@ -183,80 +188,68 @@
 									</div>
 								</div>
 
-								<div class="settings-actions">
+								<div class="settings-actions d-flex justify-content-end mt-4 pt-3 border-top">
 									<button class="btn settings-btn settings-btn--primary" id="saveAccountSettingsBtn" type="submit">
 										Update Password
 									</button>
 								</div>
 							</form>
+							</div>
 						</article>
 					</div>
 
 					<div class="tab-pane fade" id="settings-notifications-pane" role="tabpanel" aria-labelledby="settings-notifications-tab" tabindex="0">
-						<article class="settings-card">
-							<header class="settings-card__header">
-								<span class="settings-card__icon" aria-hidden="true">
-									<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none">
-										<path d="M12 4C8.68629 4 6 6.68629 6 10V13.5L4.5 16H19.5L18 13.5V10C18 6.68629 15.3137 4 12 4Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-										<path d="M10 18C10.4 19 11.1 19.5 12 19.5C12.9 19.5 13.6 19 14 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-									</svg>
+						<article class="card settings-card border-0 shadow-none">
+							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
+								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
+									<i class="bi bi-bell fs-5"></i>
 								</span>
 								<div>
-									<h2 class="settings-card__title">Notification Settings</h2>
-									<p class="settings-card__subtitle">Control delivery channels for important admin and donor updates.</p>
+									<h2 class="h5 mb-1 settings-card__title">Notification Settings</h2>
+									<p class="small text-body-secondary mb-0 settings-card__subtitle">Control email delivery for important admin updates.</p>
 								</div>
 							</header>
 
+							<div class="card-body px-0 pb-0">
 							<form id="notificationSettingsForm" class="settings-form" novalidate>
-								<div class="settings-switch-list">
-									<div class="settings-switch-item">
+								<div class="settings-switch-list vstack gap-3">
+									<div class="settings-switch-item card border bg-body-tertiary p-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
 										<div class="settings-switch-item__copy">
 											<h3>Email Notifications</h3>
-											<p>Receive activity alerts and report updates via email.</p>
+											<p>Receive activity alerts and report updates at <span id="settingsNotificationEmailAddress">your admin email address</span>.</p>
 										</div>
 										<div class="form-check form-switch">
 											<input class="form-check-input" type="checkbox" role="switch" id="settingsEmailNotificationsToggle">
 										</div>
 									</div>
-
-									<div class="settings-switch-item">
-										<div class="settings-switch-item__copy">
-											<h3>SMS Notifications</h3>
-											<p>Receive urgent events and reminders as SMS messages.</p>
-										</div>
-										<div class="form-check form-switch">
-											<input class="form-check-input" type="checkbox" role="switch" id="settingsSmsNotificationsToggle">
-										</div>
-									</div>
 								</div>
 
-								<div class="settings-actions">
+								<div class="settings-actions d-flex justify-content-end mt-4 pt-3 border-top">
 									<button class="btn settings-btn settings-btn--primary" id="saveNotificationSettingsBtn" type="submit">
 										Save Notification Settings
 									</button>
 								</div>
 							</form>
+							</div>
 						</article>
 					</div>
 
 					<div class="tab-pane fade" id="settings-security-pane" role="tabpanel" aria-labelledby="settings-security-tab" tabindex="0">
-						<article class="settings-card">
-							<header class="settings-card__header">
-								<span class="settings-card__icon" aria-hidden="true">
-									<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none">
-										<path d="M12 3L19 6V11.8C19 16.2 16.2 20.2 12 21C7.8 20.2 5 16.2 5 11.8V6L12 3Z" stroke="currentColor" stroke-width="1.8"/>
-										<path d="M9.5 12.2L11.2 13.9L14.8 10.3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-									</svg>
+						<article class="card settings-card border-0 shadow-none">
+							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
+								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
+									<i class="bi bi-shield-check fs-5"></i>
 								</span>
 								<div>
-									<h2 class="settings-card__title">Security Settings</h2>
-									<p class="settings-card__subtitle">Protect admin sessions with 2FA and inactivity timeout controls.</p>
+									<h2 class="h5 mb-1 settings-card__title">Security Settings</h2>
+									<p class="small text-body-secondary mb-0 settings-card__subtitle">Protect admin sessions with 2FA and inactivity timeout controls.</p>
 								</div>
 							</header>
 
+							<div class="card-body px-0 pb-0">
 							<form id="securitySettingsForm" class="settings-form" novalidate>
-								<div class="settings-switch-list">
-									<div class="settings-switch-item">
+								<div class="settings-switch-list vstack gap-3">
+									<div class="settings-switch-item card border bg-body-tertiary p-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
 										<div class="settings-switch-item__copy">
 											<h3>Require 2FA For All Admin/Staff Accounts</h3>
 											<p>When enabled, every admin and staff user must enroll in Google Authenticator before accessing the portal.</p>
@@ -266,9 +259,9 @@
 										</div>
 									</div>
 
-									<p class="small text-muted mt-2 mb-0" id="settingsTwoFactorEnrollmentHint"></p>
+									<p class="small text-body-secondary mt-2 mb-0" id="settingsTwoFactorEnrollmentHint"></p>
 
-									<p class="small text-muted mt-2 mb-0">
+									<p class="small text-body-secondary mt-2 mb-0">
 										Manage enrollment, QR setup, and disable actions on
 										<a href="{{ route('admin.2fa.setup') }}">Google Authenticator setup page</a>.
 									</p>
@@ -286,22 +279,23 @@
 									</div>
 								</div>
 
-								<div class="settings-actions">
+								<div class="settings-actions d-flex justify-content-end mt-4 pt-3 border-top">
 									<button class="btn settings-btn settings-btn--primary" id="saveSecuritySettingsBtn" type="submit">
 										Save Security Settings
 									</button>
 								</div>
 							</form>
+							</div>
 						</article>
 					</div>
 				</div>
-			</section>
-		</div>
-	</main>
+			</div>
+		</section>
+	</div>
 
 	<div class="modal fade" id="settingsConfirmModal" tabindex="-1" aria-labelledby="settingsConfirmModalLabel" aria-hidden="true">
 		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content settings-confirm-modal">
+			<div class="modal-content">
 				<div class="modal-header">
 					<h5 class="modal-title" id="settingsConfirmModalLabel">Confirm Changes</h5>
 					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -331,7 +325,8 @@
 			}, payload.general || {}),
 			notifications: Object.assign({
 				email: false,
-				sms: false,
+				emailAddress: '',
+				updateUrl: '{{ route('admin.settings.notifications.update') }}',
 			}, payload.notifications || {}),
 			security: Object.assign({
 				twoFactor: false,
@@ -369,12 +364,13 @@
 		var confirmPasswordFeedback = document.getElementById('settingsConfirmPasswordFeedback');
 
 		var emailNotificationsToggle = document.getElementById('settingsEmailNotificationsToggle');
-		var smsNotificationsToggle = document.getElementById('settingsSmsNotificationsToggle');
+		var notificationEmailAddress = document.getElementById('settingsNotificationEmailAddress');
 
 		var twoFactorToggle = document.getElementById('settingsTwoFactorToggle');
 		var sessionTimeoutSelect = document.getElementById('settingsSessionTimeoutSelect');
 		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
+		var updateNotificationUrl = String(settingsData.notifications.updateUrl || '');
 		var themeToggle = document.getElementById('settingsThemeToggle');
 		var confirmModal = null;
 
@@ -446,7 +442,7 @@
 				return {};
 			}).then(function (payload) {
 				if (!response.ok) {
-					throw new Error(extractApiError(payload) || 'Unable to save security settings.');
+					throw new Error(extractApiError(payload) || 'Unable to save settings.');
 				}
 
 				return payload;
@@ -572,8 +568,8 @@
 			if (emailNotificationsToggle) {
 				emailNotificationsToggle.checked = !!settingsData.notifications.email;
 			}
-			if (smsNotificationsToggle) {
-				smsNotificationsToggle.checked = !!settingsData.notifications.sms;
+			if (notificationEmailAddress) {
+				notificationEmailAddress.textContent = settingsData.notifications.emailAddress || 'your admin email address';
 			}
 
 			if (twoFactorToggle) {
@@ -680,13 +676,48 @@
 				openConfirmModal('Notification Settings', function () {
 					setButtonLoading(saveNotificationButton, true);
 
-					window.setTimeout(function () {
-						settingsData.notifications.email = !!emailNotificationsToggle.checked;
-						settingsData.notifications.sms = !!smsNotificationsToggle.checked;
-
+					if (!updateNotificationUrl) {
 						setButtonLoading(saveNotificationButton, false);
-						showAlert('success', 'Notification settings saved successfully.');
-					}, 700);
+						showAlert('danger', 'Email notification settings endpoint is not configured.');
+						return;
+					}
+
+					fetch(updateNotificationUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-CSRF-TOKEN': csrfToken,
+							'X-Requested-With': 'XMLHttpRequest',
+						},
+						credentials: 'same-origin',
+						body: JSON.stringify({
+							email_enabled: !!emailNotificationsToggle.checked,
+						}),
+					})
+						.then(parseApiResponse)
+						.then(function (payload) {
+							var incomingNotifications = (payload && payload.notifications && typeof payload.notifications === 'object')
+								? payload.notifications
+								: {};
+
+							settingsData.notifications.email = !!incomingNotifications.email;
+							settingsData.notifications.emailAddress = String(incomingNotifications.emailAddress || settingsData.notifications.emailAddress || '');
+
+							if (emailNotificationsToggle) {
+								emailNotificationsToggle.checked = settingsData.notifications.email;
+							}
+							if (notificationEmailAddress) {
+								notificationEmailAddress.textContent = settingsData.notifications.emailAddress || 'your admin email address';
+							}
+
+							setButtonLoading(saveNotificationButton, false);
+							showAlert('success', String((payload && payload.message) || 'Email notification settings saved successfully.'));
+						})
+						.catch(function (error) {
+							setButtonLoading(saveNotificationButton, false);
+							showAlert('danger', error.message || 'Unable to save email notification settings.');
+						});
 				});
 			});
 		}

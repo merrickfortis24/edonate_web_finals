@@ -141,7 +141,8 @@ return [
             'icon' => 'bi bi-shield-lock',
             'roles' => ['admin'],
             'submenu' => [
-                ['text' => 'RBAC', 'route' => 'admin.rbac', 'active' => ['admin/rbac*'], 'icon' => 'bi bi-person-lock', 'roles' => ['admin']],
+                ['text' => 'Profile', 'route' => 'admin.profile', 'active' => ['admin/profile*'], 'icon' => 'bi bi-person-circle', 'roles' => ['admin']],
+                ['text' => 'User Roles and Permissions', 'route' => 'admin.rbac', 'active' => ['admin/rbac*'], 'icon' => 'bi bi-person-lock', 'roles' => ['admin']],
                 ['text' => 'Settings', 'route' => 'admin.settings', 'active' => ['admin/settings*'], 'icon' => 'bi bi-gear', 'roles' => ['admin']],
             ],
         ],

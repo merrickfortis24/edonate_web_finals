@@ -1,23 +1,23 @@
 <?php
 
-use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\Admin\BloodRequestController as AdminBloodRequestController;
-use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
 use App\Http\Controllers\Admin\DonationEventController as AdminDonationEventController;
+use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
 use App\Http\Controllers\Admin\FacilityController as AdminFacilityController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Admin\ReportController as AdminReportController;
-use App\Http\Controllers\DonorLoginController;
+use App\Http\Controllers\AdminAuthController;
 use App\Http\Controllers\DonorDashboardController;
+use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorPortalController;
 use App\Http\Controllers\DonorSignupController;
 use App\Http\Controllers\DonorVerificationController;
-use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\EligibilityController;
 use App\Http\Controllers\QuestionController;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\SocialAuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return redirect()->route('admin.login');
@@ -233,6 +233,7 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/report-analytics', [AdminReportController::class, 'index'])->name('admin.report-analytics');
         Route::get('/admin/report-analytics/data', [AdminReportController::class, 'data'])->name('admin.report-analytics.data');
         Route::get('/admin/report-analytics/export', [AdminReportController::class, 'export'])->name('admin.report-analytics.export');
+        Route::get('/admin/profile', [AdminAuthController::class, 'profile'])->name('admin.profile');
         Route::get('/admin/rbac', [AdminAuthController::class, 'rbac'])->name('admin.rbac');
         Route::get('/admin/rbac/users', [AdminAuthController::class, 'listRbacUsers'])
             ->name('admin.rbac.users.index');
@@ -251,6 +252,8 @@ Route::middleware('admin.auth')->group(function () {
             ->whereNumber('admin')
             ->name('admin.rbac.users.role.update');
         Route::get('/admin/settings', [AdminAuthController::class, 'settings'])->name('admin.settings');
+        Route::post('/admin/settings/notifications', [AdminAuthController::class, 'updateNotificationSettings'])
+            ->name('admin.settings.notifications.update');
         Route::post('/admin/settings/security', [AdminAuthController::class, 'updateSecuritySettings'])
             ->name('admin.settings.security.update');
 
@@ -274,13 +277,12 @@ Route::middleware('admin.auth')->group(function () {
 });
 
 // Webhook for Auto-Deployment
-use Illuminate\Support\Facades\Process;
 
 Route::post('/git-deploy-token-734866278', function (Request $request) {
     $secret = (string) config('services.deployment.webhook_secret', '');
     $signature = (string) $request->header('X-Hub-Signature-256', '');
     $expected = $secret !== ''
-        ? 'sha256=' . hash_hmac('sha256', $request->getContent(), $secret)
+        ? 'sha256='.hash_hmac('sha256', $request->getContent(), $secret)
         : '';
 
     if ($secret === '' || $signature === '' || ! hash_equals($expected, $signature)) {
@@ -304,7 +306,7 @@ Route::post('/git-deploy-token-734866278', function (Request $request) {
 
     $output = [];
     foreach ($commands as $command) {
-        $result = shell_exec("cd " . base_path() . " && $command 2>&1");
+        $result = shell_exec('cd '.base_path()." && $command 2>&1");
         $output[] = [
             'command' => $command,
             'successful' => is_string($result) && ! str_contains(strtolower($result), 'error'),

@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller as BaseController;
 use App\Mail\AdminPasswordResetMail;
+use App\Models\AdminNotificationPreference;
 use App\Models\BloodType;
 use App\Models\Donor;
 use App\Models\DonorAuthentication;
@@ -10,8 +12,8 @@ use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
 use App\Services\BloodAvailabilityService;
-use App\Services\FacilityBloodInventoryService;
 use App\Services\DonationProcessingService;
+use App\Services\FacilityBloodInventoryService;
 use App\Services\GeocodingService;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -30,31 +32,48 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
-use App\Http\Controllers\Controller as BaseController;
 
 class AdminAuthController extends BaseController
 {
     private const SECURITY_SETTINGS_TABLE = 'admin_security_settings';
+
+    private const ADMIN_NOTIFICATION_PREFERENCES_TABLE = 'admin_notification_preferences';
+
     private const SECURITY_DEFAULT_TWO_FACTOR_REQUIRED = true;
+
     private const SECURITY_DEFAULT_SESSION_TIMEOUT_MINUTES = 10;
+
     private const AUDIT_SECURITY_POLICY_ACTION = 'security_policy_update';
+
     private const AUDIT_SECURITY_POLICY_MODULE = 'security';
+
     private const REMEMBER_COOKIE_NAME = 'admin_remember';
+
     private const REMEMBER_DAYS = 30;
+
     private const RESET_TOKEN_TTL_MINUTES = 30;
+
     private const RESET_CACHE_PREFIX = 'admin_password_reset:';
+
     private const RESET_CACHE_STORE = 'file';
+
     private const TWO_FACTOR_PENDING_SESSION_KEY = 'pending_admin_2fa';
+
     private const TWO_FACTOR_SETUP_SECRET_SESSION_KEY = 'admin_2fa_setup_secret';
+
     private const TWO_FACTOR_PENDING_TTL_MINUTES = 5;
+
     private const TWO_FACTOR_MAX_ATTEMPTS = 5;
+
     private const TWO_FACTOR_TOTP_WINDOW = 1;
+
     private const TWO_FACTOR_RECOVERY_CODES_COUNT = 8;
+
     private const FIREBASE_SECURITY_EVENTS_DEFAULT_PATH = 'admin_security_events';
 
     /**
@@ -111,7 +130,7 @@ class AdminAuthController extends BaseController
             ->where('email', $validated['email'])
             ->first();
 
-        if (!$admin || !Hash::check($validated['password'], $admin->password)) {
+        if (! $admin || ! Hash::check($validated['password'], $admin->password)) {
             $this->pushFirebaseSecurityEvent('admin_login_password_failed', [
                 'email' => Str::lower(trim((string) $validated['email'])),
                 'ip' => $request->ip(),
@@ -123,7 +142,7 @@ class AdminAuthController extends BaseController
         }
 
         $role = $this->normalizeRole((string) ($admin->role ?? ''));
-        if (!$this->isSupportedRole($role)) {
+        if (! $this->isSupportedRole($role)) {
             return back()
                 ->withInput($request->only('email', 'remember'))
                 ->withErrors(['email' => 'Your account role is not authorized to access this portal.']);
@@ -155,7 +174,7 @@ class AdminAuthController extends BaseController
 
         $this->setAdminSession($request, $admin, $role);
 
-        if ($globalTwoFactorRequired && $this->supportsTwoFactorStorage() && !$accountTwoFactorEnabled) {
+        if ($globalTwoFactorRequired && $this->supportsTwoFactorStorage() && ! $accountTwoFactorEnabled) {
             $this->clearRememberMeToken((int) $admin->admin_id);
 
             $this->pushFirebaseSecurityEvent('admin_2fa_enrollment_required', [
@@ -221,7 +240,7 @@ class AdminAuthController extends BaseController
             ->where('admin_id', $adminId)
             ->first();
 
-        if (!$admin || !$this->isSupportedRole((string) ($admin->role ?? ''))) {
+        if (! $admin || ! $this->isSupportedRole((string) ($admin->role ?? ''))) {
             $this->clearPendingTwoFactorLogin($request);
 
             return redirect()
@@ -229,7 +248,7 @@ class AdminAuthController extends BaseController
                 ->with('error', 'Your account is no longer available for this login attempt.');
         }
 
-        if (!$this->isTwoFactorEnabledForAdmin($admin)) {
+        if (! $this->isTwoFactorEnabledForAdmin($admin)) {
             $this->clearPendingTwoFactorLogin($request);
 
             return redirect()
@@ -252,7 +271,7 @@ class AdminAuthController extends BaseController
             $usedRecoveryCode = $isValid;
         }
 
-        if (!$isValid) {
+        if (! $isValid) {
             $pending['attempts'] = $attempts + 1;
             $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, $pending);
 
@@ -280,7 +299,7 @@ class AdminAuthController extends BaseController
                 ]);
         }
 
-        if (!empty($pending['remember'])) {
+        if (! empty($pending['remember'])) {
             $this->issueRememberMeToken((int) $admin->admin_id);
         } else {
             $this->clearRememberMeToken((int) $admin->admin_id);
@@ -341,7 +360,7 @@ class AdminAuthController extends BaseController
                 'email' => $admin->email,
                 'token' => $token,
             ], false);
-            $resetUrl = rtrim($request->getSchemeAndHttpHost(), '/') . $resetPath;
+            $resetUrl = rtrim($request->getSchemeAndHttpHost(), '/').$resetPath;
 
             Cache::store(self::RESET_CACHE_STORE)->put(
                 $this->makePasswordResetCacheKey($admin->email),
@@ -383,7 +402,7 @@ class AdminAuthController extends BaseController
             'token' => ['required', 'string', 'size:64'],
         ]);
 
-        if (!$this->isValidPasswordResetToken($validated['email'], $validated['token'])) {
+        if (! $this->isValidPasswordResetToken($validated['email'], $validated['token'])) {
             return redirect()
                 ->route('admin.password.request')
                 ->withErrors(['email' => 'This reset link is invalid or has expired.']);
@@ -406,7 +425,7 @@ class AdminAuthController extends BaseController
             'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
         ]);
 
-        if (!$this->isValidPasswordResetToken($validated['email'], $validated['token'])) {
+        if (! $this->isValidPasswordResetToken($validated['email'], $validated['token'])) {
             return redirect()
                 ->route('admin.password.request')
                 ->withErrors(['email' => 'This reset link is invalid or has expired.']);
@@ -500,7 +519,7 @@ class AdminAuthController extends BaseController
         $query = $this->userManagementDonorQuery();
 
         if ($searchTerm !== '') {
-            $likeTerm = '%' . $searchTerm . '%';
+            $likeTerm = '%'.$searchTerm.'%';
 
             $query->where(function ($builder) use ($searchTerm, $likeTerm): void {
                 $builder->whereRaw("CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, '')) like ?", [$likeTerm])
@@ -518,7 +537,7 @@ class AdminAuthController extends BaseController
         }
 
         if ($status !== '') {
-            $query->whereRaw('(' . $statusExpression . ') = ?', [$status]);
+            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
         }
 
         $paginator = $query
@@ -533,7 +552,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn(object $donor): array => $this->transformUserManagementDonor($donor))
+                ->map(fn (object $donor): array => $this->transformUserManagementDonor($donor))
                 ->values()
                 ->all(),
             'meta' => [
@@ -763,7 +782,7 @@ class AdminAuthController extends BaseController
         $this->logUserManagementAudit(
             $request,
             'update',
-            'Updated donor account: ' . ($after['full_name'] ?? ('Donor #' . $targetDonor->donor_id)),
+            'Updated donor account: '.($after['full_name'] ?? ('Donor #'.$targetDonor->donor_id)),
             (int) $targetDonor->donor_id,
             [
                 'changes' => $this->userManagementChangedFields($before, $after ?? []),
@@ -795,7 +814,7 @@ class AdminAuthController extends BaseController
             $this->logUserManagementAudit(
                 $request,
                 'delete',
-                'Blocked donor deletion for ' . ($targetSummary['full_name'] ?? ('Donor #' . $targetDonor->donor_id)),
+                'Blocked donor deletion for '.($targetSummary['full_name'] ?? ('Donor #'.$targetDonor->donor_id)),
                 (int) $targetDonor->donor_id,
                 [
                     'blockers' => $blockers,
@@ -844,7 +863,7 @@ class AdminAuthController extends BaseController
         $this->logUserManagementAudit(
             $request,
             'delete',
-            'Deleted donor account: ' . ($targetSummary['full_name'] ?? ('Donor #' . $targetDonor->donor_id)),
+            'Deleted donor account: '.($targetSummary['full_name'] ?? ('Donor #'.$targetDonor->donor_id)),
             (int) $targetDonor->donor_id,
             [
                 'email' => $targetSummary['email'] ?? null,
@@ -900,7 +919,7 @@ class AdminAuthController extends BaseController
         $query = $this->appointmentManagementBaseQuery();
 
         if ($searchTerm !== '') {
-            $likeTerm = '%' . $searchTerm . '%';
+            $likeTerm = '%'.$searchTerm.'%';
             $numericSearch = null;
 
             if (preg_match('/(\d+)/', $searchTerm, $matches) === 1) {
@@ -920,11 +939,11 @@ class AdminAuthController extends BaseController
         }
 
         if ($center !== '') {
-            $query->whereRaw('LOWER(' . $centerExpression . ') = ?', [Str::lower($center)]);
+            $query->whereRaw('LOWER('.$centerExpression.') = ?', [Str::lower($center)]);
         }
 
         if ($status !== '') {
-            $query->whereRaw('(' . $statusExpression . ') = ?', [$status]);
+            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
         }
 
         $paginator = $query
@@ -941,7 +960,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn(object $entry): array => $this->transformAppointmentManagementRow($entry))
+                ->map(fn (object $entry): array => $this->transformAppointmentManagementRow($entry))
                 ->values()
                 ->all(),
             'meta' => [
@@ -974,7 +993,7 @@ class AdminAuthController extends BaseController
     public function approveAppointment(Request $request, int $appointment): JsonResponse
     {
         $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (!$row) {
+        if (! $row) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
 
@@ -993,7 +1012,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification($donorId, 'appointment_approved', "Your appointment {$appointmentCode} has been approved.");
         app(AdminNotificationService::class)->createAdminEvent(
@@ -1019,7 +1038,7 @@ class AdminAuthController extends BaseController
     public function rejectAppointment(Request $request, int $appointment): JsonResponse
     {
         $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (!$row) {
+        if (! $row) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
 
@@ -1038,7 +1057,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification($donorId, 'appointment_rejected', "Your appointment {$appointmentCode} has been rejected.");
         app(AdminNotificationService::class)->createAdminEvent(
@@ -1069,7 +1088,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (!$row) {
+        if (! $row) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
 
@@ -1100,7 +1119,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification(
             $donorId,
@@ -1189,7 +1208,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (!$row) {
+        if (! $row) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
 
@@ -1209,7 +1228,7 @@ class AdminAuthController extends BaseController
         ]);
 
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP' . str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
+        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
         $this->createDonorNotification($donorId, 'appointment_cancelled', "Your appointment {$appointmentCode} has been cancelled.");
         app(AdminNotificationService::class)->createAdminEvent(
@@ -1295,7 +1314,7 @@ class AdminAuthController extends BaseController
         $statusExpression = $this->appointmentStatusExpression('ap');
 
         if ($searchTerm !== '') {
-            $likeTerm = '%' . $searchTerm . '%';
+            $likeTerm = '%'.$searchTerm.'%';
             $numericSearch = null;
 
             if (preg_match('/(\d+)/', $searchTerm, $matches) === 1) {
@@ -1336,7 +1355,7 @@ class AdminAuthController extends BaseController
         }
 
         if ($status !== '') {
-            $query->whereRaw('(' . $statusExpression . ') = ?', [$status]);
+            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
         }
 
         $paginator = $query
@@ -1372,7 +1391,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn(object $entry): array => $this->transformDonationProcessingRow($entry))
+                ->map(fn (object $entry): array => $this->transformDonationProcessingRow($entry))
                 ->values()
                 ->all(),
             'meta' => [
@@ -1408,8 +1427,7 @@ class AdminAuthController extends BaseController
         Request $request,
         BloodAvailabilityService $availability,
         FacilityBloodInventoryService $inventory
-    )
-    {
+    ) {
         return view('admin.blood_availability_mapping', [
             'bloodTypes' => $availability->bloodTypeNames(),
             'facilityTypes' => $inventory->facilityTypes(),
@@ -1645,7 +1663,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn(object $entry) => $this->transformAuditLogEntry($entry))
+                ->map(fn (object $entry) => $this->transformAuditLogEntry($entry))
                 ->values()
                 ->all(),
             'meta' => [
@@ -1695,7 +1713,7 @@ class AdminAuthController extends BaseController
             ->distinct()
             ->orderBy('action_type')
             ->pluck('action_type')
-            ->map(fn(string $value): array => [
+            ->map(fn (string $value): array => [
                 'value' => Str::lower(trim($value)),
                 'label' => $this->labelizeAuditValue($value),
             ])
@@ -1714,13 +1732,13 @@ class AdminAuthController extends BaseController
             ->where('actor_role', '!=', '')
             ->distinct()
             ->pluck('actor_role')
-            ->map(fn(string $value): string => $this->resolveAuditUserType($value))
+            ->map(fn (string $value): string => $this->resolveAuditUserType($value))
             ->unique()
             ->values()
             ->all();
 
         return collect($roleValues)
-            ->map(fn(string $value): array => [
+            ->map(fn (string $value): array => [
                 'value' => $value,
                 'label' => Str::title($value),
             ])
@@ -1800,7 +1818,7 @@ class AdminAuthController extends BaseController
             ->orderByDesc('audit_log_id')
             ->get();
 
-        $fileName = 'audit-logs-' . now()->format('Ymd-His') . '.csv';
+        $fileName = 'audit-logs-'.now()->format('Ymd-His').'.csv';
 
         return response()->streamDownload(function () use ($rows): void {
             $handle = fopen('php://output', 'wb');
@@ -1865,6 +1883,54 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Display the currently authenticated administrator's profile.
+     *
+     * Profile editing remains in the existing RBAC user-management flow so
+     * this page does not introduce a second account-update endpoint.
+     */
+    public function profile(Request $request)
+    {
+        $adminId = (int) $request->session()->get('admin_id', 0);
+        $columns = ['admin_id', 'full_name', 'username', 'email', 'role'];
+
+        if (Schema::hasColumn('admins', 'created_at')) {
+            $columns[] = 'created_at';
+        }
+
+        if ($this->supportsTwoFactorStorage()) {
+            $columns[] = 'two_factor_enabled';
+            $columns[] = 'two_factor_confirmed_at';
+        }
+
+        $admin = DB::table('admins')
+            ->select($columns)
+            ->where('admin_id', $adminId)
+            ->first();
+
+        if (! $admin) {
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Please log in to continue.');
+        }
+
+        $role = $this->normalizeRole((string) ($admin->role ?? 'staff'));
+
+        return view('admin.profile', [
+            'adminProfile' => [
+                'admin_id' => (int) ($admin->admin_id ?? 0),
+                'full_name' => $this->displayNameForAdmin($admin),
+                'username' => (string) ($admin->username ?? ''),
+                'email' => (string) ($admin->email ?? ''),
+                'role' => Str::title($role),
+                'role_key' => $role,
+                'created_at' => (string) ($admin->created_at ?? ''),
+                'two_factor_enabled' => (bool) ($admin->two_factor_enabled ?? false)
+                    && ! empty($admin->two_factor_confirmed_at),
+            ],
+        ]);
+    }
+
+    /**
      * Return server-side paginated and sorted admin users for RBAC users tab.
      */
     public function listRbacUsers(Request $request): JsonResponse
@@ -1888,7 +1954,7 @@ class AdminAuthController extends BaseController
 
         if ($searchTerm !== '') {
             $query->where(function ($builder) use ($searchTerm) {
-                $likeTerm = '%' . $searchTerm . '%';
+                $likeTerm = '%'.$searchTerm.'%';
 
                 $builder->where('full_name', 'like', $likeTerm)
                     ->orWhere('username', 'like', $likeTerm)
@@ -1933,7 +1999,7 @@ class AdminAuthController extends BaseController
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn(object $admin) => $this->transformRbacAdminUser($admin))
+                ->map(fn (object $admin) => $this->transformRbacAdminUser($admin))
                 ->values()
                 ->all(),
             'meta' => [
@@ -1987,12 +2053,12 @@ class AdminAuthController extends BaseController
 
         $displayName = $createdAdmin
             ? $this->displayNameForAdmin($createdAdmin)
-            : ('Admin #' . (int) $newAdminId);
+            : ('Admin #'.(int) $newAdminId);
 
         $this->logRbacAdminAudit(
             $request,
             'create',
-            'Created admin account: ' . $displayName,
+            'Created admin account: '.$displayName,
             (int) $newAdminId,
             [
                 'username' => $username,
@@ -2017,7 +2083,7 @@ class AdminAuthController extends BaseController
             ->where('admin_id', $adminId)
             ->first();
 
-        if (!$targetAdmin) {
+        if (! $targetAdmin) {
             return response()->json([
                 'message' => 'Admin user not found.',
             ], 404);
@@ -2074,7 +2140,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'update',
-            'Updated admin account: ' . $this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
+            'Updated admin account: '.$this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
             (int) $targetAdmin->admin_id,
             [
                 'changes' => $changes,
@@ -2097,7 +2163,7 @@ class AdminAuthController extends BaseController
             ->where('admin_id', $adminId)
             ->first();
 
-        if (!$targetAdmin) {
+        if (! $targetAdmin) {
             return response()->json([
                 'message' => 'Admin user not found.',
             ], 404);
@@ -2119,7 +2185,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'delete',
-            'Deleted admin account: ' . $targetDisplayName,
+            'Deleted admin account: '.$targetDisplayName,
             (int) $targetAdmin->admin_id,
             [
                 'email' => (string) ($targetAdmin->email ?? ''),
@@ -2148,7 +2214,7 @@ class AdminAuthController extends BaseController
             ->where('admin_id', $adminId)
             ->first();
 
-        if (!$targetAdmin) {
+        if (! $targetAdmin) {
             return response()->json([
                 'message' => 'Admin user not found.',
             ], 404);
@@ -2182,7 +2248,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'update',
-            'Updated admin role for ' . $this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
+            'Updated admin role for '.$this->displayNameForAdmin($updatedAdmin ?: $targetAdmin),
             (int) $targetAdmin->admin_id,
             [
                 'role_from' => (string) ($targetAdmin->role ?? ''),
@@ -2210,7 +2276,7 @@ class AdminAuthController extends BaseController
             ->where('admin_id', $adminId)
             ->first();
 
-        if (!$targetAdmin) {
+        if (! $targetAdmin) {
             return response()->json([
                 'message' => 'Admin user not found.',
             ], 404);
@@ -2227,7 +2293,7 @@ class AdminAuthController extends BaseController
         $this->logRbacAdminAudit(
             $request,
             'update',
-            'Reset password for admin account: ' . $this->displayNameForAdmin($targetAdmin),
+            'Reset password for admin account: '.$this->displayNameForAdmin($targetAdmin),
             (int) $targetAdmin->admin_id,
             [
                 'email' => (string) ($targetAdmin->email ?? ''),
@@ -2248,6 +2314,10 @@ class AdminAuthController extends BaseController
         $adminId = (int) $request->session()->get('admin_id', 0);
         $columns = ['admin_id'];
 
+        if (Schema::hasColumn('admins', 'email')) {
+            $columns[] = 'email';
+        }
+
         if ($this->supportsTwoFactorStorage()) {
             $columns = array_merge($columns, [
                 'two_factor_enabled',
@@ -2263,6 +2333,7 @@ class AdminAuthController extends BaseController
 
         $currentAccountTwoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
         $globalSecuritySettings = $this->getGlobalSecuritySettings();
+        $adminNotificationPreference = $this->getAdminNotificationPreference($adminId);
 
         return view('admin.settings', [
             'settingsPayload' => [
@@ -2274,8 +2345,9 @@ class AdminAuthController extends BaseController
                         'contactNumber' => '+63 917 123 4567',
                     ],
                     'notifications' => [
-                        'email' => true,
-                        'sms' => false,
+                        'email' => (bool) ($adminNotificationPreference?->email_enabled ?? false),
+                        'emailAddress' => (string) ($admin->email ?? ''),
+                        'updateUrl' => route('admin.settings.notifications.update'),
                     ],
                     'security' => [
                         'twoFactor' => (bool) ($globalSecuritySettings['two_factor_required'] ?? self::SECURITY_DEFAULT_TWO_FACTOR_REQUIRED),
@@ -2290,6 +2362,59 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Persist the current admin's email notification preference.
+     */
+    public function updateNotificationSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email_enabled' => ['required', 'boolean'],
+        ]);
+
+        if (! $this->supportsAdminNotificationPreferencesStorage()) {
+            return response()->json([
+                'message' => 'Email notification settings storage is not available. Please run migrations first.',
+            ], 409);
+        }
+
+        $adminId = (int) $request->session()->get('admin_id', 0);
+        $admin = DB::table('admins')
+            ->select('admin_id', 'email')
+            ->where('admin_id', $adminId)
+            ->first();
+
+        if (! $admin) {
+            return response()->json([
+                'message' => 'Authenticated admin account not found.',
+            ], 401);
+        }
+
+        $emailEnabled = (bool) $validated['email_enabled'];
+        $emailAddress = trim((string) ($admin->email ?? ''));
+
+        if ($emailEnabled && filter_var($emailAddress, FILTER_VALIDATE_EMAIL) === false) {
+            return response()->json([
+                'message' => 'Add a valid email address to the admin account before enabling email notifications.',
+            ], 422);
+        }
+
+        AdminNotificationPreference::query()->updateOrCreate(
+            ['admin_id' => $adminId],
+            ['email_enabled' => $emailEnabled]
+        );
+
+        return response()->json([
+            'message' => $emailEnabled
+                ? 'Email notifications enabled successfully.'
+                : 'Email notifications disabled successfully.',
+            'notifications' => [
+                'email' => $emailEnabled,
+                'emailAddress' => $emailAddress,
+                'updateUrl' => route('admin.settings.notifications.update'),
+            ],
+        ]);
+    }
+
+    /**
      * Persist admin security settings from settings page.
      */
     public function updateSecuritySettings(Request $request): JsonResponse
@@ -2299,7 +2424,7 @@ class AdminAuthController extends BaseController
             'session_timeout' => ['required', 'integer', Rule::in([5, 10, 30])],
         ]);
 
-        if (!$this->supportsGlobalSecuritySettingsStorage()) {
+        if (! $this->supportsGlobalSecuritySettingsStorage()) {
             return response()->json([
                 'message' => 'Security settings storage is not available. Please run migrations first.',
             ], 422);
@@ -2312,7 +2437,7 @@ class AdminAuthController extends BaseController
 
         $admin = $this->getCurrentAdminForTwoFactor($request);
         $currentAccountTwoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
-        $requiresEnrollment = (bool) $validated['two_factor_required'] && !$currentAccountTwoFactorEnabled;
+        $requiresEnrollment = (bool) $validated['two_factor_required'] && ! $currentAccountTwoFactorEnabled;
 
         $adminId = (int) ($request->session()->get('admin_id', 0));
         $this->logAdminSecurityPolicyAudit(
@@ -2356,7 +2481,7 @@ class AdminAuthController extends BaseController
                 ->with('error', 'Please log in to continue.');
         }
 
-        if (!$this->supportsTwoFactorStorage()) {
+        if (! $this->supportsTwoFactorStorage()) {
             return redirect()
                 ->route('admin.settings')
                 ->with('error', 'Two-factor columns are not available yet. Please run migrations first.');
@@ -2377,7 +2502,7 @@ class AdminAuthController extends BaseController
         $qrSvg = null;
         $provisioningUri = null;
 
-        if (!$twoFactorEnabled) {
+        if (! $twoFactorEnabled) {
             $secret = trim((string) $request->session()->get(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY, ''));
             if ($secret === '') {
                 $secret = $this->google2fa()->generateSecretKey();
@@ -2396,7 +2521,7 @@ class AdminAuthController extends BaseController
             'secret' => $secret,
             'provisioningUri' => $provisioningUri,
             'qrSvg' => $qrSvg,
-            'confirmedAt' => !empty($admin->two_factor_confirmed_at)
+            'confirmedAt' => ! empty($admin->two_factor_confirmed_at)
                 ? Carbon::parse((string) $admin->two_factor_confirmed_at)
                 : null,
             'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
@@ -2418,7 +2543,7 @@ class AdminAuthController extends BaseController
             'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
         ];
 
-        if (!$this->isGlobalTwoFactorRequired() || !$this->supportsTwoFactorStorage()) {
+        if (! $this->isGlobalTwoFactorRequired() || ! $this->supportsTwoFactorStorage()) {
             return $defaultPayload;
         }
 
@@ -2430,7 +2555,7 @@ class AdminAuthController extends BaseController
         $setupData = $this->prepareTwoFactorSetupViewData($request, $admin);
 
         return [
-            'required' => !(bool) ($setupData['twoFactorEnabled'] ?? false),
+            'required' => ! (bool) ($setupData['twoFactorEnabled'] ?? false),
             'maskedEmail' => (string) ($setupData['maskedEmail'] ?? ''),
             'secret' => $setupData['secret'] ?? null,
             'qrSvg' => $setupData['qrSvg'] ?? null,
@@ -2480,7 +2605,7 @@ class AdminAuthController extends BaseController
                 ->with('error', 'Please log in to continue.');
         }
 
-        if (!$this->supportsTwoFactorStorage()) {
+        if (! $this->supportsTwoFactorStorage()) {
             return redirect()
                 ->route('admin.settings')
                 ->with('error', 'Two-factor columns are not available yet. Please run migrations first.');
@@ -2493,7 +2618,7 @@ class AdminAuthController extends BaseController
                 ->with('error', '2FA setup session expired. Please scan the QR code again.');
         }
 
-        if (!$this->verifyTotpCode($secret, (string) $validated['otp'])) {
+        if (! $this->verifyTotpCode($secret, (string) $validated['otp'])) {
             return back()->withErrors([
                 'otp' => 'Invalid authenticator code. Please try again.',
             ]);
@@ -2501,7 +2626,7 @@ class AdminAuthController extends BaseController
 
         $recoveryCodes = $this->generateRecoveryCodes();
         $hashedRecoveryCodes = collect($recoveryCodes)
-            ->map(fn(string $value): string => Hash::make($value))
+            ->map(fn (string $value): string => Hash::make($value))
             ->values()
             ->all();
 
@@ -2560,20 +2685,20 @@ class AdminAuthController extends BaseController
                 ->with('error', 'Please log in to continue.');
         }
 
-        if (!$this->isTwoFactorEnabledForAdmin($admin)) {
+        if (! $this->isTwoFactorEnabledForAdmin($admin)) {
             return redirect()
                 ->route('admin.2fa.setup')
                 ->with('error', 'Two-factor authentication is already disabled.');
         }
 
-        if (!Hash::check((string) $validated['current_password'], (string) ($admin->password ?? ''))) {
+        if (! Hash::check((string) $validated['current_password'], (string) ($admin->password ?? ''))) {
             return back()->withErrors([
                 'current_password' => 'Current password does not match.',
             ]);
         }
 
         $secret = $this->decryptTwoFactorSecret((string) ($admin->two_factor_secret ?? ''));
-        if ($secret === null || !$this->verifyTotpCode($secret, (string) $validated['otp'])) {
+        if ($secret === null || ! $this->verifyTotpCode($secret, (string) $validated['otp'])) {
             return back()->withErrors([
                 'otp' => 'Invalid authenticator code.',
             ]);
@@ -2652,7 +2777,7 @@ class AdminAuthController extends BaseController
     {
         $rememberCookie = $request->cookie(self::REMEMBER_COOKIE_NAME);
 
-        if (!$rememberCookie || !$this->supportsRememberMeStorage()) {
+        if (! $rememberCookie || ! $this->supportsRememberMeStorage()) {
             return false;
         }
 
@@ -2660,18 +2785,21 @@ class AdminAuthController extends BaseController
             $payload = Crypt::decryptString($rememberCookie);
         } catch (DecryptException $exception) {
             $this->clearRememberMeToken();
+
             return false;
         }
 
         $parts = explode('|', $payload, 2);
         if (count($parts) !== 2) {
             $this->clearRememberMeToken();
+
             return false;
         }
 
         [$adminId, $plainToken] = $parts;
-        if (!is_numeric($adminId) || trim($plainToken) === '') {
+        if (! is_numeric($adminId) || trim($plainToken) === '') {
             $this->clearRememberMeToken();
+
             return false;
         }
 
@@ -2679,28 +2807,31 @@ class AdminAuthController extends BaseController
             ->where('admin_id', (int) $adminId)
             ->first();
 
-        if (!$admin) {
+        if (! $admin) {
             $this->clearRememberMeToken();
+
             return false;
         }
 
         $role = $this->normalizeRole((string) ($admin->role ?? ''));
-        if (!$this->isSupportedRole($role)) {
+        if (! $this->isSupportedRole($role)) {
             $this->clearRememberMeToken((int) $admin->admin_id);
+
             return false;
         }
 
-        $expiresAt = !empty($admin->remember_token_expires_at)
+        $expiresAt = ! empty($admin->remember_token_expires_at)
             ? Carbon::parse($admin->remember_token_expires_at)
             : null;
 
-        $isTokenValid = !empty($admin->remember_token)
+        $isTokenValid = ! empty($admin->remember_token)
             && $expiresAt !== null
-            && !$expiresAt->isPast()
+            && ! $expiresAt->isPast()
             && Hash::check($plainToken, $admin->remember_token);
 
-        if (!$isTokenValid) {
+        if (! $isTokenValid) {
             $this->clearRememberMeToken((int) $admin->admin_id);
+
             return false;
         }
 
@@ -2792,7 +2923,7 @@ class AdminAuthController extends BaseController
      */
     private function supportsTwoFactorStorage(): bool
     {
-        if (!Schema::hasTable('admins')) {
+        if (! Schema::hasTable('admins')) {
             return false;
         }
 
@@ -2815,7 +2946,7 @@ class AdminAuthController extends BaseController
             'session_timeout_minutes' => self::SECURITY_DEFAULT_SESSION_TIMEOUT_MINUTES,
         ];
 
-        if (!$this->supportsGlobalSecuritySettingsStorage()) {
+        if (! $this->supportsGlobalSecuritySettingsStorage()) {
             return $defaults;
         }
 
@@ -2824,7 +2955,7 @@ class AdminAuthController extends BaseController
             ->orderByDesc('admin_security_setting_id')
             ->first();
 
-        if (!$row) {
+        if (! $row) {
             return $defaults;
         }
 
@@ -2849,7 +2980,7 @@ class AdminAuthController extends BaseController
      */
     private function upsertGlobalSecuritySettings(bool $twoFactorRequired, int $sessionTimeout): void
     {
-        if (!$this->supportsGlobalSecuritySettingsStorage()) {
+        if (! $this->supportsGlobalSecuritySettingsStorage()) {
             return;
         }
 
@@ -2886,7 +3017,7 @@ class AdminAuthController extends BaseController
      */
     private function supportsGlobalSecuritySettingsStorage(): bool
     {
-        if (!Schema::hasTable(self::SECURITY_SETTINGS_TABLE)) {
+        if (! Schema::hasTable(self::SECURITY_SETTINGS_TABLE)) {
             return false;
         }
 
@@ -2895,11 +3026,38 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Resolve the current admin's email notification preference.
+     */
+    private function getAdminNotificationPreference(int $adminId): ?AdminNotificationPreference
+    {
+        if ($adminId <= 0 || ! $this->supportsAdminNotificationPreferencesStorage()) {
+            return null;
+        }
+
+        return AdminNotificationPreference::query()
+            ->where('admin_id', $adminId)
+            ->first();
+    }
+
+    /**
+     * Detect whether the email preference migration has been applied.
+     */
+    private function supportsAdminNotificationPreferencesStorage(): bool
+    {
+        if (! Schema::hasTable(self::ADMIN_NOTIFICATION_PREFERENCES_TABLE)) {
+            return false;
+        }
+
+        return Schema::hasColumn(self::ADMIN_NOTIFICATION_PREFERENCES_TABLE, 'admin_id')
+            && Schema::hasColumn(self::ADMIN_NOTIFICATION_PREFERENCES_TABLE, 'email_enabled');
+    }
+
+    /**
      * Determine if admin account currently enforces Google Authenticator.
      */
     private function isTwoFactorEnabledForAdmin(?object $admin): bool
     {
-        if (!$this->supportsTwoFactorStorage() || !$admin) {
+        if (! $this->supportsTwoFactorStorage() || ! $admin) {
             return false;
         }
 
@@ -2932,13 +3090,14 @@ class AdminAuthController extends BaseController
     {
         $pending = $request->session()->get(self::TWO_FACTOR_PENDING_SESSION_KEY);
 
-        if (!is_array($pending) || !is_numeric($pending['admin_id'] ?? null)) {
+        if (! is_array($pending) || ! is_numeric($pending['admin_id'] ?? null)) {
             return null;
         }
 
         $expiresAt = (int) ($pending['expires_at'] ?? 0);
         if ($expiresAt <= 0 || now()->timestamp > $expiresAt) {
             $this->clearPendingTwoFactorLogin($request);
+
             return null;
         }
 
@@ -2959,7 +3118,7 @@ class AdminAuthController extends BaseController
     private function verifyTotpCode(string $secret, string $code): bool
     {
         $normalizedCode = preg_replace('/\s+/', '', trim($code)) ?? '';
-        if (!preg_match('/^\d{6}$/', $normalizedCode)) {
+        if (! preg_match('/^\d{6}$/', $normalizedCode)) {
             return false;
         }
 
@@ -2992,7 +3151,7 @@ class AdminAuthController extends BaseController
         $codes = [];
 
         for ($index = 0; $index < self::TWO_FACTOR_RECOVERY_CODES_COUNT; $index++) {
-            $codes[] = Str::upper(Str::random(5)) . '-' . Str::upper(Str::random(5));
+            $codes[] = Str::upper(Str::random(5)).'-'.Str::upper(Str::random(5));
         }
 
         return $codes;
@@ -3014,12 +3173,12 @@ class AdminAuthController extends BaseController
             $decoded = $raw;
         }
 
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             return [];
         }
 
         return array_values(array_filter(array_map(
-            static fn(mixed $value): string => is_string($value) ? $value : '',
+            static fn (mixed $value): string => is_string($value) ? $value : '',
             $decoded
         )));
     }
@@ -3029,7 +3188,7 @@ class AdminAuthController extends BaseController
      */
     private function consumeRecoveryCode(object $admin, string $recoveryCode): bool
     {
-        if (!$this->supportsTwoFactorStorage()) {
+        if (! $this->supportsTwoFactorStorage()) {
             return false;
         }
 
@@ -3044,7 +3203,7 @@ class AdminAuthController extends BaseController
         }
 
         foreach ($hashes as $index => $hash) {
-            if (!Hash::check($normalizedInput, $hash)) {
+            if (! Hash::check($normalizedInput, $hash)) {
                 continue;
             }
 
@@ -3070,7 +3229,7 @@ class AdminAuthController extends BaseController
         try {
             $renderer = new ImageRenderer(
                 new RendererStyle(220),
-                new SvgImageBackEnd()
+                new SvgImageBackEnd
             );
 
             return (new Writer($renderer))->writeString($contents);
@@ -3089,7 +3248,7 @@ class AdminAuthController extends BaseController
     private function maskEmail(string $email): string
     {
         $email = trim($email);
-        if ($email === '' || !Str::contains($email, '@')) {
+        if ($email === '' || ! Str::contains($email, '@')) {
             return 'your account';
         }
 
@@ -3097,13 +3256,13 @@ class AdminAuthController extends BaseController
         $localPart = trim($localPart);
 
         if (Str::length($localPart) <= 2) {
-            $maskedLocalPart = Str::substr($localPart, 0, 1) . '*';
+            $maskedLocalPart = Str::substr($localPart, 0, 1).'*';
         } else {
             $maskedLocalPart = Str::substr($localPart, 0, 2)
-                . str_repeat('*', max(1, Str::length($localPart) - 2));
+                .str_repeat('*', max(1, Str::length($localPart) - 2));
         }
 
-        return $maskedLocalPart . '@' . $domain;
+        return $maskedLocalPart.'@'.$domain;
     }
 
     /**
@@ -3111,7 +3270,7 @@ class AdminAuthController extends BaseController
      */
     private function google2fa(): Google2FA
     {
-        return new Google2FA();
+        return new Google2FA;
     }
 
     /**
@@ -3174,8 +3333,8 @@ class AdminAuthController extends BaseController
                 'da.email',
                 'bt.blood_type',
             ])
-            ->selectRaw('(' . $centerExpression . ') as center_label')
-            ->selectRaw('(' . $statusExpression . ') as normalized_status');
+            ->selectRaw('('.$centerExpression.') as center_label')
+            ->selectRaw('('.$statusExpression.') as normalized_status');
     }
 
     /**
@@ -3221,11 +3380,11 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
         $status = Str::lower(trim($status));
 
         if (in_array($status, ['confirmed', 'approved', 'scheduled'], true)) {
-    return 'confirmed';
-}
-if (in_array($status, ['completed', 'complete', 'done'], true)) {
-    return 'completed';
-}
+            return 'confirmed';
+        }
+        if (in_array($status, ['completed', 'complete', 'done'], true)) {
+            return 'completed';
+        }
         if (in_array($status, ['checked_in', 'checked in'], true)) {
             return 'checked_in';
         }
@@ -3268,12 +3427,12 @@ if (in_array($status, ['completed', 'complete', 'done'], true)) {
         return DB::table('donors as d')
             ->leftJoin('locations as l', 'l.location_id', '=', 'd.location_id')
             ->whereNotNull('d.location_id')
-            ->selectRaw('(' . $centerExpression . ') as center_label')
+            ->selectRaw('('.$centerExpression.') as center_label')
             ->distinct()
             ->orderBy('center_label')
             ->pluck('center_label')
-            ->map(fn($value): string => trim((string) $value))
-            ->filter(fn(string $value): bool => $value !== '' && Str::lower($value) !== 'n/a')
+            ->map(fn ($value): string => trim((string) $value))
+            ->filter(fn (string $value): bool => $value !== '' && Str::lower($value) !== 'n/a')
             ->values()
             ->all();
     }
@@ -3285,26 +3444,26 @@ if (in_array($status, ['completed', 'complete', 'done'], true)) {
      */
     private function transformAppointmentManagementRow(object $entry): array
     {
-        $donorName = trim((string) ($entry->first_name ?? '') . ' ' . (string) ($entry->last_name ?? ''));
+        $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
         if ($donorName === '') {
             $donorName = 'Unknown Donor';
         }
 
         $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
-if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'], true)) {
-    $status = 'pending';
-}
+        if (! in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'], true)) {
+            $status = 'pending';
+        }
 
         return [
             'appointment_id' => (int) ($entry->appointment_id ?? 0),
-            'appointment_code' => 'AP' . str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'appointment_code' => 'AP'.str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'donor_id' => (int) ($entry->donor_id ?? 0),
-            'donor_code' => 'D' . str_pad((string) ((int) ($entry->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_code' => 'D'.str_pad((string) ((int) ($entry->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'donor_name' => $donorName,
             'donor_email' => trim((string) ($entry->email ?? '')),
             'blood_type' => trim((string) ($entry->blood_type ?? '')),
-            'appointment_date' => !empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
-            'appointment_time' => !empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
+            'appointment_date' => ! empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
+            'appointment_time' => ! empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
             'center_label' => trim((string) ($entry->center_label ?? '')) !== ''
                 ? trim((string) $entry->center_label)
                 : 'N/A',
@@ -3371,8 +3530,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 'recorder.full_name as recorded_by_name',
                 'recorder.username as recorded_by_username',
             ])
-            ->selectRaw('(' . $statusExpression . ') as normalized_status')
-            ->whereRaw('(' . $statusExpression . ') IN (?, ?, ?, ?, ?, ?)', [
+            ->selectRaw('('.$statusExpression.') as normalized_status')
+            ->whereRaw('('.$statusExpression.') IN (?, ?, ?, ?, ?, ?)', [
                 'confirmed',
                 'checked_in',
                 'completed',
@@ -3387,7 +3546,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function transformDonationProcessingRow(object $entry): array
     {
-        $donorName = trim((string) ($entry->first_name ?? '') . ' ' . (string) ($entry->last_name ?? ''));
+        $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
         $donorName = $donorName !== '' ? $donorName : 'Unknown Donor';
         $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
         $center = trim((string) ($entry->donation_center ?? ''));
@@ -3397,9 +3556,9 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
 
         return [
             'appointment_id' => (int) ($entry->appointment_id ?? 0),
-            'appointment_code' => 'AP' . str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'appointment_code' => 'AP'.str_pad((string) ((int) ($entry->appointment_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'donation_id' => isset($entry->donation_id) ? (int) $entry->donation_id : null,
-            'donation_code' => isset($entry->donation_id) ? 'DR' . str_pad((string) ((int) $entry->donation_id), 3, '0', STR_PAD_LEFT) : null,
+            'donation_code' => isset($entry->donation_id) ? 'DR'.str_pad((string) ((int) $entry->donation_id), 3, '0', STR_PAD_LEFT) : null,
             'donor_id' => (int) ($entry->donor_id ?? 0),
             'donor_name' => $donorName,
             'donor_email' => trim((string) ($entry->email ?? '')),
@@ -3408,16 +3567,16 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             'blood_type_status' => Str::lower(trim((string) ($entry->blood_type_status ?? 'not_yet_determined'))),
             'event_id' => isset($entry->event_id) ? (int) $entry->event_id : null,
             'event_title' => trim((string) ($entry->event_title ?? 'Legacy appointment')),
-            'appointment_date' => !empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
-            'appointment_time' => !empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
+            'appointment_date' => ! empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
+            'appointment_time' => ! empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
             'center_label' => $center !== '' ? $center : 'N/A',
             'status' => $status,
-            'checked_in_at' => !empty($entry->checked_in_at) ? (string) $entry->checked_in_at : null,
-            'completed_at' => !empty($entry->completed_at) ? (string) $entry->completed_at : null,
-            'booked_at' => !empty($entry->booked_at) ? (string) $entry->booked_at : null,
+            'checked_in_at' => ! empty($entry->checked_in_at) ? (string) $entry->checked_in_at : null,
+            'completed_at' => ! empty($entry->completed_at) ? (string) $entry->completed_at : null,
+            'booked_at' => ! empty($entry->booked_at) ? (string) $entry->booked_at : null,
             'verification_status' => Str::lower(trim((string) ($entry->verification_status ?? 'unverified'))),
             'eligibility_status' => Str::lower(trim((string) ($entry->eligibility_status ?? 'unknown'))),
-            'next_eligible_date' => !empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
+            'next_eligible_date' => ! empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
             'donation_status' => $entry->donation_status ? Str::lower((string) $entry->donation_status) : null,
             'blood_units' => is_numeric($entry->blood_units ?? null) ? (int) $entry->blood_units : null,
             'verified_blood_type_id' => isset($entry->verified_blood_type_id) ? (int) $entry->verified_blood_type_id : null,
@@ -3439,7 +3598,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function donationProcessingEventOptions(): array
     {
-        if (!Schema::hasTable('donation_events')) {
+        if (! Schema::hasTable('donation_events')) {
             return [];
         }
 
@@ -3447,7 +3606,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             ->orderByDesc('event_date')
             ->limit(100)
             ->get(['event_id', 'title', 'event_date'])
-            ->map(fn(object $event): array => [
+            ->map(fn (object $event): array => [
                 'event_id' => (int) $event->event_id,
                 'title' => trim((string) $event->title),
                 'event_date' => (string) $event->event_date,
@@ -3471,9 +3630,9 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                     ? DB::table('donation_events')->whereNotNull('location_name')->distinct()->pluck('location_name')
                     : collect()
             )
-            ->map(fn($value): string => trim((string) $value))
-            ->filter(fn(string $value): bool => $value !== '')
-            ->unique(fn(string $value): string => Str::lower($value))
+            ->map(fn ($value): string => trim((string) $value))
+            ->filter(fn (string $value): bool => $value !== '')
+            ->unique(fn (string $value): string => Str::lower($value))
             ->values()
             ->all();
     }
@@ -3511,8 +3670,8 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 'bt.blood_type',
                 'es.next_eligible_date',
             ])
-            ->selectRaw('(' . $centerExpression . ') as center_label')
-            ->selectRaw('(' . $statusExpression . ') as derived_status');
+            ->selectRaw('('.$centerExpression.') as center_label')
+            ->selectRaw('('.$statusExpression.') as derived_status');
     }
 
     /**
@@ -3536,7 +3695,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
     private function buildLoginStats(): array
     {
         $successfulDonationCount = (int) DB::table('donation_records as dr')
-            ->whereRaw('(' . $this->donationRecordStatusExpression('dr') . ') = ?', ['completed'])
+            ->whereRaw('('.$this->donationRecordStatusExpression('dr').') = ?', ['completed'])
             ->count();
 
         $donorCount = (int) DB::table('donors')->count();
@@ -3562,7 +3721,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         $formatted = number_format($compactValue, 1, '.', '');
         $formatted = rtrim(rtrim($formatted, '0'), '.');
 
-        return $formatted . 'k+';
+        return $formatted.'k+';
     }
 
     /**
@@ -3650,7 +3809,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
     /**
      * Safely check columns before dashboard queries touch optional schema.
      *
-     * @param array<int, string> $columns
+     * @param  array<int, string>  $columns
      */
     private function dashboardTableHasColumns(string $table, array $columns): bool
     {
@@ -3673,7 +3832,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
     private function dashboardColumnExists(string $table, string $column): bool
     {
         static $cache = [];
-        $key = $table . '.' . $column;
+        $key = $table.'.'.$column;
 
         if (array_key_exists($key, $cache)) {
             return $cache[$key];
@@ -3908,7 +4067,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         $change = (($current - $previous) / $previous) * 100;
         $prefix = $change > 0 ? '+' : '';
 
-        return $prefix . $this->dashboardFormatPercent($change) . '% this month';
+        return $prefix.$this->dashboardFormatPercent($change).'% this month';
     }
 
     /**
@@ -3933,7 +4092,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         $query = DB::table('donation_records as dr');
 
         if ($this->dashboardTableHasColumns('donation_records', ['remarks'])) {
-            return $query->whereRaw('(' . $this->donationRecordStatusExpression('dr') . ') = ?', ['completed']);
+            return $query->whereRaw('('.$this->donationRecordStatusExpression('dr').') = ?', ['completed']);
         }
 
         return $query->whereNotNull('dr.donation_date');
@@ -3951,7 +4110,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         $statusExpression = $this->appointmentStatusExpression('ap');
 
         return DB::table('appointments as ap')
-            ->whereRaw('(' . $statusExpression . ') in (?, ?)', ['pending', 'confirmed']);
+            ->whereRaw('('.$statusExpression.') in (?, ?)', ['pending', 'confirmed']);
     }
 
     /**
@@ -4058,7 +4217,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         $palette = ['#b60c0c', '#5a0000', '#e83333', '#f07070', '#ffd0d0', '#8f1010', '#d64545', '#ff9a9a'];
 
         return $rows
-            ->filter(fn(object $row): bool => (int) $row->donor_count > 0)
+            ->filter(fn (object $row): bool => (int) $row->donor_count > 0)
             ->values()
             ->map(function (object $row, int $index) use ($totalDonorsWithType, $palette): array {
                 return [
@@ -4156,7 +4315,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 ->each(function (object $row) use ($activities): void {
                     $activities->push($this->dashboardActivityItem(
                         $this->dashboardDonorName($row),
-                        'Eligibility ' . Str::headline((string) ($row->status ?? 'Update')),
+                        'Eligibility '.Str::headline((string) ($row->status ?? 'Update')),
                         '',
                         'gold',
                         (int) ($row->eligibility_id ?? 0)
@@ -4165,10 +4324,10 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         }
 
         return $activities
-            ->filter(fn(array $item): bool => $item['name'] !== '' || $item['action'] !== '')
+            ->filter(fn (array $item): bool => $item['name'] !== '' || $item['action'] !== '')
             ->sortByDesc('sort_value')
             ->take(5)
-            ->map(fn(array $item): array => [
+            ->map(fn (array $item): array => [
                 'name' => $item['name'],
                 'action' => $item['action'],
                 'time' => $item['time'],
@@ -4216,7 +4375,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
 
             DB::table('appointments as ap')
                 ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
-                ->whereRaw('(' . $statusExpression . ') = ?', ['pending'])
+                ->whereRaw('('.$statusExpression.') = ?', ['pending'])
                 ->orderBy('ap.appointment_date')
                 ->limit($needed)
                 ->get(['d.first_name', 'd.last_name'])
@@ -4284,7 +4443,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function dashboardDonorName(object $row): string
     {
-        $name = trim((string) ($row->first_name ?? '') . ' ' . (string) ($row->last_name ?? ''));
+        $name = trim((string) ($row->first_name ?? '').' '.(string) ($row->last_name ?? ''));
 
         return $name !== '' ? $name : 'Unknown Donor';
     }
@@ -4296,13 +4455,13 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function transformDonationRecordRow(object $entry): array
     {
-        $donorName = trim((string) ($entry->first_name ?? '') . ' ' . (string) ($entry->last_name ?? ''));
+        $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
         if ($donorName === '') {
             $donorName = 'Unknown Donor';
         }
 
         $status = Str::lower(trim((string) ($entry->derived_status ?? 'pending')));
-        if (!in_array($status, ['completed', 'pending', 'deferred'], true)) {
+        if (! in_array($status, ['completed', 'pending', 'deferred'], true)) {
             $status = 'pending';
         }
 
@@ -4312,17 +4471,17 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
 
         return [
             'donation_id' => (int) ($entry->donation_id ?? 0),
-            'record_code' => 'DR' . str_pad((string) ((int) ($entry->donation_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'record_code' => 'DR'.str_pad((string) ((int) ($entry->donation_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'donor_id' => (int) ($entry->donor_id ?? 0),
             'donor_name' => $donorName,
             'blood_type' => trim((string) ($entry->blood_type ?? '')),
-            'donation_date' => !empty($entry->donation_date) ? (string) $entry->donation_date : null,
+            'donation_date' => ! empty($entry->donation_date) ? (string) $entry->donation_date : null,
             'center_label' => trim((string) ($entry->center_label ?? '')) !== ''
                 ? trim((string) $entry->center_label)
                 : 'N/A',
             'volume_ml' => $volumeMl,
             'status' => $status,
-            'next_eligible_date' => !empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
+            'next_eligible_date' => ! empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
         ];
     }
 
@@ -4356,7 +4515,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 DB::raw('COALESCE(drs.total_donations, 0) as total_donations'),
                 DB::raw('drs.last_donation_date as last_donation_date'),
             ])
-            ->selectRaw('(' . $statusExpression . ') as derived_status');
+            ->selectRaw('('.$statusExpression.') as derived_status');
     }
 
     /**
@@ -4448,7 +4607,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 DB::raw('drs.last_donation_date as last_donation_date'),
                 DB::raw('NULL as updated_at'),
             ])
-            ->selectRaw('(' . $statusExpression . ') as derived_status');
+            ->selectRaw('('.$statusExpression.') as derived_status');
     }
 
     /**
@@ -4522,24 +4681,24 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function transformUserManagementDonor(object $donor): array
     {
-        $fullName = trim((string) ($donor->first_name ?? '') . ' ' . (string) ($donor->last_name ?? ''));
+        $fullName = trim((string) ($donor->first_name ?? '').' '.(string) ($donor->last_name ?? ''));
         if ($fullName === '') {
-            $fullName = 'Donor #' . (int) ($donor->donor_id ?? 0);
+            $fullName = 'Donor #'.(int) ($donor->donor_id ?? 0);
         }
 
         $status = Str::lower(trim((string) ($donor->derived_status ?? 'eligible')));
-        if (!in_array($status, ['eligible', 'not_eligible'], true)) {
+        if (! in_array($status, ['eligible', 'not_eligible'], true)) {
             $status = 'eligible';
         }
 
         return [
             'donor_id' => (int) ($donor->donor_id ?? 0),
-            'donor_code' => 'D' . str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_code' => 'D'.str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'full_name' => $fullName,
             'email' => trim((string) ($donor->email ?? '')),
             'blood_type' => trim((string) ($donor->blood_type ?? '')),
             'contact_number' => trim((string) ($donor->contact_number ?? '')),
-            'last_donation_date' => !empty($donor->last_donation_date)
+            'last_donation_date' => ! empty($donor->last_donation_date)
                 ? (string) $donor->last_donation_date
                 : null,
             'eligibility_status' => $status,
@@ -4554,16 +4713,16 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function transformUserManagementDonorDetail(object $donor): array
     {
-        $fullName = trim((string) ($donor->first_name ?? '') . ' ' . (string) ($donor->last_name ?? ''));
+        $fullName = trim((string) ($donor->first_name ?? '').' '.(string) ($donor->last_name ?? ''));
         if ($fullName === '') {
-            $fullName = 'Donor #' . (int) ($donor->donor_id ?? 0);
+            $fullName = 'Donor #'.(int) ($donor->donor_id ?? 0);
         }
 
         $status = $this->normalizeUserManagementStatusValue((string) ($donor->derived_status ?? 'eligible'));
 
         return [
             'donor_id' => (int) ($donor->donor_id ?? 0),
-            'donor_code' => 'D' . str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
+            'donor_code' => 'D'.str_pad((string) ((int) ($donor->donor_id ?? 0)), 3, '0', STR_PAD_LEFT),
             'auth_id' => isset($donor->auth_id) ? (int) $donor->auth_id : null,
             'eligibility_id' => isset($donor->eligibility_id) ? (int) $donor->eligibility_id : null,
             'first_name' => trim((string) ($donor->first_name ?? '')),
@@ -4782,7 +4941,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             return (string) ($blocker['label'] ?? 'related records');
         }, $blockers);
 
-        return 'This donor cannot be deleted because related ' . implode(', ', $labels) . ' still exist.';
+        return 'This donor cannot be deleted because related '.implode(', ', $labels).' still exist.';
     }
 
     /**
@@ -4837,7 +4996,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             ->select($this->rbacAdminSelectColumns())
             ->orderBy('admin_id')
             ->get()
-            ->map(fn(object $admin) => $this->transformRbacAdminUser($admin))
+            ->map(fn (object $admin) => $this->transformRbacAdminUser($admin))
             ->values()
             ->all();
     }
@@ -4857,7 +5016,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
 
         if ($this->supportsTwoFactorStorage()) {
             $twoFactorEnrolled = (bool) ($admin->two_factor_enabled ?? false)
-                && !empty($admin->two_factor_confirmed_at);
+                && ! empty($admin->two_factor_confirmed_at);
         }
 
         return [
@@ -4898,7 +5057,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             $displayName = trim((string) ($admin->username ?? ''));
         }
         if ($displayName === '') {
-            $displayName = 'Admin #' . (int) ($admin->admin_id ?? 0);
+            $displayName = 'Admin #'.(int) ($admin->admin_id ?? 0);
         }
 
         return $displayName;
@@ -4926,7 +5085,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             return;
         }
 
-        if (!Schema::hasTable('notifications')) {
+        if (! Schema::hasTable('notifications')) {
             return;
         }
 
@@ -4963,7 +5122,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             $actorName = trim((string) ($request->session()->get('admin_full_name') ?: $request->session()->get('admin_username') ?: 'Admin'));
             $actorRole = ucfirst($this->normalizeRole((string) $request->session()->get('admin_role', 'admin')));
 
-            if (!Schema::hasTable('audit_logs')) {
+            if (! Schema::hasTable('audit_logs')) {
                 logger()->info('Appointment audit event', [
                     'action_type' => $actionType,
                     'description' => $description,
@@ -5012,7 +5171,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             $actorName = trim((string) ($request->session()->get('admin_full_name') ?: $request->session()->get('admin_username') ?: 'Admin'));
             $actorRole = ucfirst($this->normalizeRole((string) $request->session()->get('admin_role', 'admin')));
 
-            if (!Schema::hasTable('audit_logs')) {
+            if (! Schema::hasTable('audit_logs')) {
                 logger()->info('RBAC admin audit event', [
                     'action_type' => $actionType,
                     'description' => $description,
@@ -5110,7 +5269,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
             $actorName = trim((string) ($request->session()->get('admin_full_name') ?: $request->session()->get('admin_username') ?: 'Admin'));
             $actorRole = ucfirst($this->normalizeRole((string) $request->session()->get('admin_role', 'admin')));
 
-            if (!Schema::hasTable('audit_logs')) {
+            if (! Schema::hasTable('audit_logs')) {
                 logger()->info('Security policy audit event', [
                     'description' => $description,
                     'metadata' => $metadata,
@@ -5158,7 +5317,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
         ?string $endDate = null
     ): void {
         if ($searchTerm !== '') {
-            $likeTerm = '%' . $searchTerm . '%';
+            $likeTerm = '%'.$searchTerm.'%';
 
             $query->where(function ($builder) use ($likeTerm): void {
                 $builder->where('actor_name', 'like', $likeTerm)
@@ -5174,7 +5333,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
 
         if ($actor !== '') {
             $query->where(function ($builder) use ($actor): void {
-                $likeTerm = '%' . $actor . '%';
+                $likeTerm = '%'.$actor.'%';
                 $builder->where('actor_name', 'like', $likeTerm)
                     ->orWhere('actor_admin_id', $actor);
             });
@@ -5213,16 +5372,19 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 $builder->whereRaw("LOWER(COALESCE(actor_role, '')) like ?", ['%admin%'])
                     ->orWhereRaw("LOWER(COALESCE(actor_role, '')) like ?", ['%staff%']);
             });
+
             return;
         }
 
         if ($userType === 'donor') {
             $query->whereRaw("LOWER(COALESCE(actor_role, '')) like ?", ['%donor%']);
+
             return;
         }
 
         if ($userType === 'system') {
             $query->whereRaw("LOWER(COALESCE(actor_role, '')) like ?", ['%system%']);
+
             return;
         }
 
@@ -5408,7 +5570,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function issueRememberMeToken(int $adminId): void
     {
-        if (!$this->supportsRememberMeStorage()) {
+        if (! $this->supportsRememberMeStorage()) {
             return;
         }
 
@@ -5422,7 +5584,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
                 'remember_token_expires_at' => $expiresAt,
             ]);
 
-        $cookiePayload = Crypt::encryptString($adminId . '|' . $plainToken);
+        $cookiePayload = Crypt::encryptString($adminId.'|'.$plainToken);
 
         Cookie::queue(cookie(
             self::REMEMBER_COOKIE_NAME,
@@ -5459,7 +5621,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function supportsRememberMeStorage(): bool
     {
-        if (!Schema::hasTable('admins')) {
+        if (! Schema::hasTable('admins')) {
             return false;
         }
 
@@ -5472,7 +5634,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
      */
     private function makePasswordResetCacheKey(string $email): string
     {
-        return self::RESET_CACHE_PREFIX . Str::lower(trim($email));
+        return self::RESET_CACHE_PREFIX.Str::lower(trim($email));
     }
 
     /**
@@ -5482,7 +5644,7 @@ if (!in_array($status, ['confirmed', 'pending', 'cancelled', 'rescheduled', 'che
     {
         $cacheData = Cache::store(self::RESET_CACHE_STORE)->get($this->makePasswordResetCacheKey($email));
 
-        if (!is_array($cacheData) || empty($cacheData['token_hash'])) {
+        if (! is_array($cacheData) || empty($cacheData['token_hash'])) {
             return false;
         }
 

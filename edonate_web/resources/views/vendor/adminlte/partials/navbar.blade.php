@@ -43,6 +43,11 @@
                     </li>
                     @if ($adminRole === 'admin')
                         <li>
+                            <a class="dropdown-item" href="{{ route('admin.profile') }}">
+                                <i class="bi bi-person-circle me-2" aria-hidden="true"></i>Profile
+                            </a>
+                        </li>
+                        <li>
                             <a class="dropdown-item" href="{{ route('admin.settings') }}">
                                 <i class="bi bi-gear me-2" aria-hidden="true"></i>Settings
                             </a>

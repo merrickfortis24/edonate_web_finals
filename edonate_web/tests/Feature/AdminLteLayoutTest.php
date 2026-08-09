@@ -17,7 +17,7 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('<aside class="app-sidebar edonate-sidebar shadow"', $html);
         $this->assertStringContainsString('edonate-admin-page admin-unauthorized-page', $html);
         $this->assertStringContainsString('User Management', $html);
-        $this->assertStringContainsString('RBAC', $html);
+        $this->assertStringContainsString('User Roles and Permissions', $html);
         $this->assertStringContainsString('edonate-sidebar-logout-form', $html);
         $this->assertStringNotContainsString('id="hamburgerBtn"', $html);
         $this->assertStringNotContainsString('id="sidebar"', $html);
@@ -33,8 +33,20 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('Audit Logs', $html);
         $this->assertStringNotContainsString('User Management', $html);
         $this->assertStringNotContainsString('Question Management', $html);
-        $this->assertStringNotContainsString('RBAC', $html);
+        $this->assertStringNotContainsString('User Roles and Permissions', $html);
+        $this->assertStringNotContainsString('Profile', $html);
         $this->assertStringNotContainsString('Settings', $html);
+    }
+
+    public function test_admin_profile_uses_the_shared_adminlte_shell_and_existing_rbac_editor_link(): void
+    {
+        $html = $this->renderPageForRole('admin.profile', 'admin', '/admin/profile');
+
+        $this->assertStringContainsString('<title>eDonate - Admin Profile</title>', $html);
+        $this->assertStringContainsString('admin-profile-page', $html);
+        $this->assertStringContainsString('Edit Profile', $html);
+        $this->assertStringContainsString('admin/profile', $html);
+        $this->assertStringContainsString('admin/settings', $html);
     }
 
     public function test_existing_page_data_and_scripts_are_preserved_inside_the_adminlte_shell(): void

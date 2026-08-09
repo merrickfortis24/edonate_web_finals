@@ -1,9 +1,9 @@
 @extends('layouts.admin')
 
-@section('title', 'eDonate - RBAC Management')
+@section('title', 'eDonate - User Roles and Permissions')
 @section('admin_page_class', 'admin-rbac-page')
-@section('header_title', 'RBAC Management')
-@section('header_subtitle', 'Manage roles, permissions, and user access assignments')
+@section('header_title', 'User Roles and Permissions')
+@section('header_subtitle', 'Manage user roles, permissions, and access assignments')
 
 @section('header_actions')
 	<button class="rbac-add-role-btn btn d-none" id="rbacHeaderAddRoleBtn" type="button" aria-label="Add new role">
@@ -36,7 +36,7 @@
 			['id' => 11, 'key' => 'audit.view', 'name' => 'View Audit Logs', 'module' => 'Audit Logs', 'description' => 'Review activity logs'],
 			['id' => 12, 'key' => 'audit.export', 'name' => 'Export Audit Logs', 'module' => 'Audit Logs', 'description' => 'Export audit log entries'],
 			['id' => 13, 'key' => 'blood.map.view', 'name' => 'View Blood Map', 'module' => 'Blood Availability Mapping', 'description' => 'Access blood availability map'],
-			['id' => 14, 'key' => 'rbac.manage', 'name' => 'Manage RBAC', 'module' => 'RBAC', 'description' => 'Manage roles and permissions'],
+			['id' => 14, 'key' => 'rbac.manage', 'name' => 'Manage User Roles and Permissions', 'module' => 'User Roles and Permissions', 'description' => 'Manage user roles and permissions'],
 			['id' => 15, 'key' => 'donor_verification.view', 'name' => 'View Donor Verification', 'module' => 'Donor Verification', 'description' => 'View identity verification submissions'],
 			['id' => 16, 'key' => 'donor_verification.review', 'name' => 'Review Donor Verification', 'module' => 'Donor Verification', 'description' => 'Approve or reject identity verification'],
 			['id' => 17, 'key' => 'eligibility.view', 'name' => 'View Eligibility Reviews', 'module' => 'Eligibility', 'description' => 'View donor eligibility submissions and results'],
@@ -74,7 +74,7 @@
 		<div class="rbac-body container-fluid py-3">
 			<div id="rbacAlertHost" class="rbac-alert-host"></div>
 
-			<section class="rbac-summary row g-3" aria-label="RBAC overview">
+			<section class="rbac-summary row g-3" aria-label="User roles and permissions overview">
 				<div class="col-6 col-xl-3">
 					<article class="rbac-summary-card rbac-summary-card--red h-100">
 						<p class="rbac-summary-card__label">Roles</p>
@@ -101,7 +101,7 @@
 				</div>
 			</section>
 
-			<section class="rbac-card" aria-label="RBAC management tabs">
+			<section class="rbac-card" aria-label="User roles and permissions management tabs">
 				<ul class="nav nav-tabs rbac-tabs" id="rbacMainTabs" role="tablist">
 					<li class="nav-item" role="presentation">
 						<button class="nav-link active" id="rbac-roles-tab" data-bs-toggle="tab" data-bs-target="#rbac-roles-pane" type="button" role="tab" aria-controls="rbac-roles-pane" aria-selected="true">Roles</button>
@@ -716,7 +716,7 @@
 
 		function fetchUsers(page) {
 			if (!listUsersUrl) {
-				showAlert('danger', 'RBAC users listing route is not configured.');
+					showAlert('danger', 'User roles and permissions listing route is not configured.');
 				return;
 			}
 
@@ -1563,7 +1563,7 @@
 				var requestUrl = isEditing ? buildUpdateUserUrl(editingUserId) : createUserUrl;
 				var requestMethod = isEditing ? 'PUT' : 'POST';
 				if (!requestUrl) {
-					showAlert('danger', 'RBAC user CRUD route is not configured.');
+					showAlert('danger', 'User roles and permissions management route is not configured.');
 					return;
 				}
 
@@ -1685,7 +1685,7 @@
 
 				var requestUrl = buildUpdateUserRoleUrl(userId);
 				if (!requestUrl) {
-					showAlert('danger', 'RBAC user role update route is not configured.');
+					showAlert('danger', 'User role update route is not configured.');
 					return;
 				}
 
@@ -1745,7 +1745,7 @@
 
 				var requestUrl = buildDeleteUserUrl(deletingUserId);
 				if (!requestUrl) {
-					showAlert('danger', 'RBAC delete user route is not configured.');
+					showAlert('danger', 'User deletion route is not configured.');
 					return;
 				}
 
@@ -1816,7 +1816,7 @@
 
 				var requestUrl = buildResetUserPasswordUrl(targetUserId);
 				if (!requestUrl) {
-					showAlert('danger', 'RBAC reset password route is not configured.');
+					showAlert('danger', 'User password reset route is not configured.');
 					return;
 				}
 

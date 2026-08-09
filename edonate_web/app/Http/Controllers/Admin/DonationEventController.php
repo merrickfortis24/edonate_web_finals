@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\DonationEvent;
 use App\Services\AppointmentBookingService;
+use App\Services\AdminNotificationService;
 use App\Services\DonationEventService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +20,8 @@ class DonationEventController extends Controller
 {
     public function __construct(
         private readonly AppointmentBookingService $bookingService,
-        private readonly DonationEventService $eventService
+        private readonly DonationEventService $eventService,
+        private readonly AdminNotificationService $adminNotificationService
     )
     {
     }
@@ -105,6 +107,14 @@ class DonationEventController extends Controller
             'status' => (string) $event->status,
         ]);
 
+        $this->adminNotificationService->createAdminEvent(
+            'donation_event_created',
+            'Donation Event Created',
+            "Donation event {$event->title} was created.",
+            'event',
+            (int) $event->event_id
+        );
+
         return response()->json([
             'message' => 'Donation event created.',
             'event' => $this->eventResponse($event),
@@ -133,6 +143,14 @@ class DonationEventController extends Controller
             'before' => $before,
             'after' => $this->eventResponse($event),
         ]);
+
+        $this->adminNotificationService->createAdminEvent(
+            'donation_event_updated',
+            'Donation Event Updated',
+            "Donation event {$event->title} was updated.",
+            'event',
+            (int) $event->event_id
+        );
 
         return response()->json([
             'message' => 'Donation event updated.',
@@ -327,6 +345,14 @@ class DonationEventController extends Controller
             'after' => $this->eventResponse($updated),
             'reason' => $reason,
         ]);
+
+        $this->adminNotificationService->createAdminEvent(
+            'donation_event_' . $status,
+            'Donation Event Updated',
+            "Donation event {$updated->title} was {$status}." . ($reason ? " Reason: {$reason}" : ''),
+            'event',
+            (int) $updated->event_id
+        );
 
         return response()->json([
             'message' => $message,

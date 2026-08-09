@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Mail\AdminNotificationMail;
 use App\Models\AdminNotification;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
@@ -50,7 +53,13 @@ class AdminNotificationService
         }
 
         try {
-            return AdminNotification::query()->create($insert);
+            $notification = AdminNotification::query()->create($insert);
+
+            if ($notification !== null && $values['channel'] !== 'push') {
+                $this->sendEmailNotifications($notification);
+            }
+
+            return $notification;
         } catch (Throwable $exception) {
             report($exception);
 
@@ -121,6 +130,115 @@ class AdminNotificationService
         $channel = Str::of($channel)->lower()->trim()->toString();
 
         return in_array($channel, ['system', 'email', 'push'], true) ? $channel : 'system';
+    }
+
+    /**
+     * Send an admin notification to admins who explicitly enabled email.
+     *
+     * Email delivery is intentionally isolated from the protected
+     * admin_notifications table. A mail failure is logged and does not make
+     * the in-app notification operation fail.
+     */
+    private function sendEmailNotifications(AdminNotification $notification): void
+    {
+        if (! $this->hasAdminNotificationPreferencesTable() || ! $this->hasAdminsTable()) {
+            return;
+        }
+
+        try {
+            $recipients = DB::table('admins as admins')
+                ->join(
+                    'admin_notification_preferences as preferences',
+                    'preferences.admin_id',
+                    '=',
+                    'admins.admin_id'
+                )
+                ->where('preferences.email_enabled', true)
+                ->whereNotNull('admins.email')
+                ->where('admins.email', '<>', '')
+                ->select([
+                    'admins.admin_id',
+                    'admins.email',
+                    'admins.full_name',
+                    'admins.username',
+                ])
+                ->distinct()
+                ->get();
+        } catch (Throwable $exception) {
+            logger()->error('Unable to resolve admin email notification recipients.', [
+                'admin_notification_id' => $notification->getKey(),
+                'message' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
+        foreach ($recipients as $recipient) {
+            $email = trim((string) ($recipient->email ?? ''));
+            if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+                continue;
+            }
+
+            try {
+                Mail::to($email)->send(new AdminNotificationMail(
+                    $this->recipientName($recipient),
+                    (string) ($notification->title ?? 'Admin Notification'),
+                    (string) ($notification->message ?? ''),
+                    (string) ($notification->notification_type ?? 'system'),
+                    $notification->related_type !== null ? (string) $notification->related_type : null,
+                    $notification->related_id !== null ? (int) $notification->related_id : null,
+                ));
+            } catch (Throwable $exception) {
+                logger()->error('Failed to send admin notification email.', [
+                    'admin_id' => (int) ($recipient->admin_id ?? 0),
+                    'admin_notification_id' => $notification->getKey(),
+                    'email' => $email,
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    private function recipientName(object $recipient): string
+    {
+        $fullName = trim((string) ($recipient->full_name ?? ''));
+        if ($fullName !== '') {
+            return $fullName;
+        }
+
+        $username = trim((string) ($recipient->username ?? ''));
+
+        return $username !== '' ? $username : 'Admin';
+    }
+
+    private function hasAdminNotificationPreferencesTable(): bool
+    {
+        try {
+            return Schema::hasTable('admin_notification_preferences')
+                && Schema::hasColumn('admin_notification_preferences', 'admin_id')
+                && Schema::hasColumn('admin_notification_preferences', 'email_enabled');
+        } catch (Throwable $exception) {
+            logger()->warning('Admin notification preference storage is unavailable.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function hasAdminsTable(): bool
+    {
+        try {
+            return Schema::hasTable('admins')
+                && Schema::hasColumn('admins', 'admin_id')
+                && Schema::hasColumn('admins', 'email');
+        } catch (Throwable $exception) {
+            logger()->warning('Admin account storage is unavailable for email notifications.', [
+                'message' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     private function hasColumn(string $column): bool
