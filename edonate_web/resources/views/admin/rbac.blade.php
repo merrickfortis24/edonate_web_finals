@@ -37,11 +37,32 @@
 			['id' => 12, 'key' => 'audit.export', 'name' => 'Export Audit Logs', 'module' => 'Audit Logs', 'description' => 'Export audit log entries'],
 			['id' => 13, 'key' => 'blood.map.view', 'name' => 'View Blood Map', 'module' => 'Blood Availability Mapping', 'description' => 'Access blood availability map'],
 			['id' => 14, 'key' => 'rbac.manage', 'name' => 'Manage RBAC', 'module' => 'RBAC', 'description' => 'Manage roles and permissions'],
+			['id' => 15, 'key' => 'donor_verification.view', 'name' => 'View Donor Verification', 'module' => 'Donor Verification', 'description' => 'View identity verification submissions'],
+			['id' => 16, 'key' => 'donor_verification.review', 'name' => 'Review Donor Verification', 'module' => 'Donor Verification', 'description' => 'Approve or reject identity verification'],
+			['id' => 17, 'key' => 'eligibility.view', 'name' => 'View Eligibility Reviews', 'module' => 'Eligibility', 'description' => 'View donor eligibility submissions and results'],
+			['id' => 18, 'key' => 'eligibility.review', 'name' => 'Review Eligibility', 'module' => 'Eligibility', 'description' => 'Review and decide eligibility cases'],
+			['id' => 19, 'key' => 'eligibility_questions.manage', 'name' => 'Manage Eligibility Questions', 'module' => 'Question Management', 'description' => 'Create, edit, and manage screening questions'],
+			['id' => 20, 'key' => 'events.view', 'name' => 'View Donation Events', 'module' => 'Event Management', 'description' => 'View donation events and capacity'],
+			['id' => 21, 'key' => 'events.manage', 'name' => 'Manage Donation Events', 'module' => 'Event Management', 'description' => 'Create, update, open, close, or cancel events'],
+			['id' => 22, 'key' => 'appointments.view', 'name' => 'View Appointments', 'module' => 'Appointment Management', 'description' => 'View appointment schedules and statuses'],
+			['id' => 23, 'key' => 'appointments.check_in', 'name' => 'Check In Donors', 'module' => 'Appointment Management', 'description' => 'Record donor arrival and check-in'],
+			['id' => 24, 'key' => 'appointments.complete', 'name' => 'Complete Appointments', 'module' => 'Appointment Management', 'description' => 'Complete, defer, cancel, or mark appointments'],
+			['id' => 25, 'key' => 'donations.process', 'name' => 'Process Donations', 'module' => 'Donation Records', 'description' => 'Record donation outcomes and blood units'],
+			['id' => 26, 'key' => 'donations.verify_blood_type', 'name' => 'Verify Blood Type', 'module' => 'Donation Records', 'description' => 'Verify blood type during donation processing'],
+			['id' => 27, 'key' => 'facilities.view', 'name' => 'View Facilities', 'module' => 'Facility Management', 'description' => 'View facilities and mapped locations'],
+			['id' => 28, 'key' => 'facilities.manage', 'name' => 'Manage Facilities', 'module' => 'Facility Management', 'description' => 'Create, update, and activate facilities'],
+			['id' => 29, 'key' => 'inventory.view', 'name' => 'View Facility Inventory', 'module' => 'Facility Management', 'description' => 'View facility blood inventory'],
+			['id' => 30, 'key' => 'inventory.manage', 'name' => 'Manage Facility Inventory', 'module' => 'Facility Management', 'description' => 'Adjust facility blood inventory and history'],
+			['id' => 31, 'key' => 'blood_requests.view', 'name' => 'View Blood Requests', 'module' => 'Blood Requests', 'description' => 'View facility blood and replacement donor requests'],
+			['id' => 32, 'key' => 'blood_requests.manage', 'name' => 'Manage Blood Requests', 'module' => 'Blood Requests', 'description' => 'Create, cancel, and fulfill blood requests'],
+			['id' => 33, 'key' => 'blood_requests.match', 'name' => 'Match Replacement Donors', 'module' => 'Blood Requests', 'description' => 'Review candidates and notify replacement donors'],
+			['id' => 34, 'key' => 'settings.view', 'name' => 'View Admin Settings', 'module' => 'Settings', 'description' => 'View portal and security settings'],
+			['id' => 35, 'key' => 'settings.manage', 'name' => 'Manage Admin Settings', 'module' => 'Settings', 'description' => 'Update portal security settings'],
 		],
 		'users' => $rbacUsers ?? [],
 		'rolePermissions' => [
-			'1' => [1,2,3,4,5,6,7,8,9,10,11,12,13,14],
-			'2' => [1,5,6,7,9,10,13],
+			'1' => range(1, 35),
+			'2' => [1,5,6,7,9,10,11,13,22,23,24,25,27,29,31,32,33],
 		],
 		'api' => $rbacApi ?? [],
 	],
@@ -140,6 +161,7 @@
 
 									<label class="form-label" for="rbacPermissionsSearchInput">Search Permission</label>
 									<input type="text" class="form-control mb-3" id="rbacPermissionsSearchInput" placeholder="Search by name, key, or module" aria-label="Search permissions">
+									<div class="small text-body-secondary mb-2" id="rbacPermissionCount" aria-live="polite"></div>
 
 									<div class="rbac-permission-list" id="rbacPermissionCheckboxes"></div>
 
@@ -456,11 +478,42 @@
 		var userModalElement = document.getElementById('rbacUserModal');
 		var deleteUserModalElement = document.getElementById('rbacDeleteUserModal');
 		var resetPasswordModalElement = document.getElementById('rbacResetPasswordModal');
-		var roleModal = roleModalElement ? bootstrap.Modal.getOrCreateInstance(roleModalElement) : null;
-		var deleteModal = deleteModalElement ? bootstrap.Modal.getOrCreateInstance(deleteModalElement) : null;
-		var userModal = userModalElement ? bootstrap.Modal.getOrCreateInstance(userModalElement) : null;
-		var deleteUserModal = deleteUserModalElement ? bootstrap.Modal.getOrCreateInstance(deleteUserModalElement) : null;
-		var resetPasswordModal = resetPasswordModalElement ? bootstrap.Modal.getOrCreateInstance(resetPasswordModalElement) : null;
+
+		// AdminLTE's Vite module is deferred, while this page script is printed at
+		// the end of the document. Resolve Bootstrap only when a modal is used so
+		// a slow module load cannot stop the rest of the RBAC page from rendering.
+		function lazyModalController(element) {
+			var instance = null;
+
+			function resolve() {
+				if (!instance && element && window.bootstrap && window.bootstrap.Modal) {
+					instance = window.bootstrap.Modal.getOrCreateInstance(element);
+				}
+
+				return instance;
+			}
+
+			return {
+				show: function () {
+					var modal = resolve();
+					if (modal) {
+						modal.show();
+					}
+				},
+				hide: function () {
+					var modal = resolve();
+					if (modal) {
+						modal.hide();
+					}
+				},
+			};
+		}
+
+		var roleModal = lazyModalController(roleModalElement);
+		var deleteModal = lazyModalController(deleteModalElement);
+		var userModal = lazyModalController(userModalElement);
+		var deleteUserModal = lazyModalController(deleteUserModalElement);
+		var resetPasswordModal = lazyModalController(resetPasswordModalElement);
 
 		var alertHost = document.getElementById('rbacAlertHost');
 		var roleSearchInput = document.getElementById('rbacRolesSearchInput');
@@ -485,6 +538,7 @@
 
 		var permissionRoleSelect = document.getElementById('rbacPermissionRoleSelect');
 		var permissionCheckboxList = document.getElementById('rbacPermissionCheckboxes');
+		var permissionCountLabel = document.getElementById('rbacPermissionCount');
 		var savePermissionsBtn = document.getElementById('rbacSavePermissionsBtn');
 
 		var roleForm = document.getElementById('rbacRoleForm');
@@ -554,7 +608,11 @@
 
 			window.setTimeout(function () {
 				if (alertElement && alertElement.parentNode) {
-					bootstrap.Alert.getOrCreateInstance(alertElement).close();
+					if (window.bootstrap && window.bootstrap.Alert) {
+						window.bootstrap.Alert.getOrCreateInstance(alertElement).close();
+					} else if (alertElement.parentNode) {
+						alertElement.parentNode.removeChild(alertElement);
+					}
 				}
 			}, 2600);
 		}
@@ -1014,12 +1072,18 @@
 				return;
 			}
 
+			var filtered = getFilteredPermissions();
+			if (permissionCountLabel) {
+				permissionCountLabel.textContent = filtered.length === permissions.length
+					? permissions.length + ' permissions available'
+					: filtered.length + ' of ' + permissions.length + ' permissions shown';
+			}
+
 			if (!roles.length || !state.selectedPermissionRoleId) {
 				permissionCheckboxList.innerHTML = '<p class="text-muted mb-0">Create a role first to assign permissions.</p>';
 				return;
 			}
 
-			var filtered = getFilteredPermissions();
 			var selected = rolePermissions[String(state.selectedPermissionRoleId)] || [];
 
 			if (!filtered.length) {

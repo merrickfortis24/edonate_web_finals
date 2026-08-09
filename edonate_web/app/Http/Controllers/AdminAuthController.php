@@ -1915,6 +1915,22 @@ class AdminAuthController extends BaseController
             ->groupBy('role')
             ->pluck('total', 'role');
 
+        // Existing databases may contain the fixed role values as "Admin" and
+        // "Staff", while newer writes use lowercase values. Normalize the
+        // grouped keys before exposing role counts to the RBAC UI.
+        $roleUserCounts = [
+            '1' => 0,
+            '2' => 0,
+        ];
+
+        foreach ($roleCountsRaw as $roleName => $total) {
+            $roleId = $this->normalizeRole((string) $roleName) === 'admin' ? '1' : '2';
+
+            if ($this->isSupportedRole($this->normalizeRole((string) $roleName))) {
+                $roleUserCounts[$roleId] += (int) $total;
+            }
+        }
+
         return response()->json([
             'data' => $paginator->getCollection()
                 ->map(fn(object $admin) => $this->transformRbacAdminUser($admin))
@@ -1932,10 +1948,7 @@ class AdminAuthController extends BaseController
             'summary' => [
                 'total_users' => $totalUsers,
                 'total_assignments' => $totalUsers,
-                'role_user_counts' => [
-                    '1' => (int) ($roleCountsRaw['admin'] ?? 0),
-                    '2' => (int) ($roleCountsRaw['staff'] ?? 0),
-                ],
+                'role_user_counts' => $roleUserCounts,
             ],
         ]);
     }
