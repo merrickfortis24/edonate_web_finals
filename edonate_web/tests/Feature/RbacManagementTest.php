@@ -87,6 +87,8 @@ class RbacManagementTest extends TestCase
             ->assertSee('eligibility_questions.manage', false)
             ->assertSee('blood_requests.match', false)
             ->assertSee('settings.manage', false)
+            ->assertSee('permissionsPerPage: 10', false)
+            ->assertSee('id="rbacPermissionsMeta"', false)
             ->assertSee('function lazyModalController', false)
             ->assertSee('window.bootstrap.Modal.getOrCreateInstance(element)', false)
             ->assertDontSee('bootstrap.Modal.getOrCreateInstance(roleModalElement)', false);

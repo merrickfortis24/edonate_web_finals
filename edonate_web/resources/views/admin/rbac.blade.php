@@ -188,6 +188,7 @@
 									</div>
 
 									<div class="rbac-pagination-wrap">
+										<div class="small text-body-secondary mb-2" id="rbacPermissionsMeta" aria-live="polite"></div>
 										<ul class="pagination pagination-sm justify-content-end mb-0" id="rbacPermissionsPagination"></ul>
 									</div>
 								</section>
@@ -447,7 +448,7 @@
 
 		var settings = {
 			rolesPerPage: 5,
-			permissionsPerPage: 6,
+			permissionsPerPage: 10,
 			usersPerPage: 6,
 		};
 
@@ -534,6 +535,7 @@
 
 		var rolePagination = document.getElementById('rbacRolesPagination');
 		var permissionPagination = document.getElementById('rbacPermissionsPagination');
+		var permissionMeta = document.getElementById('rbacPermissionsMeta');
 		var userPagination = document.getElementById('rbacUsersPagination');
 
 		var permissionRoleSelect = document.getElementById('rbacPermissionRoleSelect');
@@ -1112,6 +1114,16 @@
 			var paged = paginate(filtered, state.permissionsPage, settings.permissionsPerPage);
 			state.permissionsPage = paged.page;
 			var selectedPermissionIds = rolePermissions[String(state.selectedPermissionRoleId)] || [];
+
+			if (permissionMeta) {
+				if (paged.total === 0) {
+					permissionMeta.textContent = 'Showing 0 of 0 permissions';
+				} else {
+					var firstPermission = ((paged.page - 1) * settings.permissionsPerPage) + 1;
+					var lastPermission = Math.min(firstPermission + paged.items.length - 1, paged.total);
+					permissionMeta.textContent = 'Showing ' + firstPermission + '–' + lastPermission + ' of ' + paged.total + ' permissions';
+				}
+			}
 
 			if (!paged.items.length) {
 				permissionsTableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No permissions found.</td></tr>';
