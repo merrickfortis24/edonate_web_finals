@@ -158,7 +158,7 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringNotContainsString('data-action="no-show"', $html);
     }
 
-    public function test_adminlte_theme_is_bootstrapped_before_assets_and_settings_exposes_appearance_control(): void
+    public function test_adminlte_theme_is_bootstrapped_before_assets_and_defaults_to_light(): void
     {
         $shell = $this->renderPageForRole('admin.unauthorized', 'admin', '/admin/settings');
         $settings = $this->renderPageForRole('admin.settings', 'admin', '/admin/settings');
@@ -172,11 +172,12 @@ class AdminLteLayoutTest extends TestCase
         $this->assertIsInt($themeScriptPosition);
         $this->assertIsInt($viteAssetPosition);
         $this->assertLessThan($viteAssetPosition, $themeScriptPosition);
-        $this->assertStringContainsString("document.documentElement.setAttribute('data-bs-theme', nextTheme)", $shell);
-        $this->assertStringContainsString('settings-appearance-pane', $settings);
-        $this->assertStringContainsString('id="settingsThemeToggle"', $settings);
-        $this->assertStringContainsString('role="switch"', $settings);
-        $this->assertStringContainsString("window.localStorage.setItem('lte-theme', nextTheme)", $settings);
+        $this->assertStringContainsString("document.documentElement.setAttribute('data-bs-theme', theme)", $shell);
+        $this->assertStringContainsString("var theme = 'light';", $shell);
+        $this->assertStringContainsString("window.localStorage.setItem(storageKey, theme)", $shell);
+        $this->assertStringNotContainsString('settings-appearance-pane', $settings);
+        $this->assertStringNotContainsString('settingsThemeSelect', $settings);
+        $this->assertStringNotContainsString('Automatic', $settings);
     }
 
     public function test_every_configured_adminlte_menu_route_exists(): void
