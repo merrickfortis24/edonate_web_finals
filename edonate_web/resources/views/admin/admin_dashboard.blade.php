@@ -111,7 +111,7 @@
 					['key' => 'low_stock', 'label' => 'Low stock types'],
 					['key' => 'out_of_stock', 'label' => 'Out of stock'],
 				] as $kpi)
-					<div class="col-6 col-md-3 col-xl-auto flex-grow-1">
+					<div class="col-6 col-md-3 col-xl-2">
 						<article class="dashboard-kpi-card h-100">
 							<span class="dashboard-kpi-card__label">{{ $kpi['label'] }}</span>
 							<strong class="dashboard-kpi-card__value">{{ number_format((int) data_get($operational, $kpi['key'], 0)) }}</strong>

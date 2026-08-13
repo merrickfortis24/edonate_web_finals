@@ -3,6 +3,8 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Http\Request;
 
 $app = Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,6 +16,7 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin.auth' => \App\Http\Middleware\EnsureAdminAuthenticated::class,
             'admin.role' => \App\Http\Middleware\EnsureAdminRole::class,
+            'donor.active' => \App\Http\Middleware\EnsureDonorActive::class,
         ]);
 
         // Exempt webhook routes from CSRF protection
@@ -22,7 +25,18 @@ $app = Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // API/fetch callers receive a stable JSON contract while Laravel's
+        // throttle middleware still supplies Retry-After and X-RateLimit-*.
+        $exceptions->render(function (ThrottleRequestsException $exception, Request $request) {
+            if (! $request->expectsJson() && ! $request->ajax() && ! $request->is('api/*')) {
+                return null;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Too many requests. Please try again later.',
+            ], 429, $exception->getHeaders());
+        });
     })->create();
 
 $servedPublicPath = dirname(__DIR__).'/..';

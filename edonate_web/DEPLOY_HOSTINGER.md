@@ -70,6 +70,20 @@ The script copies `index.php`, `.htaccess`, `build/`, `css/`, `js/`,
 Keep the existing production `APP_KEY` unless you intentionally want to
 invalidate encrypted cookies and encrypted application data.
 
+## API Rate Limits
+
+The application uses Laravel's named rate limiters and the configured
+`CACHE_STORE` (database by default). No Redis service or rate-limit database
+tables are required. Optional `EDONATE_RATE_*` overrides are documented in
+`.env.example`; after changing them, run:
+
+```bash
+php artisan optimize:clear
+php artisan config:cache
+```
+
+The normal deployment commands above do not need to be changed.
+
 ## Vite Assets
 
 Vite is configured to write production assets directly to:

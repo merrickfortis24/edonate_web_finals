@@ -24,7 +24,7 @@
             'listUrl' => '',
             'showUrlTemplate' => '',
             'updateUrlTemplate' => '',
-            'deleteUrlTemplate' => '',
+            'deactivateUrlTemplate' => '',
             'csrfToken' => '',
         ],
         'filters' => [
@@ -124,36 +124,38 @@
         <div id="userManagementAlertHost" class="mb-3" aria-live="polite"></div>
 
         <section class="table-wrap" aria-label="Donor list">
-            <div class="table-inner table-responsive">
-                <div class="table-grid table-thead">
-                    <div class="table-th">Donor ID</div>
-                    <div class="table-th">Name</div>
-                    <div class="table-th">Blood Type</div>
-                    <div class="table-th">Contact</div>
-                    <div class="table-th">Last Donation</div>
-                    <div class="table-th">Status</div>
-                    <div class="table-th cell-center">Donations</div>
-                    <div class="table-th">Actions</div>
-                </div>
+            <div class="donor-table-wrapper table-responsive" tabindex="0" aria-label="Scrollable donor records table">
+                <div class="table-inner">
+                    <div class="table-grid table-thead">
+                        <div class="table-th">Donor ID</div>
+                        <div class="table-th">Name</div>
+                        <div class="table-th">Blood Type</div>
+                        <div class="table-th">Contact</div>
+                        <div class="table-th">Last Donation</div>
+                        <div class="table-th">Status</div>
+                        <div class="table-th cell-center">Donations</div>
+                        <div class="table-th">Actions</div>
+                    </div>
 
-                <div class="table-body" id="userManagementTableBody">
-                    <div class="table-grid table-row">
-                        <div class="table-td">Loading...</div>
-                        <div class="table-td">-</div>
-                        <div class="table-td">-</div>
-                        <div class="table-td">-</div>
-                        <div class="table-td">-</div>
-                        <div class="table-td">-</div>
-                        <div class="table-td cell-center">-</div>
-                        <div class="table-td">-</div>
+                    <div class="table-body" id="userManagementTableBody">
+                        <div class="table-grid table-row">
+                            <div class="table-td">Loading...</div>
+                            <div class="table-td">-</div>
+                            <div class="table-td">-</div>
+                            <div class="table-td">-</div>
+                            <div class="table-td">-</div>
+                            <div class="table-td">-</div>
+                            <div class="table-td cell-center">-</div>
+                            <div class="table-td">-</div>
+                        </div>
                     </div>
                 </div>
-
-                <nav class="pagination" aria-label="Table pagination">
-                    <span class="pagination__info" id="userManagementPaginationInfo">Showing 0-0 of 0 donors</span>
-                    <div class="pagination__controls" id="userManagementPaginationControls"></div>
-                </nav>
             </div>
+
+            <nav class="pagination" aria-label="Table pagination">
+                <span class="pagination__info" id="userManagementPaginationInfo">Showing 0-0 of 0 donors</span>
+                <div class="pagination__controls" id="userManagementPaginationControls"></div>
+            </nav>
         </section>
     </div>
 
@@ -162,12 +164,34 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
-                        <h5 class="modal-title" id="userManagementViewModalLabel">Donor Details</h5>
-                        <p class="mb-0 text-muted small" id="userManagementViewModalSubtitle">Full donor record</p>
+                        <h5 class="modal-title" id="userManagementViewModalLabel">Digital Donor ID</h5>
+                        <p class="mb-0 text-muted small" id="userManagementViewModalSubtitle">Authorized donor identification view</p>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
+                    <section class="digital-donor-id-card" aria-label="Digital Donor ID card">
+                        <div class="digital-donor-id-card__header">
+                            <span class="digital-donor-id-card__brand"><span aria-hidden="true">♥</span> eDonate</span>
+                            <span class="digital-donor-id-card__badge" id="userManagementViewVerificationBadge">UNVERIFIED DONOR</span>
+                        </div>
+                        <div class="digital-donor-id-card__identity">
+                            <div class="digital-donor-id-card__avatar edonate-user-avatar" id="userManagementViewCardAvatar" aria-hidden="true">--</div>
+                            <div class="min-w-0">
+                                <div class="digital-donor-id-card__name" id="userManagementViewCardName">-</div>
+                                <div class="digital-donor-id-card__code" id="userManagementViewCardCode">-</div>
+                            </div>
+                        </div>
+                        <div class="digital-donor-id-card__fields">
+                            <div><span>Blood Type</span><strong id="userManagementViewCardBloodType">Not Yet Determined</strong></div>
+                            <div><span>Identity</span><strong id="userManagementViewCardIdentity">Unverified</strong></div>
+                            <div><span>Eligibility</span><strong id="userManagementViewCardEligibility">-</strong></div>
+                            <div><span>Registered</span><strong id="userManagementViewCardRegistered">-</strong></div>
+                        </div>
+                        <div class="digital-donor-id-card__account" id="userManagementViewCardAccountStatus">ACTIVE ACCOUNT</div>
+                    </section>
+
+                    <h6 class="text-uppercase small text-muted mt-4 mb-3">Donor profile details</h6>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="small text-muted text-uppercase">Donor ID</div>
@@ -204,10 +228,6 @@
                         <div class="col-md-6">
                             <div class="small text-muted text-uppercase">Verified Date</div>
                             <div class="fw-semibold" id="userManagementViewBloodTypeVerifiedAt">-</div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="small text-muted text-uppercase">Verified By</div>
-                            <div class="fw-semibold" id="userManagementViewBloodTypeVerifiedBy">-</div>
                         </div>
                         <div class="col-md-12 d-none" id="userManagementViewSelfReportedWarning">
                             <div class="alert alert-warning mb-0 py-2 small">Self-reported blood type must not be used as verified blood availability data.</div>
@@ -353,20 +373,20 @@
         </div>
     </div>
 
-    <div class="modal fade" id="userManagementDeleteModal" tabindex="-1" aria-labelledby="userManagementDeleteModalLabel" aria-hidden="true">
+    <div class="modal fade" id="userManagementDeactivateModal" tabindex="-1" aria-labelledby="userManagementDeactivateModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="userManagementDeleteModalLabel">Delete Donor</h5>
+                    <h5 class="modal-title" id="userManagementDeactivateModalLabel">Deactivate Donor?</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="userManagementDeleteFeedback" class="alert d-none" role="alert"></div>
-                    <p class="mb-0" id="userManagementDeletePrompt">Are you sure you want to delete this donor?</p>
+                    <div id="userManagementDeactivateFeedback" class="alert d-none" role="alert"></div>
+                    <p class="mb-0" id="userManagementDeactivatePrompt">This will prevent the donor from using active donor services but will preserve their historical records.</p>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-danger" id="userManagementDeleteConfirmBtn">Delete Donor</button>
+                    <button type="button" class="btn btn-danger" id="userManagementDeactivateConfirmBtn">Deactivate Donor</button>
                 </div>
             </div>
         </div>
@@ -381,7 +401,7 @@
         var listUrl = payload.api && payload.api.listUrl ? payload.api.listUrl : '';
         var showUrlTemplate = payload.api && payload.api.showUrlTemplate ? payload.api.showUrlTemplate : '';
         var updateUrlTemplate = payload.api && payload.api.updateUrlTemplate ? payload.api.updateUrlTemplate : '';
-        var deleteUrlTemplate = payload.api && payload.api.deleteUrlTemplate ? payload.api.deleteUrlTemplate : '';
+        var deactivateUrlTemplate = payload.api && payload.api.deactivateUrlTemplate ? payload.api.deactivateUrlTemplate : '';
         var csrfToken = payload.api && payload.api.csrfToken
             ? String(payload.api.csrfToken)
             : String((document.querySelector('meta[name="csrf-token"]') || {}).content || '');
@@ -402,12 +422,21 @@
 
         var viewModalElement = document.getElementById('userManagementViewModal');
         var editModalElement = document.getElementById('userManagementEditModal');
-        var deleteModalElement = document.getElementById('userManagementDeleteModal');
+        var deactivateModalElement = document.getElementById('userManagementDeactivateModal');
         var viewModal = viewModalElement && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getOrCreateInstance(viewModalElement) : null;
         var editModal = editModalElement && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getOrCreateInstance(editModalElement) : null;
-        var deleteModal = deleteModalElement && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getOrCreateInstance(deleteModalElement) : null;
+        var deactivateModal = deactivateModalElement && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getOrCreateInstance(deactivateModalElement) : null;
 
         var viewModalSubtitle = document.getElementById('userManagementViewModalSubtitle');
+        var viewVerificationBadge = document.getElementById('userManagementViewVerificationBadge');
+        var viewCardAvatar = document.getElementById('userManagementViewCardAvatar');
+        var viewCardName = document.getElementById('userManagementViewCardName');
+        var viewCardCode = document.getElementById('userManagementViewCardCode');
+        var viewCardBloodType = document.getElementById('userManagementViewCardBloodType');
+        var viewCardIdentity = document.getElementById('userManagementViewCardIdentity');
+        var viewCardEligibility = document.getElementById('userManagementViewCardEligibility');
+        var viewCardRegistered = document.getElementById('userManagementViewCardRegistered');
+        var viewCardAccountStatus = document.getElementById('userManagementViewCardAccountStatus');
         var viewDonorCode = document.getElementById('userManagementViewDonorCode');
         var viewFullName = document.getElementById('userManagementViewFullName');
         var viewEmail = document.getElementById('userManagementViewEmail');
@@ -417,7 +446,6 @@
         var viewBloodType = document.getElementById('userManagementViewBloodType');
         var viewBloodTypeStatus = document.getElementById('userManagementViewBloodTypeStatus');
         var viewBloodTypeVerifiedAt = document.getElementById('userManagementViewBloodTypeVerifiedAt');
-        var viewBloodTypeVerifiedBy = document.getElementById('userManagementViewBloodTypeVerifiedBy');
         var viewSelfReportedWarning = document.getElementById('userManagementViewSelfReportedWarning');
         var viewEligibilityStatus = document.getElementById('userManagementViewEligibilityStatus');
         var viewAddress = document.getElementById('userManagementViewAddress');
@@ -450,9 +478,9 @@
         var editLongitudeInput = document.getElementById('userManagementEditLongitude');
         var editSaveButton = document.getElementById('userManagementEditSaveBtn');
 
-        var deleteFeedback = document.getElementById('userManagementDeleteFeedback');
-        var deletePrompt = document.getElementById('userManagementDeletePrompt');
-        var deleteConfirmButton = document.getElementById('userManagementDeleteConfirmBtn');
+        var deactivateFeedback = document.getElementById('userManagementDeactivateFeedback');
+        var deactivatePrompt = document.getElementById('userManagementDeactivatePrompt');
+        var deactivateConfirmButton = document.getElementById('userManagementDeactivateConfirmBtn');
 
         var state = {
             page: 1,
@@ -467,7 +495,7 @@
                 from: 0,
                 to: 0
             },
-            deleteTarget: null
+            deactivateTarget: null
         };
 
         var searchDebounceTimer = null;
@@ -552,6 +580,41 @@
 
         function statusClass(value) {
             return normalizeStatus(value) === 'not_eligible' ? 'badge--not-eligible' : 'badge--eligible';
+        }
+
+        function verificationLabel(value) {
+            var status = String(value || 'unverified').toLowerCase();
+            return {
+                verified: 'VERIFIED DONOR',
+                pending: 'PENDING VERIFICATION',
+                rejected: 'REJECTED',
+                unverified: 'UNVERIFIED'
+            }[status] || 'UNVERIFIED';
+        }
+
+        function verificationText(value) {
+            var status = String(value || 'unverified').toLowerCase();
+            return status.charAt(0).toUpperCase() + status.slice(1);
+        }
+
+        function donorInitials(name) {
+            var parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+            if (!parts.length) {
+                return '--';
+            }
+
+            return parts.slice(0, 2).map(function (part) { return part.charAt(0); }).join('').toUpperCase();
+        }
+
+        function digitalBloodTypeLabel(donor) {
+            var bloodType = String(donor.blood_type || '').trim();
+            var bloodStatus = String(donor.blood_type_status || 'not_yet_determined').toLowerCase();
+
+            if (!bloodType) {
+                return 'Not Yet Determined';
+            }
+
+            return bloodStatus === 'verified' ? 'Verified ' + bloodType : 'Self-Reported ' + bloodType;
         }
 
         function buildDonorActionUrl(template, donorId) {
@@ -739,17 +802,23 @@
                 });
         }
 
-        function renderActionButtons(donorId) {
+        function renderActionButtons(donorId, isActive) {
+            var deactivateButton = isActive
+                ? '<button class="btn-action btn-action--deactivate" type="button" title="Deactivate Donor" aria-label="Deactivate Donor" data-action="deactivate" data-donor-id="' + escapeHtml(donorId) + '">'
+                    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b60c0c" stroke-width="2"><path d="M12 3v9" stroke-linecap="round"/><path d="M6.2 6.2a8 8 0 1 0 11.6 0" stroke-linecap="round"/></svg>'
+                    + '</button>'
+                : '<button class="btn-action btn-action--deactivate" type="button" title="Donor already inactive" aria-label="Donor already inactive" disabled>'
+                    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b60c0c" stroke-width="2"><path d="M12 3v9" stroke-linecap="round"/><path d="M6.2 6.2a8 8 0 1 0 11.6 0" stroke-linecap="round"/></svg>'
+                    + '</button>';
+
             return ''
-                + '<button class="btn-action btn-action--view" type="button" aria-label="View donor" data-action="view" data-donor-id="' + escapeHtml(donorId) + '">'
+                + '<button class="btn-action btn-action--view" type="button" title="View Digital Donor ID" aria-label="View Digital Donor ID" data-action="view" data-donor-id="' + escapeHtml(donorId) + '">'
                 + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0063aa" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
                 + '</button>'
-                + '<button class="btn-action btn-action--edit" type="button" aria-label="Edit donor" data-action="edit" data-donor-id="' + escapeHtml(donorId) + '">'
+                + '<button class="btn-action btn-action--edit" type="button" title="Edit Donor" aria-label="Edit Donor" data-action="edit" data-donor-id="' + escapeHtml(donorId) + '">'
                 + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#129800" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>'
                 + '</button>'
-                + '<button class="btn-action btn-action--delete" type="button" aria-label="Delete donor" data-action="delete" data-donor-id="' + escapeHtml(donorId) + '">'
-                + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b60c0c" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="18" y1="11" x2="23" y2="11"/></svg>'
-                + '</button>';
+                + deactivateButton;
         }
 
         function renderRows(rows) {
@@ -784,17 +853,18 @@
                 var badge = statusClass(item.eligibility_status);
                 var badgeLabel = escapeHtml(statusLabel(item.eligibility_status));
                 var donorId = Number(item.donor_id || 0);
+                var isActive = item.is_active !== false;
 
                 return ''
                     + '<div class="table-grid table-row" data-donor-id="' + escapeHtml(donorId) + '" data-donor-name="' + escapeHtml(rawFullName) + '">'
                     + '<div class="table-td">' + donorCode + '</div>'
-                    + '<div class="table-td"><div class="donor-name__primary">' + fullName + '</div><div class="donor-name__email">' + email + '</div></div>'
+                    + '<div class="table-td"><div class="donor-name__primary">' + fullName + '</div><div class="donor-name__email">' + email + '</div>' + (isActive ? '' : '<span class="badge badge--inactive">Inactive account</span>') + '</div>'
                     + '<div class="table-td cell-inline"><span aria-hidden="true">&#129656;</span> ' + bloodType + '</div>'
                     + '<div class="table-td cell-inline"><span aria-hidden="true">&#128222;</span> ' + contact + '</div>'
                     + '<div class="table-td cell-inline"><span aria-hidden="true">&#128197;</span> ' + lastDonation + '</div>'
                     + '<div class="table-td"><span class="badge ' + badge + '">' + badgeLabel + '</span></div>'
                     + '<div class="table-td cell-center">' + donationCount + '</div>'
-                    + '<div class="table-td actions">' + renderActionButtons(donorId) + '</div>'
+                    + '<div class="table-td actions">' + renderActionButtons(donorId, isActive) + '</div>'
                     + '</div>';
             }).join('');
         }
@@ -947,9 +1017,40 @@
 
         function populateViewModal(donor) {
             var donorPayload = donor || {};
+            var fullName = displayValue(donorPayload.full_name || donorPayload.donor_code || 'Donor record');
+            var verificationStatus = String(donorPayload.verification_status || 'unverified').toLowerCase();
 
             if (viewModalSubtitle) {
-                viewModalSubtitle.textContent = displayValue(donorPayload.full_name || donorPayload.donor_code || 'Donor record');
+                viewModalSubtitle.textContent = fullName;
+            }
+            if (viewVerificationBadge) {
+                viewVerificationBadge.textContent = verificationLabel(verificationStatus);
+                viewVerificationBadge.className = 'digital-donor-id-card__badge digital-donor-id-card__badge--' + verificationStatus;
+            }
+            if (viewCardAvatar) {
+                viewCardAvatar.textContent = donorInitials(donorPayload.full_name);
+            }
+            if (viewCardName) {
+                viewCardName.textContent = fullName;
+            }
+            if (viewCardCode) {
+                viewCardCode.textContent = displayValue(donorPayload.donor_code);
+            }
+            if (viewCardBloodType) {
+                viewCardBloodType.textContent = digitalBloodTypeLabel(donorPayload);
+            }
+            if (viewCardIdentity) {
+                viewCardIdentity.textContent = verificationText(verificationStatus);
+            }
+            if (viewCardEligibility) {
+                viewCardEligibility.textContent = statusLabel(donorPayload.eligibility_status);
+            }
+            if (viewCardRegistered) {
+                viewCardRegistered.textContent = formatDateTime(donorPayload.date_registered);
+            }
+            if (viewCardAccountStatus) {
+                viewCardAccountStatus.textContent = donorPayload.is_active === false ? 'INACTIVE ACCOUNT' : 'ACTIVE ACCOUNT';
+                viewCardAccountStatus.classList.toggle('digital-donor-id-card__account--inactive', donorPayload.is_active === false);
             }
 
             setValue(viewDonorCode, donorPayload.donor_code);
@@ -961,7 +1062,6 @@
             setValue(viewBloodType, donorPayload.blood_type);
             setValue(viewBloodTypeStatus, String(donorPayload.blood_type_status || 'not_yet_determined').replace(/_/g, ' '));
             setValue(viewBloodTypeVerifiedAt, formatDateTime(donorPayload.blood_type_verified_at));
-            setValue(viewBloodTypeVerifiedBy, donorPayload.blood_type_verified_by);
             if (viewSelfReportedWarning) {
                 viewSelfReportedWarning.classList.toggle('d-none', donorPayload.blood_type_status !== 'self_reported');
             }
@@ -1031,9 +1131,9 @@
             setSelectOptions(editEligibilityStatusSelect, responseOptions.statuses || [], 'Select status', donorPayload.eligibility_status);
         }
 
-        function buildDeletePrompt(target) {
+        function buildDeactivatePrompt(target) {
             var donorName = target && target.name ? String(target.name) : 'this donor';
-            return 'Are you sure you want to delete ' + donorName + '? This action cannot be undone.';
+            return 'Deactivate ' + donorName + '? This will prevent active donor services while preserving historical records.';
         }
 
         function loadDonorDetails(donorId) {
@@ -1084,26 +1184,20 @@
                 });
         }
 
-        function openDeleteModal(donorId, donorName) {
-            state.deleteTarget = {
+        function openDeactivateModal(donorId, donorName) {
+            state.deactivateTarget = {
                 id: donorId,
                 name: donorName
             };
 
-            clearInlineFeedback(deleteFeedback);
+            clearInlineFeedback(deactivateFeedback);
 
-            if (deletePrompt) {
-                deletePrompt.textContent = buildDeletePrompt(state.deleteTarget);
+            if (deactivatePrompt) {
+                deactivatePrompt.textContent = buildDeactivatePrompt(state.deactivateTarget);
             }
 
-            if (deleteModal) {
-                deleteModal.show();
-            }
-        }
-
-        function maybeClampPageAfterDelete() {
-            if (state.page > 1 && Number(state.meta.from || 0) === Number(state.meta.to || 0)) {
-                state.page -= 1;
+            if (deactivateModal) {
+                deactivateModal.show();
             }
         }
 
@@ -1217,8 +1311,8 @@
                     return;
                 }
 
-                if (action === 'delete') {
-                    openDeleteModal(donorId, donorName);
+                if (action === 'deactivate') {
+                    openDeactivateModal(donorId, donorName);
                 }
             });
         }
@@ -1278,43 +1372,37 @@
             });
         }
 
-        if (deleteConfirmButton) {
-            deleteConfirmButton.addEventListener('click', function () {
-                var targetDonor = state.deleteTarget;
+        if (deactivateConfirmButton) {
+            deactivateConfirmButton.addEventListener('click', function () {
+                var targetDonor = state.deactivateTarget;
                 var donorId = targetDonor ? Number(targetDonor.id || 0) : 0;
-                var requestUrl = buildDonorActionUrl(deleteUrlTemplate, donorId);
+                var requestUrl = buildDonorActionUrl(deactivateUrlTemplate, donorId);
 
                 if (!donorId || !requestUrl) {
-                    showInlineFeedback(deleteFeedback, 'danger', 'User delete route is not configured correctly.');
+                    showInlineFeedback(deactivateFeedback, 'danger', 'Donor deactivation route is not configured correctly.');
                     return;
                 }
 
-                clearInlineFeedback(deleteFeedback);
-                setTextButtonLoading(deleteConfirmButton, true, 'Deleting...');
+                clearInlineFeedback(deactivateFeedback);
+                setTextButtonLoading(deactivateConfirmButton, true, 'Deactivating...');
 
                 requestJson(requestUrl, {
-                    method: 'DELETE'
+                    method: 'PATCH'
                 })
                     .then(function (responsePayload) {
-                        if (deleteModal) {
-                            deleteModal.hide();
+                        if (deactivateModal) {
+                            deactivateModal.hide();
                         }
 
-                        maybeClampPageAfterDelete();
-                        showAlert('success', responsePayload.message || 'Donor deleted successfully.');
-                        state.deleteTarget = null;
+                        showAlert('success', responsePayload.message || 'Donor account deactivated.');
+                        state.deactivateTarget = null;
                         loadUsers();
                     })
                     .catch(function (error) {
-                        if (error.status === 409) {
-                            showInlineFeedback(deleteFeedback, 'warning', error.message || 'This donor cannot be deleted right now.');
-                            return;
-                        }
-
-                        showInlineFeedback(deleteFeedback, 'danger', error.message || 'Unable to delete donor.');
+                        showInlineFeedback(deactivateFeedback, 'danger', error.message || 'Unable to deactivate donor.');
                     })
                     .finally(function () {
-                        setTextButtonLoading(deleteConfirmButton, false, 'Deleting...');
+                        setTextButtonLoading(deactivateConfirmButton, false, 'Deactivating...');
                     });
             });
         }
@@ -1325,9 +1413,9 @@
             });
         }
 
-        if (deleteModalElement) {
-            deleteModalElement.addEventListener('hidden.bs.modal', function () {
-                clearInlineFeedback(deleteFeedback);
+        if (deactivateModalElement) {
+            deactivateModalElement.addEventListener('hidden.bs.modal', function () {
+                clearInlineFeedback(deactivateFeedback);
             });
         }
 

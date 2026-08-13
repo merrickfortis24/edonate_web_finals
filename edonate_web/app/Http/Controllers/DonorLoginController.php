@@ -7,6 +7,7 @@ use App\Models\DonorAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class DonorLoginController extends Controller
 {
@@ -55,6 +56,12 @@ class DonorLoginController extends Controller
         }
 
         $donor = Donor::query()->find($auth->donor_id);
+
+        if (! $donor || (Schema::hasColumn('donors', 'is_active') && ! (bool) ($donor->is_active ?? true))) {
+            return back()
+                ->withInput($request->only('email'))
+                ->withErrors(['email' => 'Invalid email or password.']);
+        }
 
         $request->session()->regenerate();
         $request->session()->put([

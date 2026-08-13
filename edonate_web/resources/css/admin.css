@@ -104,10 +104,22 @@
     letter-spacing: 0.08em;
 }
 
+.edonate-adminlte,
+.edonate-adminlte .app-wrapper,
 .edonate-adminlte .app-main,
-.edonate-adminlte .app-content {
+.edonate-adminlte .app-header,
+.edonate-adminlte .app-footer,
+.edonate-adminlte .app-content,
+.edonate-adminlte .app-content-header,
+.edonate-adminlte .app-content > .container-fluid,
+.edonate-adminlte .app-content-header > .container-fluid {
+    width: 100%;
     min-width: 0;
-    max-width: 100%;
+    max-width: none;
+}
+
+.edonate-adminlte .app-main {
+    flex: 1 1 auto;
 }
 
 .edonate-adminlte,
@@ -116,10 +128,6 @@
 .edonate-adminlte .app-content-header {
     background: var(--edonate-content-bg);
     color: var(--bs-body-color);
-}
-
-.edonate-adminlte .app-content {
-    overflow-x: clip;
 }
 
 .edonate-adminlte .app-content-header {
@@ -192,6 +200,89 @@
     background-color: var(--edonate-table-head-bg);
     color: var(--bs-body-color);
     border-color: var(--bs-border-color);
+}
+
+/*
+ * Shared admin data-table alignment.
+ * Keep native table layout intact; only align the cells themselves.
+ */
+.edonate-admin-page .table th,
+.edonate-admin-page .table td {
+    text-align: center;
+    vertical-align: middle;
+}
+
+/* These legacy selectors are more specific than the shared table rule. */
+.edonate-admin-page.admin-donor-records-page .records-table thead th,
+.edonate-admin-page.admin-donor-records-page .records-table tbody td,
+.edonate-admin-page.admin-audit-logs-page .audit-table thead th,
+.edonate-admin-page.admin-audit-logs-page .audit-table tbody td {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.edonate-admin-page.admin-donor-records-page .td-blood,
+.edonate-admin-page.admin-donor-records-page .td-date,
+.edonate-admin-page.admin-donor-records-page .td-location {
+    justify-content: center;
+}
+
+/* Center action groups without changing the table's native display model. */
+.edonate-admin-page .table td > :where(.event-actions, .facility-actions, .request-actions) {
+    align-items: center;
+    justify-content: center;
+}
+
+.edonate-admin-page .table td > .records-actions,
+.edonate-admin-page .table td > .table-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.edonate-admin-page .table td > .btn-group {
+    align-items: center;
+    justify-content: center;
+}
+
+.edonate-admin-page .questions-table .questions-cell {
+    align-items: center;
+    justify-content: center;
+}
+
+/* Admin pagination uses Bootstrap markup; keep it separate from the legacy
+ * custom .pagination bar used by the JavaScript-driven admin grids. */
+.edonate-admin-page .admin-pagination {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.edonate-admin-page .admin-pagination nav {
+    max-width: 100%;
+}
+
+.edonate-admin-page .admin-pagination .pagination {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    justify-content: flex-end;
+    margin: 0;
+    padding: 0;
+}
+
+.edonate-admin-page .admin-pagination .page-link {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-width: 2.25rem;
+    min-height: 2.25rem;
 }
 
 .edonate-admin-page .bg-body-surface,
@@ -409,6 +500,434 @@
     -webkit-overflow-scrolling: touch;
 }
 
+/*
+ * User Management donor grid
+ *
+ * The grid needs a desktop-sized canvas because it contains eight columns,
+ * but that canvas must belong to the table scroller—not to the card or page.
+ * Keeping pagination outside this wrapper also prevents it from being clipped
+ * or horizontally scrolled with the donor rows on small screens.
+ */
+.edonate-admin-page.admin-users-page .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.edonate-admin-page.admin-users-page .donor-table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-gutter: stable;
+}
+
+.edonate-admin-page.admin-users-page .donor-table-wrapper:focus-visible {
+    outline: 2px solid var(--edonate-red);
+    outline-offset: -2px;
+}
+
+.edonate-admin-page.admin-users-page .table-inner {
+    width: 100%;
+    min-width: 1100px;
+    overflow: visible;
+}
+
+.edonate-admin-page.admin-users-page .table-grid {
+    width: 100%;
+}
+
+.edonate-admin-page.admin-users-page .table-grid > .table-th,
+.edonate-admin-page.admin-users-page .table-grid > .table-td {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.edonate-admin-page.admin-users-page .table-grid .cell-inline,
+.edonate-admin-page.admin-users-page .table-grid .actions {
+    justify-content: center;
+}
+
+.edonate-admin-page.admin-users-page .table-th,
+.edonate-admin-page.admin-users-page .table-td {
+    min-width: 0;
+}
+
+.edonate-admin-page.admin-users-page .table-th,
+.edonate-admin-page.admin-users-page .cell-inline,
+.edonate-admin-page.admin-users-page .actions {
+    white-space: nowrap;
+}
+
+.edonate-admin-page.admin-users-page .table-td {
+    overflow: hidden;
+}
+
+.edonate-admin-page.admin-users-page .donor-name__primary {
+    overflow-wrap: anywhere;
+}
+
+.edonate-admin-page.admin-users-page .donor-name__email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.edonate-admin-page.admin-users-page .actions {
+    flex-wrap: nowrap;
+}
+
+.edonate-admin-page.admin-users-page .btn-action--deactivate {
+    border-color: var(--edonate-red);
+}
+
+.edonate-admin-page.admin-users-page .btn-action--deactivate:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+.digital-donor-id-card {
+    background: linear-gradient(145deg, var(--edonate-red-dark), var(--edonate-red));
+    border: 1px solid color-mix(in srgb, var(--edonate-red) 65%, var(--bs-border-color));
+    border-radius: 1rem;
+    box-shadow: 0 0.75rem 1.5rem rgba(120, 6, 6, 0.2);
+    color: #fff;
+    padding: 1.25rem;
+}
+
+.digital-donor-id-card__header,
+.digital-donor-id-card__identity,
+.digital-donor-id-card__fields {
+    align-items: center;
+    display: flex;
+}
+
+.digital-donor-id-card__header,
+.digital-donor-id-card__identity {
+    justify-content: space-between;
+}
+
+.digital-donor-id-card__brand {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.digital-donor-id-card__brand span {
+    color: #ffb1b1;
+    margin-right: 0.25rem;
+}
+
+.digital-donor-id-card__badge,
+.digital-donor-id-card__account {
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    padding: 0.3rem 0.55rem;
+}
+
+.digital-donor-id-card__badge--verified {
+    background: rgba(25, 135, 84, 0.65);
+}
+
+.digital-donor-id-card__badge--pending {
+    background: rgba(255, 193, 7, 0.65);
+    color: #211900;
+}
+
+.digital-donor-id-card__badge--rejected,
+.digital-donor-id-card__account--inactive {
+    background: rgba(0, 0, 0, 0.28);
+}
+
+.digital-donor-id-card__identity {
+    gap: 0.9rem;
+    justify-content: flex-start;
+    margin: 1.5rem 0 1.2rem;
+}
+
+.digital-donor-id-card__avatar {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(255, 255, 255, 0.5);
+    color: var(--edonate-red-dark);
+    flex-basis: 3.65rem;
+    font-size: 1.05rem;
+    height: 3.65rem;
+    width: 3.65rem;
+}
+
+.digital-donor-id-card__name {
+    font-size: 1.15rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.digital-donor-id-card__code {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 0.78rem;
+    margin-top: 0.15rem;
+}
+
+.digital-donor-id-card__fields {
+    align-items: stretch;
+    display: grid;
+    gap: 0.65rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.digital-donor-id-card__fields > div {
+    background: rgba(0, 0, 0, 0.13);
+    border-radius: 0.6rem;
+    min-width: 0;
+    padding: 0.6rem 0.7rem;
+}
+
+.digital-donor-id-card__fields span {
+    color: rgba(255, 255, 255, 0.72);
+    display: block;
+    font-size: 0.63rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.digital-donor-id-card__fields strong {
+    display: block;
+    font-size: 0.82rem;
+    margin-top: 0.2rem;
+    overflow-wrap: anywhere;
+}
+
+.digital-donor-id-card__account {
+    display: inline-block;
+    margin-top: 0.9rem;
+}
+
+.edonate-admin-page.admin-users-page .badge--inactive {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
+    display: inline-block;
+    font-size: 0.68rem;
+    margin-top: 0.3rem;
+}
+
+.edonate-admin-page.admin-users-page .pagination {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.edonate-admin-page.admin-users-page .pagination__info {
+    min-width: 0;
+    flex: 1 1 180px;
+}
+
+.edonate-admin-page.admin-users-page .pagination__controls {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.edonate-admin-page.admin-users-page .pagination__btn {
+    background: var(--edonate-card-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+
+.edonate-admin-page.admin-users-page .pagination__btn--active {
+    background: var(--edonate-red);
+    border-color: var(--edonate-red);
+    color: #fff;
+}
+
+/*
+ * Appointment Management grid
+ *
+ * Appointment rows use a desktop-sized CSS grid so all six columns keep the
+ * same tracks. The scrollable wrapper must contain that full grid; otherwise
+ * the body remains viewport-width, clips its rows, and exposes a large empty
+ * area beside the visible cells on small screens.
+ */
+.edonate-admin-page.admin-appointments-page .appointment-main,
+.edonate-admin-page.admin-appointments-page .appointment-content,
+.edonate-admin-page.admin-appointments-page .appointment-filter {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-filter > [class*="col-"] {
+    min-width: 0;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-gutter: stable;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table-wrapper:focus-visible {
+    outline: 2px solid var(--edonate-red);
+    outline-offset: -2px;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table-inner {
+    width: 100%;
+    min-width: 980px;
+    overflow: visible;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table__head,
+.edonate-admin-page.admin-appointments-page .appointment-row {
+    width: 100%;
+    min-width: 980px;
+    grid-template-columns: 160px 200px 200px 160px 110px 1fr;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table__body {
+    width: 100%;
+    min-width: 980px;
+    background: var(--edonate-card-bg);
+    border-color: var(--bs-border-color);
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table__head-cell,
+.edonate-admin-page.admin-appointments-page .appointment-cell {
+    min-width: 0;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table__head-cell,
+.edonate-admin-page.admin-appointments-page .appointment-cell {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-donor__meta,
+.edonate-admin-page.admin-appointments-page .appointment-datetime__date,
+.edonate-admin-page.admin-appointments-page .appointment-datetime__time,
+.edonate-admin-page.admin-appointments-page .appointment-center,
+.edonate-admin-page.admin-appointments-page .appointment-actions {
+    justify-content: center;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-table__head-cell,
+.edonate-admin-page.admin-appointments-page .appointment-id,
+.edonate-admin-page.admin-appointments-page .appointment-datetime__date,
+.edonate-admin-page.admin-appointments-page .appointment-datetime__time,
+.edonate-admin-page.admin-appointments-page .appointment-center,
+.edonate-admin-page.admin-appointments-page .appointment-badge {
+    white-space: nowrap;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-cell {
+    overflow: hidden;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-donor__name {
+    overflow-wrap: anywhere;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-donor__meta,
+.edonate-admin-page.admin-appointments-page .appointment-center {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-pagination {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 12px;
+    background: var(--edonate-card-bg);
+    border-color: var(--bs-border-color);
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-pagination__info {
+    min-width: 0;
+    flex: 1 1 220px;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-pagination__pages {
+    min-width: 0;
+    max-width: 100%;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-page-btn {
+    flex: 0 0 40px;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-page-btn--nav {
+    background: var(--edonate-card-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-btn--no-show {
+    background: var(--edonate-red);
+    color: #fff;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-btn--cancel {
+    background: transparent;
+    border: 1px solid var(--edonate-red);
+    color: var(--edonate-red);
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-btn--process {
+    align-items: center;
+    background: var(--c-blue, #0063aa);
+    color: #fff;
+    display: inline-flex;
+    text-decoration: none;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-btn--no-show svg,
+.edonate-admin-page.admin-appointments-page .appointment-btn--cancel svg,
+.edonate-admin-page.admin-appointments-page .appointment-btn--process svg {
+    color: currentColor;
+}
+
+@media (max-width: 767.98px) {
+    .edonate-admin-page.admin-appointments-page .appointment-pagination {
+        align-items: flex-start;
+        padding: 14px;
+    }
+
+    .edonate-admin-page.admin-appointments-page .appointment-pagination__info,
+    .edonate-admin-page.admin-appointments-page .appointment-pagination__pages {
+        width: 100%;
+        flex: 1 1 100%;
+        margin-left: 0;
+    }
+
+    .edonate-admin-page.admin-appointments-page .appointment-pagination__pages {
+        justify-content: flex-start;
+    }
+}
+
 .edonate-admin-page .modal-dialog {
     width: auto;
     max-width: min(var(--bs-modal-width, 500px), calc(100vw - 2rem));
@@ -600,6 +1119,26 @@
         padding-inline: 0;
     }
 
+    /* Keep the four-card summaries compact on phones. The legacy shared
+     * stylesheet changes these grids to one column below 576px, while the
+     * admin pages are designed to show them as a 2x2 mobile summary. */
+    .edonate-admin-page.admin-facilities-page .facility-summary,
+    .edonate-admin-page.admin-blood-requests-page .request-summary,
+    .edonate-admin-page.admin-blood-availability-page .availability-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    /* Eligibility has five summary cards and Questions has three. Keep both
+     * pages on the same two-column mobile rhythm instead of allowing a
+     * lower-specificity responsive rule to stretch each card to 100%. */
+    .edonate-admin-page.admin-eligibility-page .eligibility-stats > [class*="col-"],
+    .edonate-admin-page.admin-questions-page .questions-stats > [class*="col-"] {
+        flex: 0 0 calc(50% - 6px);
+        max-width: calc(50% - 6px);
+        width: calc(50% - 6px);
+    }
+
     .edonate-content-actions {
         width: 100%;
     }
@@ -622,5 +1161,30 @@
     .edonate-admin-page .settings-theme-options,
     .edonate-admin-page .settings-theme-option {
         width: 100%;
+    }
+
+    .edonate-admin-page.admin-users-page .filter-bar {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .edonate-admin-page.admin-users-page .filter-bar > [class*="col-"] {
+        min-width: 0;
+    }
+
+    .edonate-admin-page.admin-users-page .pagination {
+        align-items: flex-start;
+        padding: 14px;
+    }
+
+    .edonate-admin-page.admin-users-page .pagination__info,
+    .edonate-admin-page.admin-users-page .pagination__controls {
+        width: 100%;
+        flex-basis: 100%;
+        margin-left: 0;
+    }
+
+    .edonate-admin-page.admin-users-page .pagination__controls {
+        justify-content: flex-end;
     }
 }

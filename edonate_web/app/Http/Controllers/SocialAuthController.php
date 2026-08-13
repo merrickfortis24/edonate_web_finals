@@ -8,6 +8,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -61,6 +62,15 @@ class SocialAuthController extends Controller
                 ->where('email', $tokenEmail)
                 ->first();
 
+            if ($auth) {
+                $existingDonor = Donor::query()->find($auth->donor_id);
+                if ($existingDonor && Schema::hasColumn('donors', 'is_active') && !$existingDonor->is_active) {
+                    return response()->json([
+                        'message' => 'Unable to complete Google sign-in with these credentials.',
+                    ], 422);
+                }
+            }
+
             if (!$auth) {
                 DB::beginTransaction();
 
@@ -101,6 +111,12 @@ class SocialAuthController extends Controller
             }
 
             $donor = Donor::query()->find($auth->donor_id);
+
+            if ($donor && Schema::hasColumn('donors', 'is_active') && !$donor->is_active) {
+                return response()->json([
+                    'message' => 'Unable to complete Google sign-in with these credentials.',
+                ], 422);
+            }
 
             $request->session()->regenerate();
             $request->session()->put([

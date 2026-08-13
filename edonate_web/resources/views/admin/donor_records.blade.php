@@ -1,9 +1,9 @@
 @extends('layouts.admin')
 
-@section('title', 'eDonate - Donation Records / Check-in')
+@section('title', 'eDonate - Donation Processing')
 @section('admin_page_class', 'admin-donor-records-page')
-@section('header_title', 'Donation Records / Check-in')
-@section('header_subtitle', 'Manage donor arrival, completion, on-site deferral, and no-show records')
+@section('header_title', 'Donation Processing')
+@section('header_subtitle', 'Process checked-in donors and review completed donation records')
 
 @section('admin_page_data')
 {!! json_encode([
@@ -11,10 +11,9 @@
   'donationRecords' => $donationRecordsPayload ?? [
     'api' => [
       'listUrl' => '',
-      'checkInUrlTemplate' => '',
       'completeUrlTemplate' => '',
       'deferUrlTemplate' => '',
-      'noShowUrlTemplate' => '',
+      'initialAppointmentId' => null,
     ],
     'filters' => [
       'bloodTypes' => [],
@@ -123,7 +122,7 @@
               <th scope="col">Eligibility</th>
               <th scope="col">Donation Record</th>
               <th scope="col">Status</th>
-              <th scope="col" class="text-end">Actions</th>
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody id="processingTableBody">
@@ -229,7 +228,14 @@
 
     var config = (window.AdminPageData && window.AdminPageData.donationRecords) || {};
     var api = config.api || {};
-    var state = { page: 1, perPage: 10, rows: {} };
+    var state = { page: 1, perPage: 10, rows: {}, appointmentId: Number(config.initialAppointmentId || 0) };
+    if (!state.appointmentId) {
+      try {
+        state.appointmentId = Number(new URLSearchParams(window.location.search).get('appointment_id') || 0);
+      } catch (error) {
+        state.appointmentId = 0;
+      }
+    }
     var csrf = document.querySelector('meta[name="csrf-token"]');
     var token = csrf ? csrf.getAttribute('content') : '';
     var tableBody = document.getElementById('processingTableBody');
@@ -288,7 +294,8 @@
         blood_type: qs('processingBloodFilter').value,
         event_id: qs('processingEventFilter').value,
         center: qs('processingCenterFilter').value,
-        date: qs('processingDateFilter').value
+        date: qs('processingDateFilter').value,
+        appointment_id: state.appointmentId || ''
       };
     }
     function setStats(stats) {
@@ -299,19 +306,13 @@
     }
     function renderActions(row) {
       var buttons = [];
-      if (row.actions && row.actions.can_check_in) {
-        buttons.push('<button class="btn btn-sm btn-primary" data-action="check-in" data-id="' + row.appointment_id + '">Check In</button>');
-      }
       if (row.actions && row.actions.can_complete) {
-        buttons.push('<button class="btn btn-sm btn-success" data-action="complete" data-id="' + row.appointment_id + '">Complete</button>');
+        buttons.push('<button class="btn btn-sm btn-success" title="Complete Donation" aria-label="Complete Donation" data-action="complete" data-id="' + row.appointment_id + '">Complete Donation</button>');
       }
       if (row.actions && row.actions.can_defer) {
-        buttons.push('<button class="btn btn-sm btn-warning" data-action="defer" data-id="' + row.appointment_id + '">Defer</button>');
+        buttons.push('<button class="btn btn-sm btn-warning" title="Defer Donation On Site" aria-label="Defer Donation On Site" data-action="defer" data-id="' + row.appointment_id + '">Defer On Site</button>');
       }
-      if (row.actions && row.actions.can_no_show) {
-        buttons.push('<button class="btn btn-sm btn-outline-danger" data-action="no-show" data-id="' + row.appointment_id + '">No-show</button>');
-      }
-      return buttons.length ? buttons.join(' ') : '<span class="text-muted">No actions</span>';
+      return buttons.length ? '<div class="records-actions">' + buttons.join('') + '</div>' : '<span class="text-muted">No actions</span>';
     }
     function renderRows(rows) {
       state.rows = {};
@@ -333,7 +334,7 @@
           + '<td><span class="d-block">' + esc(row.eligibility_status || 'unknown') + '</span><span class="d-block text-muted small">Verify: ' + esc(row.verification_status || 'unverified') + '</span><span class="d-block text-muted small">Next: ' + fmtDate(row.next_eligible_date) + '</span></td>'
           + '<td>' + record + (note ? '<span class="d-block text-muted small">' + esc(note) + '</span>' : '') + '</td>'
           + '<td><span class="status-badge ' + statusClass(row.status) + '">' + statusLabel(row.status) + '</span></td>'
-          + '<td class="text-end">' + renderActions(row) + '</td>'
+          + '<td>' + renderActions(row) + '</td>'
           + '</tr>';
       }).join('');
     }
@@ -388,9 +389,7 @@
       if (!button) return;
       var id = button.getAttribute('data-id');
       var action = button.getAttribute('data-action');
-      if (action === 'check-in') {
-        sendPatch(actionUrl(api.checkInUrlTemplate, id)).then(loadRows).catch(showError);
-      } else if (action === 'complete') {
+      if (action === 'complete') {
         var row = state.rows[String(id)] || {};
         qs('completeAppointmentId').value = id;
         qs('completeDonationDate').value = new Date().toISOString().slice(0, 10);
@@ -412,8 +411,6 @@
         qs('deferNextEligibleDate').value = '';
         qs('deferRemarks').value = '';
         deferModal ? deferModal.show() : null;
-      } else if (action === 'no-show' && window.confirm('Mark this appointment as no-show?')) {
-        sendPatch(actionUrl(api.noShowUrlTemplate, id)).then(loadRows).catch(showError);
       }
     });
     qs('completeDonationForm').addEventListener('submit', function (event) {

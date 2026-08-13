@@ -29,7 +29,7 @@ class AdminLteLayoutTest extends TestCase
 
         $this->assertStringContainsString('Staff Portal', $html);
         $this->assertStringContainsString('Appointment Management', $html);
-        $this->assertStringContainsString('Donation Records / Check-in', $html);
+        $this->assertStringContainsString('Donation Processing', $html);
         $this->assertStringContainsString('Audit Logs', $html);
         $this->assertStringNotContainsString('User Management', $html);
         $this->assertStringNotContainsString('Question Management', $html);
@@ -61,6 +61,101 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('"page":"staff-dashboard"', $html);
         $this->assertMatchesRegularExpression('#(?:/build/assets/adminlte-|/resources/js/adminlte\.js)#', $html);
         $this->assertLessThanOrEqual(1, substr_count($html, '/@vite/client'));
+    }
+
+    public function test_user_management_keeps_pagination_outside_the_scrollable_donor_grid(): void
+    {
+        $html = $this->renderPageForRole('admin.user_management', 'admin', '/admin/users');
+        $wrapperPosition = strpos($html, 'class="donor-table-wrapper table-responsive"');
+        $paginationPosition = strpos($html, 'aria-label="Table pagination"');
+
+        $this->assertIsInt($wrapperPosition);
+        $this->assertIsInt($paginationPosition);
+        $this->assertStringContainsString('aria-label="Scrollable donor records table"', $html);
+        $this->assertStringNotContainsString('class="table-inner table-responsive"', $html);
+        $this->assertGreaterThan($wrapperPosition, $paginationPosition);
+    }
+
+    public function test_appointment_management_keeps_pagination_outside_the_scrollable_appointment_grid(): void
+    {
+        $html = $this->renderPageForRole('admin.appointment_management', 'admin', '/admin/appointments');
+        $wrapperPosition = strpos($html, 'class="appointment-table-scroll appointment-table-wrapper table-responsive"');
+        $paginationPosition = strpos($html, 'class="appointment-pagination"');
+
+        $this->assertIsInt($wrapperPosition);
+        $this->assertIsInt($paginationPosition);
+        $this->assertStringContainsString('aria-label="Scrollable appointment records table"', $html);
+        $this->assertStringContainsString('class="appointment-table-inner"', $html);
+        $this->assertGreaterThan($wrapperPosition, $paginationPosition);
+    }
+
+    public function test_user_management_exposes_clear_digital_id_edit_and_deactivate_actions(): void
+    {
+        $html = $this->renderPageForRole('admin.user_management', 'admin', '/admin/users');
+
+        $this->assertStringContainsString('Digital Donor ID', $html);
+        $this->assertStringContainsString('title="View Digital Donor ID"', $html);
+        $this->assertStringContainsString('title="Edit Donor"', $html);
+        $this->assertStringContainsString('title="Deactivate Donor"', $html);
+        $this->assertStringContainsString('deactivateUrlTemplate', $html);
+        $this->assertStringNotContainsString('data-action="delete"', $html);
+        $this->assertStringNotContainsString('deleteUrlTemplate', $html);
+        $this->assertTrue(Route::has('admin.users.deactivate'));
+        $this->assertFalse(Route::has('admin.users.delete'));
+    }
+
+    public function test_blood_request_details_has_a_direct_back_to_list_action(): void
+    {
+        $html = view('admin.blood_request_show', [
+            'bloodRequest' => (object) ['request_id' => 1],
+            'details' => [
+                'request' => [
+                    'request_reference' => 'DEMO-BR-0001',
+                    'facility_name' => 'Demo Facility',
+                    'request_type' => 'blood_request',
+                    'needed_blood_type' => 'O+',
+                    'required_donors' => 1,
+                    'specific_match_required' => 'Yes',
+                    'allow_other_blood_types' => false,
+                    'urgency' => 'normal',
+                    'status' => 'open',
+                ],
+                'inventory' => ['available_units' => 0],
+                'summary' => [
+                    'exact_matches_found' => 0,
+                    'other_eligible_candidates' => 0,
+                    'notified' => 0,
+                    'interested' => 0,
+                ],
+            ],
+        ])->render();
+
+        $this->assertStringContainsString('Back to Blood Requests', $html);
+        $this->assertStringContainsString(route('admin.blood-requests.index'), $html);
+    }
+
+    public function test_appointment_management_is_the_attendance_action_page(): void
+    {
+        $html = $this->renderPageForRole('admin.appointment_management', 'admin', '/admin/appointments');
+
+        $this->assertStringContainsString('data-action="check-in"', $html);
+        $this->assertStringContainsString('data-action="no-show"', $html);
+        $this->assertStringContainsString('Process Donation', $html);
+        $this->assertStringNotContainsString('data-action="reschedule"', $html);
+        $this->assertStringNotContainsString('id="completeModal"', $html);
+        $this->assertStringNotContainsString('id="rescheduleModal"', $html);
+        $this->assertFalse(Route::has('admin.appointments.reschedule'));
+    }
+
+    public function test_donation_processing_has_no_duplicate_attendance_actions(): void
+    {
+        $html = $this->renderPageForRole('admin.donor_records', 'admin', '/admin/donation-records');
+
+        $this->assertStringContainsString('Donation Processing', $html);
+        $this->assertStringContainsString('Complete Donation', $html);
+        $this->assertStringContainsString('Defer On Site', $html);
+        $this->assertStringNotContainsString('data-action="check-in"', $html);
+        $this->assertStringNotContainsString('data-action="no-show"', $html);
     }
 
     public function test_adminlte_theme_is_bootstrapped_before_assets_and_settings_exposes_appearance_control(): void

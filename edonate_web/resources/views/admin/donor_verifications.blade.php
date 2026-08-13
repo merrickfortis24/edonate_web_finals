@@ -122,7 +122,7 @@
                             <td>{{ $verification->reviewed_by_name ?: '-' }}</td>
                             <td class="text-nowrap">{{ $verification->reviewed_at ? \Carbon\Carbon::parse($verification->reviewed_at)->format('M j, Y g:i A') : '-' }}</td>
                             <td>
-                                <div class="d-flex flex-wrap gap-2">
+                                <div class="table-actions d-flex flex-wrap gap-2">
                                     <a href="{{ route('admin.donor-verifications.document', $verification->verification_id) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">View Document</a>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#historyModal{{ $verification->verification_id }}">History</button>
 
@@ -146,8 +146,8 @@
             </table>
         </div>
 
-        <div class="mt-3">
-            {{ $verifications->links() }}
+        <div class="admin-pagination mt-3">
+            {{ $verifications->links('pagination::bootstrap-5') }}
         </div>
     </section>
 </main>
