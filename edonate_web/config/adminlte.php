@@ -97,7 +97,7 @@ return [
                 ['text' => 'Donor Verification', 'route' => 'admin.donor-verifications.index', 'active' => ['admin/donor-verifications*'], 'icon' => 'bi bi-person-check', 'roles' => ['admin']],
                 ['text' => 'Event Management', 'route' => 'admin.donation-events.index', 'active' => ['admin/donation-events*'], 'icon' => 'bi bi-calendar-event', 'roles' => ['admin']],
                 ['text' => 'Appointment Management', 'route' => 'admin.appointments', 'active' => ['admin/appointments*'], 'icon' => 'bi bi-calendar-check', 'roles' => ['admin', 'staff']],
-                ['text' => 'Donation Records / Check-in', 'route' => 'admin.donation-records', 'active' => ['admin/donation-records*'], 'icon' => 'bi bi-clipboard2-pulse', 'roles' => ['admin', 'staff']],
+                ['text' => 'Donation Processing', 'route' => 'admin.donation-records', 'active' => ['admin/donation-records*'], 'icon' => 'bi bi-clipboard2-pulse', 'roles' => ['admin', 'staff']],
                 ['text' => 'Facility Management', 'route' => 'admin.facilities.index', 'active' => ['admin/facilities*'], 'icon' => 'bi bi-hospital', 'roles' => ['admin', 'staff']],
                 ['text' => 'Blood Requests', 'route' => 'admin.blood-requests.index', 'active' => ['admin/blood-requests*'], 'icon' => 'bi bi-droplet-half', 'roles' => ['admin', 'staff']],
                 ['text' => 'Blood Availability Mapping', 'route' => 'admin.blood-availability-mapping', 'active' => ['admin/blood-availability*', 'admin/map*'], 'icon' => 'bi bi-geo-alt', 'roles' => ['admin', 'staff']],

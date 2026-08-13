@@ -26,8 +26,8 @@
 			['id' => 1, 'key' => 'users.view', 'name' => 'View Users', 'module' => 'User Management', 'description' => 'View user records'],
 			['id' => 2, 'key' => 'users.create', 'name' => 'Create User', 'module' => 'User Management', 'description' => 'Create new users'],
 			['id' => 3, 'key' => 'users.update', 'name' => 'Update User', 'module' => 'User Management', 'description' => 'Edit user records'],
-			['id' => 4, 'key' => 'users.delete', 'name' => 'Delete User', 'module' => 'User Management', 'description' => 'Delete users'],
-			['id' => 5, 'key' => 'appointments.manage', 'name' => 'Manage Appointments', 'module' => 'Appointments', 'description' => 'Approve and reschedule appointments'],
+			['id' => 4, 'key' => 'users.delete', 'name' => 'Deactivate User', 'module' => 'User Management', 'description' => 'Deactivate donor access without deleting history'],
+			['id' => 5, 'key' => 'appointments.manage', 'name' => 'Manage Appointments', 'module' => 'Appointments', 'description' => 'Approve appointments and manage attendance'],
 			['id' => 6, 'key' => 'donations.view', 'name' => 'View Donation Records', 'module' => 'Donation Records', 'description' => 'View donation entries'],
 			['id' => 7, 'key' => 'reports.view', 'name' => 'View Reports', 'module' => 'Reports & Analytics', 'description' => 'Access reports dashboard'],
 			['id' => 8, 'key' => 'reports.export', 'name' => 'Export Reports', 'module' => 'Reports & Analytics', 'description' => 'Download generated reports'],
@@ -1004,7 +1004,7 @@
 					var actionMarkup = '<span class="text-muted small">Fixed</span>';
 
 					if (!isFixedRoleId(role.id)) {
-						actionMarkup = '<div class="d-flex flex-wrap gap-1">' +
+						actionMarkup = '<div class="table-actions d-flex flex-wrap gap-1">' +
 							'<button class="btn btn-sm btn-outline-primary" type="button" data-role-action="edit" data-role-id="' + role.id + '">Edit</button>' +
 							'<button class="btn btn-sm btn-outline-danger" type="button" data-role-action="delete" data-role-id="' + role.id + '">Delete</button>' +
 							'</div>';
@@ -1213,7 +1213,7 @@
 						'<td>' + getRoleBadges(user.roleIds) + '</td>' +
 						'<td>' + getTwoFactorStatusBadge(user) + '</td>' +
 						'<td>' + getAssignRoleSelect(user) + '</td>' +
-						'<td><div class="d-flex flex-wrap gap-1">' +
+						'<td><div class="table-actions d-flex flex-wrap gap-1">' +
 						'<button class="btn btn-sm btn-outline-danger" type="button" data-user-action="save" data-user-id="' + user.id + '">Save Role</button>' +
 						'<button class="btn btn-sm btn-outline-primary" type="button" data-user-action="edit" data-user-id="' + user.id + '">Edit</button>' +
 						'<button class="btn btn-sm btn-outline-warning" type="button" data-user-action="reset-password" data-user-id="' + user.id + '">Reset Password</button>' +

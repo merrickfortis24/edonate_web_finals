@@ -7,6 +7,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DonorMatchingService
 {
@@ -103,7 +104,7 @@ class DonorMatchingService
         $facilityBarangay = strtolower(trim((string) ($facility?->barangay_name ?? '')));
         $facilityCity = strtolower(trim((string) ($facility?->city ?? '')));
 
-        return DB::table('donors AS d')
+        $query = DB::table('donors AS d')
             ->leftJoin('blood_types AS bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
             ->joinSub($latestEligibility, 'es_latest', function ($join): void {
                 $join->on('es_latest.donor_id', '=', 'd.donor_id');
@@ -137,6 +138,12 @@ class DonorMatchingService
                 'es.status AS eligibility_status',
                 DB::raw($this->locationRankSql($facilityBarangay, $facilityCity) . ' AS location_rank')
             );
+
+        if (Schema::hasColumn('donors', 'is_active')) {
+            $query->where('d.is_active', true);
+        }
+
+        return $query;
     }
 
     private function activeAppointmentSubquery(Builder $query): Builder

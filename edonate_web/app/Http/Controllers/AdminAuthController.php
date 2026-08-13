@@ -486,7 +486,7 @@ class AdminAuthController extends BaseController
                     'listUrl' => route('admin.users.data'),
                     'showUrlTemplate' => route('admin.users.show', ['donor' => '__DONOR_ID__']),
                     'updateUrlTemplate' => route('admin.users.update', ['donor' => '__DONOR_ID__']),
-                    'deleteUrlTemplate' => route('admin.users.delete', ['donor' => '__DONOR_ID__']),
+                    'deactivateUrlTemplate' => route('admin.users.deactivate', ['donor' => '__DONOR_ID__']),
                     'csrfToken' => csrf_token(),
                 ],
                 'filters' => [
@@ -796,9 +796,9 @@ class AdminAuthController extends BaseController
     }
 
     /**
-     * Delete a donor record from the admin user management page.
+     * Deactivate a donor account without removing its historical records.
      */
-    public function deleteUser(Request $request, int $donor): JsonResponse
+    public function deactivateUser(Request $request, int $donor): JsonResponse
     {
         $targetDonor = Donor::query()->find($donor);
         if (! $targetDonor) {
@@ -807,73 +807,39 @@ class AdminAuthController extends BaseController
             ], 404);
         }
 
-        $targetSummary = $this->getUserManagementDonorDetail($targetDonor->donor_id) ?? [];
-        $blockers = $this->userManagementDeleteBlockers($targetDonor->donor_id);
-
-        if ($blockers !== []) {
-            $this->logUserManagementAudit(
-                $request,
-                'delete',
-                'Blocked donor deletion for '.($targetSummary['full_name'] ?? ('Donor #'.$targetDonor->donor_id)),
-                (int) $targetDonor->donor_id,
-                [
-                    'blockers' => $blockers,
-                ],
-                'blocked'
-            );
-
+        if (! Schema::hasColumn('donors', 'is_active')) {
             return response()->json([
-                'message' => $this->userManagementDeleteBlockerMessage($blockers),
-                'blockers' => $blockers,
-            ], 409);
+                'message' => 'Donor deactivation is unavailable until the account-status migration has been applied.',
+            ], 422);
         }
 
-        $currentLocation = $targetDonor->location_id
-            ? Location::query()->find($targetDonor->location_id)
-            : null;
-        $locationIsShared = $currentLocation
-            ? Donor::query()
-                ->where('location_id', $currentLocation->location_id)
-                ->where('donor_id', '!=', $targetDonor->donor_id)
-                ->exists()
-            : false;
+        $targetSummary = $this->getUserManagementDonorDetail($targetDonor->donor_id) ?? [];
+        if (! (bool) ($targetDonor->is_active ?? true)) {
+            return response()->json([
+                'message' => 'This donor account is already inactive.',
+                'donor' => $targetSummary,
+            ]);
+        }
 
-        DB::transaction(function () use ($targetDonor, $currentLocation, $locationIsShared): void {
-            if (Schema::hasTable('donor_forget')) {
-                DB::table('donor_forget')
-                    ->where('donor_id', $targetDonor->donor_id)
-                    ->delete();
-            }
-
-            DonorAuthentication::query()
-                ->where('donor_id', $targetDonor->donor_id)
-                ->orderByDesc('auth_id')
-                ->get()
-                ->each(function (DonorAuthentication $authentication): void {
-                    $authentication->delete();
-                });
-
-            $targetDonor->delete();
-
-            if ($currentLocation instanceof Location && ! $locationIsShared) {
-                $currentLocation->delete();
-            }
+        DB::transaction(function () use ($targetDonor): void {
+            $targetDonor->forceFill(['is_active' => false])->save();
         });
 
         $this->logUserManagementAudit(
             $request,
-            'delete',
-            'Deleted donor account: '.($targetSummary['full_name'] ?? ('Donor #'.$targetDonor->donor_id)),
+            'deactivate',
+            'Deactivated donor account: '.($targetSummary['full_name'] ?? ('Donor #'.$targetDonor->donor_id)),
             (int) $targetDonor->donor_id,
             [
                 'email' => $targetSummary['email'] ?? null,
                 'donor_code' => $targetSummary['donor_code'] ?? null,
+                'historical_records_preserved' => true,
             ]
         );
 
         return response()->json([
-            'message' => 'Donor deleted successfully.',
-            'deletedUserId' => (int) $targetDonor->donor_id,
+            'message' => 'Donor account deactivated. Historical records were preserved.',
+            'donor' => $this->getUserManagementDonorDetail($targetDonor->donor_id),
         ]);
     }
 
@@ -886,6 +852,7 @@ class AdminAuthController extends BaseController
             'appointmentManagementPayload' => [
                 'api' => [
                     'listUrl' => route('admin.appointments.data'),
+                    'donationProcessingUrl' => route('admin.donation-records'),
                 ],
                 'filters' => [
                     'centers' => $this->appointmentManagementCenterOptions(),
@@ -1077,77 +1044,6 @@ class AdminAuthController extends BaseController
         return response()->json(['message' => 'Appointment rejected.']);
     }
 
-    /**
-     * Reschedule a confirmed appointment to a new date/time.
-     */
-    public function rescheduleAppointment(Request $request, int $appointment): JsonResponse
-    {
-        $validated = $request->validate([
-            'appointment_date' => ['required', 'date', 'after_or_equal:today'],
-            'appointment_time' => ['required', 'date_format:H:i'],
-        ]);
-
-        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (! $row) {
-            return response()->json(['message' => 'Appointment not found.'], 404);
-        }
-
-        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
-        if ($normalized !== 'confirmed') {
-            return response()->json(['message' => 'Only confirmed appointments can be rescheduled.'], 422);
-        }
-
-        $slotTaken = DB::table('appointments')
-            ->where('appointment_date', $validated['appointment_date'])
-            ->where('appointment_time', $validated['appointment_time'])
-            ->where('appointment_id', '!=', $appointment)
-            ->exists();
-
-        if ($slotTaken) {
-            return response()->json(['message' => 'That schedule is already taken.'], 422);
-        }
-
-        $actorAdminId = is_numeric($request->session()->get('admin_id'))
-            ? (int) $request->session()->get('admin_id')
-            : null;
-
-        DB::table('appointments')->where('appointment_id', $appointment)->update([
-            'appointment_date' => $validated['appointment_date'],
-            'appointment_time' => $validated['appointment_time'],
-            'status' => 'rescheduled',
-            'admin_id' => $actorAdminId,
-        ]);
-
-        $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
-        $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
-
-        $this->createDonorNotification(
-            $donorId,
-            'appointment_rescheduled',
-            "Your appointment {$appointmentCode} was rescheduled to {$validated['appointment_date']} at {$validated['appointment_time']}."
-        );
-        app(AdminNotificationService::class)->createAdminEvent(
-            'appointment_rescheduled',
-            'Appointment Rescheduled',
-            "Appointment {$appointmentCode} was rescheduled to {$validated['appointment_date']} at {$validated['appointment_time']}.",
-            'appointment',
-            $appointment
-        );
-
-        $this->logAppointmentAudit($request, 'appointment_rescheduled', "Rescheduled appointment {$appointmentCode}.", $appointment, [
-            'appointment_id' => $appointment,
-            'donor_id' => $donorId,
-            'previous_date' => $row->appointment_date ?? null,
-            'previous_time' => $row->appointment_time ?? null,
-            'new_date' => $validated['appointment_date'],
-            'new_time' => $validated['appointment_time'],
-            'previous_status' => $row->status ?? null,
-            'new_status' => 'rescheduled',
-        ]);
-
-        return response()->json(['message' => 'Appointment rescheduled.']);
-    }
-
     public function checkInAppointment(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
     {
         $result = $service->checkIn($appointment, $this->currentAdminId($request), $request);
@@ -1270,10 +1166,9 @@ class AdminAuthController extends BaseController
                 'canVerifyBloodType' => Str::lower(trim((string) $request->session()->get('admin_role'))) === 'admin',
                 'api' => [
                     'listUrl' => route('admin.donation-records.data'),
-                    'checkInUrlTemplate' => route('admin.appointments.check-in', ['appointment' => '__ID__']),
                     'completeUrlTemplate' => route('admin.appointments.complete', ['appointment' => '__ID__']),
                     'deferUrlTemplate' => route('admin.appointments.defer', ['appointment' => '__ID__']),
-                    'noShowUrlTemplate' => route('admin.appointments.no-show', ['appointment' => '__ID__']),
+                    'initialAppointmentId' => $request->integer('appointment_id') ?: null,
                 ],
                 'filters' => [
                     'bloodTypes' => $this->userManagementBloodTypeOptions(),
@@ -1286,7 +1181,7 @@ class AdminAuthController extends BaseController
     }
 
     /**
-     * Return paginated donation processing rows for the Donation Records / Check-in page.
+     * Return paginated rows for the Donation Processing page.
      */
     public function listDonationRecordsData(Request $request): JsonResponse
     {
@@ -1298,6 +1193,7 @@ class AdminAuthController extends BaseController
             'event_id' => ['nullable', 'integer', 'min:1'],
             'center' => ['nullable', 'string', 'max:150'],
             'date' => ['nullable', 'date'],
+            'appointment_id' => ['nullable', 'integer', 'min:1'],
             'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'checked_in', 'completed', 'deferred_on_site', 'no_show', 'cancelled'])],
         ]);
 
@@ -1308,6 +1204,7 @@ class AdminAuthController extends BaseController
         $eventId = isset($validated['event_id']) ? (int) $validated['event_id'] : null;
         $center = trim((string) ($validated['center'] ?? ''));
         $date = trim((string) ($validated['date'] ?? ''));
+        $appointmentId = isset($validated['appointment_id']) ? (int) $validated['appointment_id'] : null;
         $status = Str::lower(trim((string) ($validated['status'] ?? '')));
 
         $query = $this->donationProcessingBaseQuery();
@@ -1352,6 +1249,10 @@ class AdminAuthController extends BaseController
 
         if ($date !== '') {
             $query->whereDate('ap.appointment_date', Carbon::parse($date)->toDateString());
+        }
+
+        if ($appointmentId !== null && $appointmentId > 0) {
+            $query->where('ap.appointment_id', $appointmentId);
         }
 
         if ($status !== '') {
@@ -3585,10 +3486,8 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'deferred_reason' => $entry->deferred_reason,
             'recorded_by' => $recordedBy !== '' ? $recordedBy : null,
             'actions' => [
-                'can_check_in' => $status === 'confirmed',
                 'can_complete' => $status === 'checked_in',
                 'can_defer' => $status === 'checked_in',
-                'can_no_show' => $status === 'confirmed',
             ],
         ];
     }
@@ -4491,6 +4390,12 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
     private function userManagementDonorQuery()
     {
         $statusExpression = $this->userManagementStatusExpression();
+        $verificationStatus = Schema::hasColumn('donors', 'verification_status')
+            ? 'd.verification_status'
+            : DB::raw("'unverified' as verification_status");
+        $accountActive = Schema::hasColumn('donors', 'is_active')
+            ? 'd.is_active'
+            : DB::raw('1 as is_active');
 
         return DB::table('donors as d')
             ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
@@ -4510,6 +4415,8 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'd.first_name',
                 'd.last_name',
                 'd.contact_number',
+                $verificationStatus,
+                $accountActive,
                 'da.email',
                 'bt.blood_type',
                 DB::raw('COALESCE(drs.total_donations, 0) as total_donations'),
@@ -4565,6 +4472,18 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
     private function userManagementDonorDetailQuery()
     {
         $statusExpression = $this->userManagementStatusExpression();
+        $verificationStatus = Schema::hasColumn('donors', 'verification_status')
+            ? 'd.verification_status'
+            : DB::raw("'unverified' as verification_status");
+        $bloodTypeStatus = Schema::hasColumn('donors', 'blood_type_status')
+            ? 'd.blood_type_status'
+            : DB::raw("'not_yet_determined' as blood_type_status");
+        $bloodTypeVerifiedAt = Schema::hasColumn('donors', 'blood_type_verified_at')
+            ? 'd.blood_type_verified_at'
+            : DB::raw('NULL as blood_type_verified_at');
+        $accountActive = Schema::hasColumn('donors', 'is_active')
+            ? 'd.is_active'
+            : DB::raw('1 as is_active');
 
         return DB::table('donors as d')
             ->leftJoinSub($this->appointmentLatestDonorAuthQuery(), 'da_latest', function ($join): void {
@@ -4588,8 +4507,12 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'd.birthdate',
                 'd.contact_number',
                 'd.blood_type_id',
+                $bloodTypeStatus,
+                $bloodTypeVerifiedAt,
                 'd.location_id',
                 'd.date_registered',
+                $verificationStatus,
+                $accountActive,
                 'da.auth_id',
                 'da.email',
                 'da.created_at as auth_created_at',
@@ -4703,6 +4626,8 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 : null,
             'eligibility_status' => $status,
             'total_donations' => (int) ($donor->total_donations ?? 0),
+            'verification_status' => $this->normalizeDonorVerificationStatus($donor->verification_status ?? null),
+            'is_active' => (bool) ($donor->is_active ?? true),
         ];
     }
 
@@ -4735,10 +4660,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'blood_type_id' => isset($donor->blood_type_id) ? (int) $donor->blood_type_id : null,
             'blood_type' => trim((string) ($donor->blood_type ?? '')),
             'blood_type_status' => Str::lower(trim((string) ($donor->blood_type_status ?? 'not_yet_determined'))),
+            'verification_status' => $this->normalizeDonorVerificationStatus($donor->verification_status ?? null),
+            'is_active' => (bool) ($donor->is_active ?? true),
             'blood_type_verified_at' => ! empty($donor->blood_type_verified_at) ? (string) $donor->blood_type_verified_at : null,
-            'blood_type_verified_by' => trim((string) ($donor->blood_type_verified_by_name ?? '')) !== ''
-                ? trim((string) $donor->blood_type_verified_by_name)
-                : $this->userManagementNullableString($donor->blood_type_verified_by_username ?? null),
             'location_id' => isset($donor->location_id) ? (int) $donor->location_id : null,
             'street_address' => $this->userManagementNullableString($donor->street_address ?? null),
             'barangay_name' => $this->userManagementNullableString($donor->barangay_name ?? null),
@@ -4771,6 +4695,19 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
         return Str::lower(trim((string) $status)) === 'not_eligible'
             ? 'not_eligible'
             : 'eligible';
+    }
+
+    /**
+     * Keep identity-verification labels limited to the statuses supported by
+     * the donor verification workflow.
+     */
+    private function normalizeDonorVerificationStatus(mixed $status): string
+    {
+        $normalized = Str::lower(trim((string) ($status ?? 'unverified')));
+
+        return in_array($normalized, ['unverified', 'pending', 'verified', 'rejected'], true)
+            ? $normalized
+            : 'unverified';
     }
 
     /**
@@ -4885,63 +4822,6 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
         $trimmed = trim((string) ($value ?? ''));
 
         return $trimmed === '' ? null : $trimmed;
-    }
-
-    /**
-     * Resolve related-record blockers for donor deletion.
-     *
-     * @return array<int, array<string, mixed>>
-     */
-    private function userManagementDeleteBlockers(int $donorId): array
-    {
-        $definitions = [
-            ['table' => 'appointments', 'label' => 'appointments'],
-            ['table' => 'donation_records', 'label' => 'donation records'],
-            ['table' => 'eligibility_status', 'label' => 'eligibility records'],
-            ['table' => 'eligibility_submissions', 'label' => 'eligibility submissions'],
-            ['table' => 'notifications', 'label' => 'notifications'],
-        ];
-
-        $blockers = [];
-
-        foreach ($definitions as $definition) {
-            $table = (string) $definition['table'];
-            if (! Schema::hasTable($table)) {
-                continue;
-            }
-
-            $count = (int) DB::table($table)
-                ->where('donor_id', $donorId)
-                ->count();
-
-            if ($count > 0) {
-                $blockers[] = [
-                    'key' => $table,
-                    'label' => (string) $definition['label'],
-                    'count' => $count,
-                ];
-            }
-        }
-
-        return $blockers;
-    }
-
-    /**
-     * Build a human-readable delete blocker message for donors.
-     *
-     * @param  array<int, array<string, mixed>>  $blockers
-     */
-    private function userManagementDeleteBlockerMessage(array $blockers): string
-    {
-        if ($blockers === []) {
-            return 'This donor cannot be deleted right now.';
-        }
-
-        $labels = array_map(function (array $blocker): string {
-            return (string) ($blocker['label'] ?? 'related records');
-        }, $blockers);
-
-        return 'This donor cannot be deleted because related '.implode(', ', $labels).' still exist.';
     }
 
     /**

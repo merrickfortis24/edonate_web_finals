@@ -25,11 +25,13 @@ class Donor extends Model
         'location_id',
         'date_registered',
         'verification_status',
+        'is_active',
     ];
 
     protected $casts = [
         'blood_type_verified_at' => 'datetime',
         'birthdate' => 'date',
+        'is_active' => 'boolean',
     ];
 
     public function bloodType()

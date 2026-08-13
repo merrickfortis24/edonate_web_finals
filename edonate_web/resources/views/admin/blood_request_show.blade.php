@@ -5,6 +5,12 @@
 @section('header_title', $details['request']['request_reference'])
 @section('header_subtitle', $details['request']['facility_name'])
 
+@section('header_actions')
+    <a class="btn btn-outline-secondary" href="{{ route('admin.blood-requests.index') }}" aria-label="Back to Blood Requests">
+        <span aria-hidden="true">&larr;</span> Back to Blood Requests
+    </a>
+@endsection
+
 @push('admin_head')
 <style>
     .br-detail{padding:24px 32px 40px}.br-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.br-card{background:var(--edonate-card-bg);border:1px solid var(--bs-border-color);border-radius:8px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.06);color:var(--bs-body-color)}.br-card h2{font-size:18px;margin-bottom:14px}.br-meta{display:grid;grid-template-columns:180px 1fr;gap:8px;font-size:14px}.br-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.br-stat{border:1px solid var(--bs-border-color);border-radius:8px;padding:12px}.br-stat span{color:var(--bs-secondary-color);font-size:12px;font-weight:600}.br-stat strong{display:block;color:#9f1010;font-size:22px}.br-table td,.br-table th{font-size:13px;vertical-align:middle}.br-actions{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:900px){.br-grid,.br-summary{grid-template-columns:1fr}.br-detail{padding:16px}.br-meta{grid-template-columns:1fr}}
@@ -42,7 +48,6 @@
                     <button class="btn btn-outline-success btn-sm" id="fulfillRequest" type="button">Mark Fulfilled</button>
                     <button class="btn btn-outline-danger btn-sm" id="cancelRequest" type="button">Cancel Request</button>
                 @endif
-                <a class="btn btn-outline-secondary btn-sm" href="{{ route('admin.blood-requests.index') }}">Back</a>
             </div>
         </section>
     </div>

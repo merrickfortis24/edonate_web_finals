@@ -15,10 +15,11 @@
 @section('admin_page_data')
 {!! json_encode([
     'page' => 'appointment-management',
-    'appointmentManagement' => $appointmentManagementPayload ?? [
-        'api' => [
-            'listUrl' => '',
-        ],
+        'appointmentManagement' => $appointmentManagementPayload ?? [
+            'api' => [
+                'listUrl' => '',
+                'donationProcessingUrl' => '',
+            ],
         'filters' => [
             'centers' => [],
         ],
@@ -112,24 +113,28 @@
         </form>
 
         <section class="appointment-table" aria-label="Appointment list">
-            <div class="appointment-table-scroll table-responsive">
-                <div class="appointment-table__head" role="rowgroup">
-                    <div class="appointment-table__head-cell">Appointment ID</div>
-                    <div class="appointment-table__head-cell">Donor</div>
-                    <div class="appointment-table__head-cell">Date &amp; Time</div>
-                    <div class="appointment-table__head-cell">Center</div>
-                    <div class="appointment-table__head-cell">Status</div>
-                    <div class="appointment-table__head-cell">Actions</div>
-                </div>
+            <div class="appointment-table-scroll appointment-table-wrapper table-responsive"
+                 tabindex="0"
+                 aria-label="Scrollable appointment records table">
+                <div class="appointment-table-inner">
+                    <div class="appointment-table__head" role="rowgroup">
+                        <div class="appointment-table__head-cell">Appointment ID</div>
+                        <div class="appointment-table__head-cell">Donor</div>
+                        <div class="appointment-table__head-cell">Date &amp; Time</div>
+                        <div class="appointment-table__head-cell">Center</div>
+                        <div class="appointment-table__head-cell">Status</div>
+                        <div class="appointment-table__head-cell">Actions</div>
+                    </div>
 
-                <div class="appointment-table__body" role="rowgroup" id="appointmentTableBody">
-                    <div class="appointment-row" role="row">
-                        <div class="appointment-cell"><span class="appointment-id">Loading...</span></div>
-                        <div class="appointment-cell"><span class="appointment-donor__name">Fetching appointments</span><span class="appointment-donor__meta">Please wait...</span></div>
-                        <div class="appointment-cell">-</div>
-                        <div class="appointment-cell appointment-center">-</div>
-                        <div class="appointment-cell">-</div>
-                        <div class="appointment-cell appointment-actions">-</div>
+                    <div class="appointment-table__body" role="rowgroup" id="appointmentTableBody">
+                        <div class="appointment-row" role="row">
+                            <div class="appointment-cell"><span class="appointment-id">Loading...</span></div>
+                            <div class="appointment-cell"><span class="appointment-donor__name">Fetching appointments</span><span class="appointment-donor__meta">Please wait...</span></div>
+                            <div class="appointment-cell">-</div>
+                            <div class="appointment-cell appointment-center">-</div>
+                            <div class="appointment-cell">-</div>
+                            <div class="appointment-cell appointment-actions">-</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -143,6 +148,8 @@
 </main>
 
 {{-- ── Complete Donation Modal ── --}}
+{{-- Donation completion and rescheduling are handled by their canonical workflows. --}}
+@if(false)
 <div class="modal fade" id="completeModal" tabindex="-1" role="dialog" aria-labelledby="completeModalTitle" aria-modal="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content" style="border:none; border-radius:20px; overflow:hidden;">
@@ -308,6 +315,7 @@
 
 {{-- Toast container --}}
 <div class="rs-toast-wrap" id="rsToastWrap" aria-live="polite" aria-atomic="true"></div>
+@endif
 
 @endsection
 
@@ -428,7 +436,32 @@
             return 'appointment-badge--' + normalizeStatus(value);
         }
 
-        function renderActionButtons(status) {
+        var donationProcessingUrl = payload.api && payload.api.donationProcessingUrl
+            ? String(payload.api.donationProcessingUrl)
+            : '';
+
+        function isAppointmentDateInFuture(dateValue) {
+            if (!dateValue) {
+                return false;
+            }
+
+            var today = new Date();
+            today.setHours(0, 0, 0, 0);
+            var date = new Date(String(dateValue) + 'T00:00:00');
+            return !Number.isNaN(date.getTime()) && date > today;
+        }
+
+        function isAppointmentScheduledPast(dateValue, timeValue) {
+            if (!dateValue) {
+                return false;
+            }
+
+            var time = timeValue ? String(timeValue).slice(0, 8) : '23:59:59';
+            var scheduled = new Date(String(dateValue) + 'T' + time);
+            return !Number.isNaN(scheduled.getTime()) && scheduled <= new Date();
+        }
+
+        function renderActionButtons(status, appointmentDate, appointmentTime, appointmentId) {
             var normalizedStatus = normalizeStatus(status);
 
             if (normalizedStatus === 'pending') {
@@ -444,23 +477,34 @@
             }
 
             if (normalizedStatus === 'confirmed') {
-                return ''
-                    + '<button class="appointment-btn appointment-btn--approve" data-action="check-in" type="button">'
+                var actions = '';
+                if (!isAppointmentDateInFuture(appointmentDate)) {
+                    actions += '<button class="appointment-btn appointment-btn--approve" data-action="check-in" title="Check In Donor" aria-label="Check In Donor" type="button">'
                     + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
                     + 'Check In'
-                    + '</button>'
-                    + '<button class="appointment-btn appointment-btn--reschedule" data-action="reschedule" type="button">'
-                    + '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10a6 6 0 1 1 1.76 4.24" stroke="#0063aa" stroke-width="1.6" stroke-linecap="round"></path><polyline points="4 14 4 10 8 10" stroke="#0063aa" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>'
-                    + 'Reschedule'
                     + '</button>';
+                }
+                if (isAppointmentScheduledPast(appointmentDate, appointmentTime)) {
+                    actions += '<button class="appointment-btn appointment-btn--no-show" data-action="no-show" title="Mark Donor as No Show" aria-label="Mark Donor as No Show" type="button">'
+                        + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"></circle><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>'
+                        + 'No Show'
+                        + '</button>';
+                }
+                actions += '<button class="appointment-btn appointment-btn--cancel" data-action="cancel" title="Cancel Appointment" aria-label="Cancel Appointment" type="button">'
+                    + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"></circle><path d="M9 9l6 6M15 9l-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>'
+                    + 'Cancel'
+                    + '</button>';
+                return actions;
             }
 
             if (normalizedStatus === 'checked_in') {
-                return ''
-                    + '<button class="appointment-btn appointment-btn--complete" data-action="complete" type="button">'
-                    + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
-                    + 'Complete'
-                    + '</button>';
+                var processUrl = donationProcessingUrl
+                    ? donationProcessingUrl + '?appointment_id=' + encodeURIComponent(String(appointmentId || ''))
+                    : '#';
+                return '<a class="appointment-btn appointment-btn--process" href="' + processUrl + '" title="Process Donation" aria-label="Process Donation">'
+                    + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>'
+                    + 'Process Donation'
+                    + '</a>';
             }
 
             if (normalizedStatus === 'completed' || normalizedStatus === 'deferred_on_site') {
@@ -499,7 +543,7 @@
                 var centerLabel = escapeHtml(item.center_label || 'N/A');
                 var badgeClass = statusClass(item.status);
                 var badgeLabel = escapeHtml(statusLabel(item.status));
-                var actions = renderActionButtons(item.status);
+                var actions = renderActionButtons(item.status, item.appointment_date, item.appointment_time, item.appointment_id);
 
                 return ''
                     + '<div class="appointment-row" role="row" data-appointment-id="' + escapeHtml(item.appointment_id || '') + '" data-appointment-date="' + escapeHtml(item.appointment_date || '') + '" data-appointment-time="' + escapeHtml(item.appointment_time || '') + '">'
@@ -887,22 +931,47 @@
                     return;
                 }
 
-                if (action === 'reschedule') {
-                    openRescheduleModal(
-                        appointmentId,
-                        row ? String(row.getAttribute('data-appointment-date') || '') : '',
-                        row ? String(row.getAttribute('data-appointment-time') || '') : '',
-                        row ? String(row.querySelector('.appointment-id') ? row.querySelector('.appointment-id').textContent : '') : ''
-                    );
-                    return;
-                }
+                if (action === 'no-show' || action === 'cancel') {
+                    var noShowAction = action === 'no-show';
+                    var confirmOptions = {
+                        title: noShowAction ? 'Mark donor as No Show?' : 'Cancel appointment?',
+                        text: noShowAction
+                            ? 'This appointment will be marked as not attended.'
+                            : 'This will cancel the appointment without deleting its history.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: noShowAction ? '#b60c0c' : '#6c757d',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: noShowAction ? 'Mark No Show' : 'Cancel Appointment',
+                        cancelButtonText: 'Keep Appointment'
+                    };
+                    var confirmation = typeof Swal !== 'undefined'
+                        ? Swal.fire(confirmOptions)
+                        : Promise.resolve({ isConfirmed: window.confirm(confirmOptions.text) });
 
-                if (action === 'complete') {
-                    var donorNameText = row ? (row.querySelector('.appointment-donor__name')
-                        ? row.querySelector('.appointment-donor__name').textContent : '') : '';
-                    var apptCodeText = row ? (row.querySelector('.appointment-id')
-                        ? row.querySelector('.appointment-id').textContent : '') : '';
-                    openCompleteModal(appointmentId, apptCodeText, donorNameText);
+                    confirmation.then(function (result) {
+                        if (!result || !result.isConfirmed) { return; }
+                        actionButton.disabled = true;
+                        performAppointmentAction(appointmentId, action, null)
+                            .then(function () {
+                                loadAppointments();
+                                if (typeof Swal !== 'undefined') {
+                                    Swal.fire({
+                                        title: noShowAction ? 'Marked No Show' : 'Appointment Cancelled',
+                                        text: noShowAction ? 'The appointment was marked as not attended.' : 'The appointment has been cancelled.',
+                                        icon: 'success',
+                                        timer: 1800,
+                                        showConfirmButton: false
+                                    });
+                                }
+                            })
+                            .catch(function (error) {
+                                if (typeof Swal !== 'undefined') {
+                                    Swal.fire('Error', error && error.message ? error.message : 'Action failed.', 'error');
+                                }
+                            })
+                            .then(function () { actionButton.disabled = false; });
+                    });
                     return;
                 }
             });
@@ -916,6 +985,9 @@
         });
 
         /* ── Reschedule Modal Controller ── */
+        // Legacy appointment-page modals are intentionally disabled. Attendance
+        // actions stay here; donation completion stays on Donation Processing.
+        if (false) {
         var rsModal          = null;  // bootstrap.Modal instance (lazy init)
         var rsModalEl        = document.getElementById('rescheduleModal');
         var rsDateInput      = document.getElementById('rescheduleDate');
@@ -1219,6 +1291,8 @@
                 if (completeEligiblePreview) { completeEligiblePreview.style.display = 'none'; }
                 if (completeConfirmBtn)      { completeConfirmBtn.disabled = false; }
             });
+        }
+
         }
 
         hydrateCenterFilter((payload.filters && payload.filters.centers) || []);

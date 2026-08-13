@@ -127,7 +127,9 @@
             </table>
         </div>
 
-        {{ $appointments->links() }}
+        <div class="admin-pagination mt-3">
+            {{ $appointments->links('pagination::bootstrap-5') }}
+        </div>
     </section>
 </main>
 @endsection

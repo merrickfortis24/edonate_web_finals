@@ -293,6 +293,10 @@ class AppointmentBookingService
 
     private function donorAccountActive(Donor $donor): bool
     {
+        if (Schema::hasColumn('donors', 'is_active') && ! (bool) ($donor->is_active ?? true)) {
+            return false;
+        }
+
         if (! Schema::hasTable('donor_authentication')
             || ! Schema::hasColumn('donor_authentication', 'is_verified')
             || ! Schema::hasColumn('donor_authentication', 'donor_id')) {

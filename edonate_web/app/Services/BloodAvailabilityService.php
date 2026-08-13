@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class BloodAvailabilityService
 {
@@ -133,7 +134,7 @@ class BloodAvailabilityService
             ->whereNotNull('donor_id')
             ->groupBy('donor_id');
 
-        return DB::table('donors AS d')
+        $query = DB::table('donors AS d')
             ->join('blood_types AS bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
             ->joinSub($latestEligibility, 'es_latest', function ($join): void {
                 $join->on('es_latest.donor_id', '=', 'd.donor_id');
@@ -150,6 +151,12 @@ class BloodAvailabilityService
             })
             ->whereNotNull('l.barangay_name')
             ->whereRaw("TRIM(COALESCE(l.barangay_name, '')) <> ''");
+
+        if (Schema::hasColumn('donors', 'is_active')) {
+            $query->where('d.is_active', true);
+        }
+
+        return $query;
     }
 
     private function upcomingAppointmentSubquery(Builder $query): Builder
