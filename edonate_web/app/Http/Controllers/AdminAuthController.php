@@ -44,6 +44,8 @@ class AdminAuthController extends BaseController
 
     private const ADMIN_NOTIFICATION_PREFERENCES_TABLE = 'admin_notification_preferences';
 
+    private const SYSTEM_SETTINGS_TABLE = 'system_settings';
+
     private const SECURITY_DEFAULT_TWO_FACTOR_REQUIRED = true;
 
     private const SECURITY_DEFAULT_SESSION_TIMEOUT_MINUTES = 10;
@@ -484,6 +486,7 @@ class AdminAuthController extends BaseController
             'userManagementPayload' => [
                 'api' => [
                     'listUrl' => route('admin.users.data'),
+                    'exportUrl' => route('admin.users.export'),
                     'showUrlTemplate' => route('admin.users.show', ['donor' => '__DONOR_ID__']),
                     'updateUrlTemplate' => route('admin.users.update', ['donor' => '__DONOR_ID__']),
                     'deactivateUrlTemplate' => route('admin.users.deactivate', ['donor' => '__DONOR_ID__']),
@@ -567,7 +570,9 @@ class AdminAuthController extends BaseController
                 'total_donors' => (int) DB::table('donors')->count(),
                 'eligible_donors' => (int) ($statusCounts['eligible'] ?? 0),
                 'not_eligible_donors' => (int) ($statusCounts['not_eligible'] ?? 0),
-                'total_donations' => (int) DB::table('donation_records')->count(),
+                'total_donations' => Schema::hasTable('donation_records')
+                    ? (int) DB::table('donation_records')->count()
+                    : 0,
             ],
             'filters' => [
                 'blood_types' => $this->userManagementBloodTypeOptions(),
@@ -576,6 +581,101 @@ class AdminAuthController extends BaseController
                     ['value' => 'not_eligible', 'label' => 'Not Eligible'],
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * Export the currently filtered donor directory as a safe CSV download.
+     *
+     * The export intentionally contains operational donor-directory fields
+     * only. Passwords, OTPs, tokens, and identity-document data are never
+     * included.
+     */
+    public function exportUsersCsv(Request $request): StreamedResponse
+    {
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:150'],
+            'blood_type' => ['nullable', 'string', 'max:10'],
+            'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible'])],
+        ]);
+
+        $searchTerm = trim((string) ($validated['search'] ?? ''));
+        $bloodType = Str::upper(trim((string) ($validated['blood_type'] ?? '')));
+        $status = Str::lower(trim((string) ($validated['status'] ?? '')));
+        $statusExpression = $this->userManagementStatusExpression();
+
+        $query = $this->userManagementDonorDetailQuery();
+
+        if ($searchTerm !== '') {
+            $likeTerm = '%'.$searchTerm.'%';
+
+            $query->where(function ($builder) use ($searchTerm, $likeTerm): void {
+                $builder->whereRaw("CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, '')) like ?", [$likeTerm])
+                    ->orWhere('da.email', 'like', $likeTerm)
+                    ->orWhere('d.contact_number', 'like', $likeTerm);
+
+                if (is_numeric($searchTerm)) {
+                    $builder->orWhere('d.donor_id', (int) $searchTerm);
+                }
+            });
+        }
+
+        if ($bloodType !== '') {
+            $query->whereRaw("UPPER(COALESCE(bt.blood_type, '')) = ?", [$bloodType]);
+        }
+
+        if ($status !== '') {
+            $query->whereRaw('('.$statusExpression.') = ?', [$status]);
+        }
+
+        $rows = $query
+            ->orderByDesc('d.donor_id')
+            ->cursor();
+
+        $fileName = 'donors-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($rows): void {
+            $handle = fopen('php://output', 'wb');
+            if ($handle === false) {
+                return;
+            }
+
+            fputcsv($handle, [
+                'Donor ID',
+                'Donor Code',
+                'Full Name',
+                'Email',
+                'Contact Number',
+                'Blood Type',
+                'Blood Type Status',
+                'Identity Verification',
+                'Eligibility',
+                'Last Donation',
+                'Total Donations',
+                'Account Status',
+            ]);
+
+            foreach ($rows as $row) {
+                $donor = $this->transformUserManagementDonorDetail($row);
+                fputcsv($handle, [
+                    $this->safeCsvCell($donor['donor_id'] ?? ''),
+                    $this->safeCsvCell($donor['donor_code'] ?? ''),
+                    $this->safeCsvCell($donor['full_name'] ?? ''),
+                    $this->safeCsvCell($donor['email'] ?? ''),
+                    $this->safeCsvCell($donor['contact_number'] ?? ''),
+                    $this->safeCsvCell($donor['blood_type'] ?? 'Not Yet Determined'),
+                    $this->safeCsvCell($donor['blood_type_status'] ?? 'not_yet_determined'),
+                    $this->safeCsvCell($donor['verification_status'] ?? 'unverified'),
+                    $this->safeCsvCell($donor['eligibility_status'] ?? 'eligible'),
+                    $this->safeCsvCell($donor['last_donation_date'] ?? ''),
+                    $this->safeCsvCell($donor['total_donations'] ?? 0),
+                    $this->safeCsvCell(($donor['is_active'] ?? true) ? 'active' : 'inactive'),
+                ]);
+            }
+
+            fclose($handle);
+        }, $fileName, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 
@@ -2240,10 +2340,9 @@ class AdminAuthController extends BaseController
             'settingsPayload' => [
                 'page' => 'settings',
                 'settings' => [
-                    'general' => [
-                        'systemName' => 'eDonate',
-                        'systemEmail' => 'admin@edonate.local',
-                        'contactNumber' => '+63 917 123 4567',
+                    'general' => $this->getSystemSettingsValues(),
+                    'account' => [
+                        'updateUrl' => route('admin.settings.account.update'),
                     ],
                     'notifications' => [
                         'email' => (bool) ($adminNotificationPreference?->email_enabled ?? false),
@@ -2259,6 +2358,121 @@ class AdminAuthController extends BaseController
                     ],
                 ],
             ],
+        ]);
+    }
+
+    /**
+     * Persist display/contact settings for the admin portal.
+     */
+    public function updateGeneralSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'system_name' => ['required', 'string', 'max:150'],
+            'system_email' => ['required', 'email', 'max:150'],
+            'contact_number' => ['required', 'string', 'max:30', 'regex:/^[+0-9][0-9\s-]{6,}$/'],
+        ]);
+
+        if (! $this->supportsSystemSettingsStorage()) {
+            return response()->json([
+                'message' => 'General settings storage is not available. Please run migrations first.',
+            ], 409);
+        }
+
+        $settings = [
+            'system_name' => trim((string) $validated['system_name']),
+            'system_email' => Str::lower(trim((string) $validated['system_email'])),
+            'contact_number' => trim((string) $validated['contact_number']),
+        ];
+
+        DB::transaction(function () use ($settings): void {
+            foreach ($settings as $key => $value) {
+                DB::table(self::SYSTEM_SETTINGS_TABLE)->updateOrInsert(
+                    ['setting_key' => $key],
+                    [
+                        'setting_value' => $value,
+                        'updated_at' => now(),
+                    ]
+                );
+            }
+        });
+
+        $this->logAdminSettingsAudit(
+            $request,
+            'update',
+            'Updated admin portal general settings.',
+            [
+                'changed_keys' => array_keys($settings),
+            ]
+        );
+
+        return response()->json([
+            'message' => 'General settings saved successfully.',
+            'general' => array_merge($this->getSystemSettingsValues(), [
+                'updateUrl' => route('admin.settings.general.update'),
+            ]),
+        ]);
+    }
+
+    /**
+     * Update the currently authenticated admin's password.
+     */
+    public function updateAccountSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
+        ]);
+
+        $adminId = (int) $request->session()->get('admin_id', 0);
+        $columns = ['admin_id', 'password'];
+
+        if (Schema::hasColumn('admins', 'remember_token')) {
+            $columns[] = 'remember_token';
+        }
+
+        if (Schema::hasColumn('admins', 'remember_token_expires_at')) {
+            $columns[] = 'remember_token_expires_at';
+        }
+
+        $admin = DB::table('admins')
+            ->select($columns)
+            ->where('admin_id', $adminId)
+            ->first();
+
+        if (! $admin || ! Hash::check((string) $validated['current_password'], (string) ($admin->password ?? ''))) {
+            return response()->json([
+                'message' => 'The current password is incorrect.',
+            ], 422);
+        }
+
+        $updatePayload = [
+            'password' => Hash::make((string) $validated['new_password']),
+        ];
+
+        if (Schema::hasColumn('admins', 'remember_token')) {
+            $updatePayload['remember_token'] = null;
+        }
+
+        if (Schema::hasColumn('admins', 'remember_token_expires_at')) {
+            $updatePayload['remember_token_expires_at'] = null;
+        }
+
+        DB::table('admins')
+            ->where('admin_id', $adminId)
+            ->update($updatePayload);
+
+        $this->logAdminSettingsAudit(
+            $request,
+            'update',
+            'Updated the current admin account password.',
+            [
+                'password_changed' => true,
+                'remember_tokens_revoked' => true,
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Password updated successfully.',
         ]);
     }
 
@@ -2951,6 +3165,47 @@ class AdminAuthController extends BaseController
 
         return Schema::hasColumn(self::ADMIN_NOTIFICATION_PREFERENCES_TABLE, 'admin_id')
             && Schema::hasColumn(self::ADMIN_NOTIFICATION_PREFERENCES_TABLE, 'email_enabled');
+    }
+
+    /**
+     * Resolve persisted portal display/contact settings with safe defaults.
+     *
+     * @return array{systemName:string,systemEmail:string,contactNumber:string}
+     */
+    private function getSystemSettingsValues(): array
+    {
+        $defaults = [
+            'systemName' => 'eDonate',
+            'systemEmail' => 'admin@edonate.local',
+            'contactNumber' => '+63 917 123 4567',
+        ];
+
+        if (! $this->supportsSystemSettingsStorage()) {
+            return $defaults;
+        }
+
+        $rows = DB::table(self::SYSTEM_SETTINGS_TABLE)
+            ->whereIn('setting_key', ['system_name', 'system_email', 'contact_number'])
+            ->pluck('setting_value', 'setting_key');
+
+        return [
+            'systemName' => trim((string) ($rows['system_name'] ?? $defaults['systemName'])) ?: $defaults['systemName'],
+            'systemEmail' => trim((string) ($rows['system_email'] ?? $defaults['systemEmail'])) ?: $defaults['systemEmail'],
+            'contactNumber' => trim((string) ($rows['contact_number'] ?? $defaults['contactNumber'])) ?: $defaults['contactNumber'],
+        ];
+    }
+
+    /**
+     * Detect whether the optional portal-settings migration is available.
+     */
+    private function supportsSystemSettingsStorage(): bool
+    {
+        if (! Schema::hasTable(self::SYSTEM_SETTINGS_TABLE)) {
+            return false;
+        }
+
+        return Schema::hasColumn(self::SYSTEM_SETTINGS_TABLE, 'setting_key')
+            && Schema::hasColumn(self::SYSTEM_SETTINGS_TABLE, 'setting_value');
     }
 
     /**
@@ -4430,6 +4685,19 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function userManagementDonationAggregateQuery()
     {
+        // Some older local installations predate the donation_records table.
+        // Keep the donor directory usable in that state and report zero
+        // donation totals instead of failing the entire admin page.
+        if (! Schema::hasTable('donation_records')) {
+            return DB::query()
+                ->fromRaw('(select NULL as donor_id, 0 as total_donations, NULL as last_donation_date where 1 = 0) as empty_donations')
+                ->select([
+                    'donor_id',
+                    'total_donations',
+                    'last_donation_date',
+                ]);
+        }
+
         return DB::table('donation_records')
             ->select([
                 'donor_id',
@@ -4437,6 +4705,24 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 DB::raw('MAX(donation_date) as last_donation_date'),
             ])
             ->groupBy('donor_id');
+    }
+
+    /**
+     * Prevent spreadsheet applications from treating exported user text as
+     * a formula while preserving normal CSV values.
+     */
+    private function safeCsvCell(mixed $value): string|int|float
+    {
+        if (! is_string($value)) {
+            return is_numeric($value) ? $value : (string) $value;
+        }
+
+        $trimmed = ltrim($value);
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "'".$value;
+        }
+
+        return $value;
     }
 
     /**
@@ -4457,11 +4743,15 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function userManagementStatusExpression(): string
     {
+        $waitingPeriodCutoff = DB::connection()->getDriverName() === 'sqlite'
+            ? "date('now', '-56 days')"
+            : 'DATE_SUB(CURDATE(), INTERVAL 56 DAY)';
+
         return "CASE
             WHEN LOWER(COALESCE(es.status, '')) IN ('eligible', 'qualified', 'ready', 'approved') THEN 'eligible'
             WHEN LOWER(COALESCE(es.status, '')) IN ('not eligible', 'not_eligible', 'temporary deferred', 'temporary_deferred', 'for review', 'for_review', 'deferred', 'ineligible', 'declined') THEN 'not_eligible'
             WHEN drs.last_donation_date IS NULL THEN 'eligible'
-            WHEN drs.last_donation_date <= DATE_SUB(CURDATE(), INTERVAL 56 DAY) THEN 'eligible'
+            WHEN drs.last_donation_date <= {$waitingPeriodCutoff} THEN 'eligible'
             ELSE 'not_eligible'
         END";
     }
@@ -5131,6 +5421,54 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'action_type' => $actionType,
                 'description' => $description,
                 'target_donor_id' => $targetDonorId,
+                'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Persist non-security admin settings actions to audit logs when
+     * available. Sensitive values such as passwords are never recorded.
+     */
+    private function logAdminSettingsAudit(
+        Request $request,
+        string $actionType,
+        string $description,
+        array $metadata = [],
+        string $result = 'success'
+    ): void {
+        try {
+            $actorName = trim((string) ($request->session()->get('admin_full_name') ?: $request->session()->get('admin_username') ?: 'Admin'));
+            $actorRole = ucfirst($this->normalizeRole((string) $request->session()->get('admin_role', 'admin')));
+
+            if (! Schema::hasTable('audit_logs')) {
+                logger()->info('Admin settings audit event', [
+                    'action_type' => $actionType,
+                    'description' => $description,
+                    'metadata' => $metadata,
+                ]);
+
+                return;
+            }
+
+            DB::table('audit_logs')->insert([
+                'actor_admin_id' => is_numeric($request->session()->get('admin_id')) ? (int) $request->session()->get('admin_id') : null,
+                'actor_name' => $actorName,
+                'actor_role' => $actorRole,
+                'action_type' => $actionType,
+                'module_type' => 'settings',
+                'target_table' => self::SYSTEM_SETTINGS_TABLE,
+                'target_id' => null,
+                'description' => $description,
+                'ip_address' => $request->ip(),
+                'result' => $result,
+                'metadata' => $metadata === [] ? null : json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            logger()->warning('Failed to persist admin settings audit event.', [
+                'action_type' => $actionType,
+                'description' => $description,
                 'error' => $exception->getMessage(),
             ]);
         }

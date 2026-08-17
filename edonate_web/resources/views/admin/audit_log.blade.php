@@ -170,8 +170,9 @@
 					</table>
 				</div>
 
-				<div class="audit-pagination-wrap mt-3">
-					<ul class="pagination pagination-sm justify-content-end mb-0" id="auditPagination"></ul>
+				<div class="admin-pagination admin-pagination--js audit-pagination-wrap mt-3" aria-label="Table pagination">
+					<span class="admin-pagination__info" id="auditPaginationInfo">Showing 0 to 0 of 0 entries</span>
+					<nav class="admin-pagination__links" id="auditPagination" aria-label="Pagination links"></nav>
 				</div>
 			</section>
 		</div>
@@ -253,6 +254,7 @@
 		var tableBody = document.getElementById('auditTableBody');
 		var tableMeta = document.getElementById('auditTableMeta');
 		var pagination = document.getElementById('auditPagination');
+		var paginationInfo = document.getElementById('auditPaginationInfo');
 
 		var statTotal = document.getElementById('auditStatTotal');
 		var statSuccess = document.getElementById('auditStatSuccess');
@@ -333,38 +335,16 @@
 				return;
 			}
 
-			pagination.innerHTML = '';
-			if (state.lastPage <= 1) {
-				return;
+			if (window.eDonateAdminPagination) {
+				window.eDonateAdminPagination.render(pagination, {
+					current_page: state.page,
+					last_page: state.lastPage,
+					per_page: state.perPage,
+					total: state.total,
+					from: state.total > 0 ? ((state.page - 1) * state.perPage) + 1 : 0,
+					to: state.total > 0 ? Math.min(state.total, ((state.page - 1) * state.perPage) + entries.length) : 0
+				}, fetchLogs, { infoElement: paginationInfo });
 			}
-
-			function appendPageButton(label, targetPage, disabled, active) {
-				var li = document.createElement('li');
-				li.className = 'page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '');
-
-				var button = document.createElement('button');
-				button.type = 'button';
-				button.className = 'page-link';
-				button.textContent = label;
-				button.disabled = disabled;
-
-				button.addEventListener('click', function () {
-					if (!disabled) {
-						fetchLogs(targetPage);
-					}
-				});
-
-				li.appendChild(button);
-				pagination.appendChild(li);
-			}
-
-			appendPageButton('Prev', state.page - 1, state.page <= 1, false);
-
-			for (var page = 1; page <= state.lastPage; page += 1) {
-				appendPageButton(String(page), page, false, page === state.page);
-			}
-
-			appendPageButton('Next', state.page + 1, state.page >= state.lastPage, false);
 		}
 
 		function renderRows() {

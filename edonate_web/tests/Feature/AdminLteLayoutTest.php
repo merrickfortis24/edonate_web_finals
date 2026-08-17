@@ -80,7 +80,7 @@ class AdminLteLayoutTest extends TestCase
     {
         $html = $this->renderPageForRole('admin.appointment_management', 'admin', '/admin/appointments');
         $wrapperPosition = strpos($html, 'class="appointment-table-scroll appointment-table-wrapper table-responsive"');
-        $paginationPosition = strpos($html, 'class="appointment-pagination"');
+        $paginationPosition = strpos($html, 'class="appointment-pagination admin-pagination');
 
         $this->assertIsInt($wrapperPosition);
         $this->assertIsInt($paginationPosition);
@@ -94,6 +94,8 @@ class AdminLteLayoutTest extends TestCase
         $html = $this->renderPageForRole('admin.user_management', 'admin', '/admin/users');
 
         $this->assertStringContainsString('Digital Donor ID', $html);
+        $this->assertStringContainsString('userManagementExportButton', $html);
+        $this->assertTrue(Route::has('admin.users.export'));
         $this->assertStringContainsString('title="View Digital Donor ID"', $html);
         $this->assertStringContainsString('title="Edit Donor"', $html);
         $this->assertStringContainsString('title="Deactivate Donor"', $html);
@@ -138,6 +140,8 @@ class AdminLteLayoutTest extends TestCase
     {
         $html = $this->renderPageForRole('admin.appointment_management', 'admin', '/admin/appointments');
 
+        $this->assertStringNotContainsString('Calendar View', $html);
+        $this->assertStringNotContainsString('action="#"', $html);
         $this->assertStringContainsString('data-action="check-in"', $html);
         $this->assertStringContainsString('data-action="no-show"', $html);
         $this->assertStringContainsString('Process Donation', $html);
@@ -145,6 +149,27 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringNotContainsString('id="completeModal"', $html);
         $this->assertStringNotContainsString('id="rescheduleModal"', $html);
         $this->assertFalse(Route::has('admin.appointments.reschedule'));
+    }
+
+    public function test_admin_settings_expose_persisted_action_endpoints(): void
+    {
+        $html = $this->renderPageForRole('admin.settings', 'admin', '/admin/settings');
+
+        $this->assertStringContainsString('admin/settings/general', $html);
+        $this->assertStringContainsString('admin/settings/account', $html);
+        $this->assertTrue(Route::has('admin.settings.general.update'));
+        $this->assertTrue(Route::has('admin.settings.account.update'));
+    }
+
+    public function test_rbac_shows_fixed_permission_access_as_read_only(): void
+    {
+        $html = $this->renderPageForRole('admin.rbac', 'admin', '/admin/rbac');
+
+        $this->assertStringContainsString('Permission Access Overview', $html);
+        $this->assertStringContainsString('read-only view of the configured permission matrix', $html);
+        $this->assertStringNotContainsString('id="rbacSavePermissionsBtn"', $html);
+        $this->assertStringNotContainsString('id="rbacHeaderAddRoleBtn"', $html);
+        $this->assertStringNotContainsString('id="rbacInlineAddRoleBtn"', $html);
     }
 
     public function test_donation_processing_has_no_duplicate_attendance_actions(): void

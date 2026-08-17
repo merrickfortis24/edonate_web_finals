@@ -283,6 +283,9 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/users/data', [AdminAuthController::class, 'listUsersData'])
             ->middleware('throttle:admin-api')
             ->name('admin.users.data');
+        Route::get('/admin/users/export', [AdminAuthController::class, 'exportUsersCsv'])
+            ->middleware('throttle:report-export')
+            ->name('admin.users.export');
         Route::get('/admin/users/{donor}', [AdminAuthController::class, 'showUser'])
             ->whereNumber('donor')
             ->middleware('throttle:admin-api')
@@ -393,6 +396,12 @@ Route::middleware('admin.auth')->group(function () {
         Route::post('/admin/settings/notifications', [AdminAuthController::class, 'updateNotificationSettings'])
             ->middleware('throttle:admin-write')
             ->name('admin.settings.notifications.update');
+        Route::post('/admin/settings/general', [AdminAuthController::class, 'updateGeneralSettings'])
+            ->middleware('throttle:admin-write')
+            ->name('admin.settings.general.update');
+        Route::post('/admin/settings/account', [AdminAuthController::class, 'updateAccountSettings'])
+            ->middleware('throttle:admin-write')
+            ->name('admin.settings.account.update');
         Route::post('/admin/settings/security', [AdminAuthController::class, 'updateSecuritySettings'])
             ->middleware('throttle:admin-write')
             ->name('admin.settings.security.update');

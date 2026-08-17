@@ -3,16 +3,7 @@
 @section('title', 'eDonate - User Roles and Permissions')
 @section('admin_page_class', 'admin-rbac-page')
 @section('header_title', 'User Roles and Permissions')
-@section('header_subtitle', 'Manage user roles, permissions, and access assignments')
-
-@section('header_actions')
-	<button class="rbac-add-role-btn btn d-none" id="rbacHeaderAddRoleBtn" type="button" aria-label="Add new role">
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-			<path d="M12 5V19M5 12H19" stroke="white" stroke-width="2" stroke-linecap="round"/>
-		</svg>
-		Add Role
-	</button>
-@endsection
+@section('header_subtitle', 'Review supported roles, permissions, and access assignments')
 
 @section('admin_page_data')
 {!! json_encode([
@@ -83,7 +74,7 @@
 				</div>
 				<div class="col-6 col-xl-3">
 					<article class="rbac-summary-card rbac-summary-card--blue h-100">
-						<p class="rbac-summary-card__label">Permissions</p>
+								<p class="rbac-summary-card__label">Available Permissions</p>
 						<p class="rbac-summary-card__value" id="rbacStatPermissions">0</p>
 					</article>
 				</div>
@@ -120,12 +111,7 @@
 							<div class="rbac-search-wrap flex-grow-1">
 								<input type="text" class="form-control" id="rbacRolesSearchInput" placeholder="Search roles by name, slug, or description" aria-label="Search roles">
 							</div>
-							<button class="btn btn-danger rbac-btn-add-role d-none" id="rbacInlineAddRoleBtn" type="button">
-								<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-									<path d="M12 5V19M5 12H19" stroke="white" stroke-width="2" stroke-linecap="round"/>
-								</svg>
-								New Role
-							</button>
+							<span class="small text-body-secondary">Admin and Staff roles are fixed by the current access model.</span>
 						</div>
 
 						<div class="table-responsive">
@@ -145,16 +131,18 @@
 							</table>
 						</div>
 
-						<div class="rbac-pagination-wrap">
-							<ul class="pagination pagination-sm justify-content-end mb-0" id="rbacRolesPagination"></ul>
+						<div class="admin-pagination admin-pagination--js rbac-pagination-wrap" aria-label="Roles pagination">
+							<span class="admin-pagination__info" id="rbacRolesMeta">Showing 0 to 0 of 0 entries</span>
+							<nav class="admin-pagination__links" id="rbacRolesPagination" aria-label="Roles pagination links"></nav>
 						</div>
 					</div>
 
 					<div class="tab-pane fade" id="rbac-permissions-pane" role="tabpanel" aria-labelledby="rbac-permissions-tab" tabindex="0">
 						<div class="row g-3">
 							<div class="col-12 col-lg-5">
-								<section class="rbac-subcard h-100" aria-label="Assign permissions to role">
-									<h3 class="rbac-subcard__title">Assign Permissions To Role</h3>
+								<section class="rbac-subcard h-100" aria-label="Configured permissions by role">
+									<h3 class="rbac-subcard__title">Permission Access Overview</h3>
+									<p class="small text-body-secondary">The current application uses fixed Admin and Staff access profiles. This list is a read-only view of the configured permission matrix.</p>
 
 									<label class="form-label" for="rbacPermissionRoleSelect">Role</label>
 									<select class="form-select rbac-role-select mb-3" id="rbacPermissionRoleSelect" aria-label="Select role for permission assignment"></select>
@@ -163,15 +151,13 @@
 									<input type="text" class="form-control mb-3" id="rbacPermissionsSearchInput" placeholder="Search by name, key, or module" aria-label="Search permissions">
 									<div class="small text-body-secondary mb-2" id="rbacPermissionCount" aria-live="polite"></div>
 
-									<div class="rbac-permission-list" id="rbacPermissionCheckboxes"></div>
-
-									<button class="btn btn-danger w-100 mt-3" id="rbacSavePermissionsBtn" type="button">Save Permission Assignment</button>
+									<div class="rbac-permission-list" id="rbacPermissionCheckboxes" aria-label="Configured permissions"></div>
 								</section>
 							</div>
 
 							<div class="col-12 col-lg-7">
 								<section class="rbac-subcard h-100" aria-label="Permissions list">
-									<h3 class="rbac-subcard__title">Permissions List</h3>
+									<h3 class="rbac-subcard__title">Available Permissions</h3>
 
 									<div class="table-responsive">
 										<table class="table rbac-table align-middle mb-0" aria-label="Permissions table">
@@ -187,9 +173,9 @@
 										</table>
 									</div>
 
-									<div class="rbac-pagination-wrap">
-										<div class="small text-body-secondary mb-2" id="rbacPermissionsMeta" aria-live="polite"></div>
-										<ul class="pagination pagination-sm justify-content-end mb-0" id="rbacPermissionsPagination"></ul>
+									<div class="admin-pagination admin-pagination--js rbac-pagination-wrap" aria-label="Permissions pagination">
+										<span class="admin-pagination__info" id="rbacPermissionsMeta" aria-live="polite">Showing 0 to 0 of 0 entries</span>
+										<nav class="admin-pagination__links" id="rbacPermissionsPagination" aria-label="Permissions pagination links"></nav>
 									</div>
 								</section>
 							</div>
@@ -236,64 +222,15 @@
 							</table>
 						</div>
 
-						<div class="rbac-pagination-wrap">
-							<ul class="pagination pagination-sm justify-content-end mb-0" id="rbacUsersPagination"></ul>
+						<div class="admin-pagination admin-pagination--js rbac-pagination-wrap" aria-label="Admin users pagination">
+							<span class="admin-pagination__info" id="rbacUsersMeta">Showing 0 to 0 of 0 entries</span>
+							<nav class="admin-pagination__links" id="rbacUsersPagination" aria-label="Admin users pagination links"></nav>
 						</div>
 					</div>
 				</div>
 			</section>
 		</div>
 	</main>
-
-	<div class="modal fade" id="rbacRoleModal" tabindex="-1" aria-labelledby="rbacRoleModalLabel" aria-hidden="true">
-		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="rbacRoleModalLabel">Add Role</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<form id="rbacRoleForm" novalidate>
-					<input type="hidden" id="rbacRoleIdInput">
-					<div class="modal-body">
-						<div class="mb-3">
-							<label class="form-label" for="rbacRoleNameInput">Role Name</label>
-							<input type="text" class="form-control" id="rbacRoleNameInput" placeholder="Example: Content Manager" required>
-						</div>
-						<div class="mb-3">
-							<label class="form-label" for="rbacRoleSlugInput">Role Slug</label>
-							<input type="text" class="form-control" id="rbacRoleSlugInput" placeholder="example-content-manager" required>
-						</div>
-						<div>
-							<label class="form-label" for="rbacRoleDescriptionInput">Description</label>
-							<textarea class="form-control" id="rbacRoleDescriptionInput" rows="3" placeholder="Short description of this role"></textarea>
-						</div>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-						<button type="submit" class="btn btn-danger" id="rbacRoleSaveBtn">Save Role</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
-
-	<div class="modal fade" id="rbacDeleteRoleModal" tabindex="-1" aria-labelledby="rbacDeleteRoleModalLabel" aria-hidden="true">
-		<div class="modal-dialog modal-dialog-centered">
-			<div class="modal-content">
-				<div class="modal-header">
-					<h5 class="modal-title" id="rbacDeleteRoleModalLabel">Confirm Delete</h5>
-					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-				</div>
-				<div class="modal-body">
-					Are you sure you want to delete this role? Users assigned to this role will lose it.
-				</div>
-				<div class="modal-footer">
-					<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-					<button type="button" class="btn btn-danger" id="rbacConfirmDeleteRoleBtn">Delete Role</button>
-				</div>
-			</div>
-		</div>
-	</div>
 
 	<div class="modal fade" id="rbacUserModal" tabindex="-1" aria-labelledby="rbacUserModalLabel" aria-hidden="true">
 		<div class="modal-dialog modal-dialog-centered">
@@ -440,6 +377,7 @@
 		};
 
 		var usersTotalCount = 0;
+		var usersResultTotal = 0;
 		var roleUserCounts = {
 			'1': 0,
 			'2': 0,
@@ -534,9 +472,11 @@
 		var usersTableBody = document.getElementById('rbacUsersTableBody');
 
 		var rolePagination = document.getElementById('rbacRolesPagination');
+		var rolePaginationMeta = document.getElementById('rbacRolesMeta');
 		var permissionPagination = document.getElementById('rbacPermissionsPagination');
 		var permissionMeta = document.getElementById('rbacPermissionsMeta');
 		var userPagination = document.getElementById('rbacUsersPagination');
+		var userPaginationMeta = document.getElementById('rbacUsersMeta');
 
 		var permissionRoleSelect = document.getElementById('rbacPermissionRoleSelect');
 		var permissionCheckboxList = document.getElementById('rbacPermissionCheckboxes');
@@ -766,6 +706,7 @@
 					state.usersPage = Math.max(1, Number(meta.current_page || targetPage));
 					state.usersTotalPages = Math.max(1, Number(meta.last_page || 1));
 					usersTotalCount = Math.max(0, Number(summary.total_users || meta.total || users.length));
+					usersResultTotal = Math.max(0, Number(meta.total || users.length));
 					roleUserCounts = {
 						'1': Math.max(0, Number(summaryRoleCounts['1'] || summaryRoleCounts[1] || 0)),
 						'2': Math.max(0, Number(summaryRoleCounts['2'] || summaryRoleCounts[2] || 0)),
@@ -916,42 +857,17 @@
 			};
 		}
 
-		function renderPagination(container, currentPage, totalPages, onSelect) {
-			if (!container) {
+		function renderPagination(container, currentPage, totalPages, onSelect, infoElement, total, perPage) {
+			if (!container || !window.eDonateAdminPagination) {
 				return;
 			}
 
-			container.innerHTML = '';
-			if (totalPages <= 1) {
-				return;
-			}
-
-			function buildButton(label, targetPage, disabled, active) {
-				var li = document.createElement('li');
-				li.className = 'page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '');
-
-				var button = document.createElement('button');
-				button.type = 'button';
-				button.className = 'page-link';
-				button.textContent = label;
-				button.disabled = disabled;
-				button.dataset.page = String(targetPage);
-
-				button.addEventListener('click', function () {
-					if (!disabled) {
-						onSelect(targetPage);
-					}
-				});
-
-				li.appendChild(button);
-				container.appendChild(li);
-			}
-
-			buildButton('Prev', currentPage - 1, currentPage === 1, false);
-			for (var page = 1; page <= totalPages; page += 1) {
-				buildButton(String(page), page, false, page === currentPage);
-			}
-			buildButton('Next', currentPage + 1, currentPage === totalPages, false);
+			window.eDonateAdminPagination.render(container, {
+				current_page: currentPage,
+				last_page: totalPages,
+				per_page: perPage || 10,
+				total: total || 0,
+			}, onSelect, { infoElement: infoElement });
 		}
 
 		function renderSummary() {
@@ -1025,7 +941,7 @@
 			renderPagination(rolePagination, paged.page, paged.totalPages, function (nextPage) {
 				state.rolesPage = nextPage;
 				renderRoles();
-			});
+			}, rolePaginationMeta, paged.total, settings.rolesPerPage);
 		}
 
 		function renderPermissionRoleSelect() {
@@ -1096,7 +1012,7 @@
 			permissionCheckboxList.innerHTML = filtered.map(function (permission) {
 				var checked = selected.indexOf(permission.id) !== -1 ? ' checked' : '';
 				return '<label class="rbac-permission-item">' +
-					'<input class="form-check-input" type="checkbox" value="' + permission.id + '"' + checked + '>' +
+					'<input class="form-check-input" type="checkbox" value="' + permission.id + '"' + checked + ' disabled aria-label="Configured permission: ' + escapeHtml(permission.name) + '">' +
 					'<span class="rbac-permission-item__text">' +
 					'<span class="rbac-permission-item__name">' + escapeHtml(permission.name) + '</span>' +
 					'<span class="rbac-permission-item__meta">' + escapeHtml(permission.module) + ' - ' + escapeHtml(permission.key) + '</span>' +
@@ -1114,16 +1030,6 @@
 			var paged = paginate(filtered, state.permissionsPage, settings.permissionsPerPage);
 			state.permissionsPage = paged.page;
 			var selectedPermissionIds = rolePermissions[String(state.selectedPermissionRoleId)] || [];
-
-			if (permissionMeta) {
-				if (paged.total === 0) {
-					permissionMeta.textContent = 'Showing 0 of 0 permissions';
-				} else {
-					var firstPermission = ((paged.page - 1) * settings.permissionsPerPage) + 1;
-					var lastPermission = Math.min(firstPermission + paged.items.length - 1, paged.total);
-					permissionMeta.textContent = 'Showing ' + firstPermission + '–' + lastPermission + ' of ' + paged.total + ' permissions';
-				}
-			}
 
 			if (!paged.items.length) {
 				permissionsTableBody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No permissions found.</td></tr>';
@@ -1144,7 +1050,7 @@
 			renderPagination(permissionPagination, paged.page, paged.totalPages, function (nextPage) {
 				state.permissionsPage = nextPage;
 				renderPermissionsTable();
-			});
+			}, permissionMeta, paged.total, settings.permissionsPerPage);
 		}
 
 		function getFilteredUsers() {
@@ -1196,6 +1102,9 @@
 				if (userPagination) {
 					userPagination.innerHTML = '';
 				}
+				if (userPaginationMeta) {
+					userPaginationMeta.textContent = 'Showing 0 to 0 of 0 entries';
+				}
 				return;
 			}
 
@@ -1225,7 +1134,7 @@
 
 			renderPagination(userPagination, state.usersPage, state.usersTotalPages, function (nextPage) {
 				fetchUsers(nextPage);
-			});
+			}, userPaginationMeta, usersResultTotal, settings.usersPerPage);
 		}
 
 		function openAddRoleModal() {
@@ -1874,14 +1783,22 @@
 			});
 		}
 
-		normalizeRolePermissions();
-		setUsersSortDirection(state.userSortDir);
-		renderRoles();
-		renderPermissionRoleSelect();
-		renderPermissionCheckboxes();
-		renderPermissionsTable();
-		renderSummary();
-		fetchUsers(1);
+		function initializeRbac() {
+			normalizeRolePermissions();
+			setUsersSortDirection(state.userSortDir);
+			renderRoles();
+			renderPermissionRoleSelect();
+			renderPermissionCheckboxes();
+			renderPermissionsTable();
+			renderSummary();
+			fetchUsers(1);
+		}
+
+		if (window.eDonateAdminPagination) {
+			initializeRbac();
+		} else {
+			document.addEventListener('DOMContentLoaded', initializeRbac, { once: true });
+		}
 	})();
 </script>
 @endpush

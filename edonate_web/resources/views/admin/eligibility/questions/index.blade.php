@@ -51,7 +51,7 @@
         </div>
 
         <!-- Filters -->
-        <form class="questions-filter row g-3 align-items-center mt-3" role="search" aria-label="Filter questions" action="#" method="get" onsubmit="return false;">
+        <div class="questions-filter row g-3 align-items-center mt-3" role="search" aria-label="Filter questions">
             <div class="questions-filter__search col-12 col-lg">
                 <span class="questions-filter__search-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -78,7 +78,7 @@
             <button type="button" class="btn btn-primary col-12 col-md-auto" id="questionsRefreshBtn" aria-label="Refresh questions">
                 <span aria-hidden="true">↻</span> Refresh
             </button>
-        </form>
+        </div>
 
         <!-- Table -->
         <div class="questions-table-wrapper mt-4 table-responsive">
@@ -106,18 +106,9 @@
         </div>
 
         <!-- Pagination -->
-        <nav class="questions-pagination mt-4" aria-label="Table pagination">
-            <div class="row align-items-center">
-                <div class="col-auto">
-                    <span id="questionsPaginationInfo" class="text-muted">Loading...</span>
-                </div>
-                <div class="col-auto ms-auto">
-                    <div class="btn-group" role="group" aria-label="Pagination controls">
-                        <button type="button" class="btn btn-outline-secondary" id="questionsPrevBtn" aria-label="Previous page">Previous</button>
-                        <button type="button" class="btn btn-outline-secondary" id="questionsNextBtn" aria-label="Next page">Next</button>
-                    </div>
-                </div>
-            </div>
+        <nav class="admin-pagination admin-pagination--js questions-pagination mt-4" aria-label="Table pagination">
+            <span id="questionsPaginationInfo" class="admin-pagination__info">Showing 0 to 0 of 0 entries</span>
+            <span class="admin-pagination__links" id="questionsPaginationLinks" aria-label="Pagination links"></span>
         </nav>
     </section>
 </main>

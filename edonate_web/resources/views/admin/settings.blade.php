@@ -20,6 +20,10 @@
 			'systemName' => 'eDonate',
 			'systemEmail' => 'admin@edonate.local',
 			'contactNumber' => '+63 917 123 4567',
+			'updateUrl' => route('admin.settings.general.update'),
+		],
+		'account' => [
+			'updateUrl' => route('admin.settings.account.update'),
 		],
 		'notifications' => [
 			'email' => false,
@@ -278,11 +282,15 @@
 		var payload = (window.AdminPageData && window.AdminPageData.settings) ? window.AdminPageData.settings : {};
 		var csrfToken = '{{ csrf_token() }}';
 		var settingsData = {
-			general: Object.assign({
+		general: Object.assign({
 				systemName: '',
 				systemEmail: '',
 				contactNumber: '',
+				updateUrl: '{{ route('admin.settings.general.update') }}',
 			}, payload.general || {}),
+			account: Object.assign({
+				updateUrl: '{{ route('admin.settings.account.update') }}',
+			}, payload.account || {}),
 			notifications: Object.assign({
 				email: false,
 				emailAddress: '',
@@ -331,6 +339,8 @@
 		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
 		var updateNotificationUrl = String(settingsData.notifications.updateUrl || '');
+		var updateGeneralUrl = String(settingsData.general.updateUrl || '');
+		var updateAccountUrl = String(settingsData.account.updateUrl || '');
 		var confirmModal = null;
 
 		function getConfirmModal() {
@@ -401,7 +411,12 @@
 				return {};
 			}).then(function (payload) {
 				if (!response.ok) {
-					throw new Error(extractApiError(payload) || 'Unable to save settings.');
+					var message = response.status === 429
+						? 'Too many requests. Please try again shortly.'
+						: extractApiError(payload);
+					var error = new Error(message || 'Unable to save settings.');
+					error.status = response.status;
+					throw error;
 				}
 
 				return payload;
@@ -544,14 +559,41 @@
 				openConfirmModal('General Settings', function () {
 					setButtonLoading(saveGeneralButton, true);
 
-					window.setTimeout(function () {
-						settingsData.general.systemName = systemNameInput.value.trim();
-						settingsData.general.systemEmail = systemEmailInput.value.trim();
-						settingsData.general.contactNumber = contactNumberInput.value.trim();
-
+					if (!updateGeneralUrl) {
 						setButtonLoading(saveGeneralButton, false);
-						showAlert('success', 'General settings saved successfully.');
-					}, 700);
+						showAlert('danger', 'General settings endpoint is not configured.');
+						return;
+					}
+
+					fetch(updateGeneralUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-CSRF-TOKEN': csrfToken,
+							'X-Requested-With': 'XMLHttpRequest',
+						},
+						credentials: 'same-origin',
+						body: JSON.stringify({
+							system_name: systemNameInput.value.trim(),
+							system_email: systemEmailInput.value.trim(),
+							contact_number: contactNumberInput.value.trim(),
+						}),
+					})
+						.then(parseApiResponse)
+						.then(function (responsePayload) {
+							if (responsePayload && responsePayload.general) {
+								settingsData.general = Object.assign(settingsData.general, responsePayload.general);
+								hydrateFromPayload();
+							}
+							showAlert('success', String((responsePayload && responsePayload.message) || 'General settings saved successfully.'));
+						})
+						.catch(function (error) {
+							showAlert('danger', error.message || 'Unable to save general settings.');
+						})
+						.finally(function () {
+							setButtonLoading(saveGeneralButton, false);
+						});
 				});
 			});
 		}
@@ -568,12 +610,39 @@
 				openConfirmModal('Account Settings', function () {
 					setButtonLoading(saveAccountButton, true);
 
-					window.setTimeout(function () {
+					if (!updateAccountUrl) {
 						setButtonLoading(saveAccountButton, false);
-						accountForm.reset();
-						accountForm.classList.remove('was-validated');
-						showAlert('success', 'Password updated successfully.');
-					}, 700);
+						showAlert('danger', 'Account settings endpoint is not configured.');
+						return;
+					}
+
+					fetch(updateAccountUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-CSRF-TOKEN': csrfToken,
+							'X-Requested-With': 'XMLHttpRequest',
+						},
+						credentials: 'same-origin',
+						body: JSON.stringify({
+							current_password: currentPasswordInput.value,
+							new_password: newPasswordInput.value,
+							new_password_confirmation: confirmPasswordInput.value,
+						}),
+					})
+						.then(parseApiResponse)
+						.then(function (responsePayload) {
+							accountForm.reset();
+							accountForm.classList.remove('was-validated');
+							showAlert('success', String((responsePayload && responsePayload.message) || 'Password updated successfully.'));
+						})
+						.catch(function (error) {
+							showAlert('danger', error.message || 'Unable to update password.');
+						})
+						.finally(function () {
+							setButtonLoading(saveAccountButton, false);
+						});
 				});
 			});
 		}

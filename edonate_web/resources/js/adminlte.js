@@ -10,6 +10,9 @@
 import * as bootstrap from 'bootstrap'
 window.bootstrap = bootstrap
 
+// Shared renderer for JSON-backed admin table pagination.
+import './admin-pagination'
+
 // OverlayScrollbars — AdminLTE uses it for the sidebar scroller (optional)
 import { OverlayScrollbars } from 'overlayscrollbars'
 

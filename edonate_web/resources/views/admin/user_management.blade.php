@@ -6,7 +6,7 @@
 @section('header_subtitle', 'Manage donor registration, updates, and account validation')
 
 @section('header_actions')
-    <button class="btn-export btn" aria-label="Export donor data" type="button">
+    <button class="btn-export btn" id="userManagementExportButton" aria-label="Export donor data" type="button">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
             <polyline points="17 8 12 3 7 8"/>
@@ -22,6 +22,7 @@
     'userManagement' => $userManagementPayload ?? [
         'api' => [
             'listUrl' => '',
+            'exportUrl' => '',
             'showUrlTemplate' => '',
             'updateUrlTemplate' => '',
             'deactivateUrlTemplate' => '',
@@ -152,10 +153,10 @@
                 </div>
             </div>
 
-            <nav class="pagination" aria-label="Table pagination">
-                <span class="pagination__info" id="userManagementPaginationInfo">Showing 0-0 of 0 donors</span>
-                <div class="pagination__controls" id="userManagementPaginationControls"></div>
-            </nav>
+            <div class="admin-pagination admin-pagination--js" aria-label="Table pagination">
+                <span class="admin-pagination__info" id="userManagementPaginationInfo">Showing 0 to 0 of 0 entries</span>
+                <nav class="admin-pagination__links" id="userManagementPaginationControls" aria-label="Pagination links"></nav>
+            </div>
         </section>
     </div>
 
@@ -399,6 +400,7 @@
     (function () {
         var payload = (window.AdminPageData && window.AdminPageData.userManagement) ? window.AdminPageData.userManagement : {};
         var listUrl = payload.api && payload.api.listUrl ? payload.api.listUrl : '';
+        var exportUrl = payload.api && payload.api.exportUrl ? String(payload.api.exportUrl) : '';
         var showUrlTemplate = payload.api && payload.api.showUrlTemplate ? payload.api.showUrlTemplate : '';
         var updateUrlTemplate = payload.api && payload.api.updateUrlTemplate ? payload.api.updateUrlTemplate : '';
         var deactivateUrlTemplate = payload.api && payload.api.deactivateUrlTemplate ? payload.api.deactivateUrlTemplate : '';
@@ -412,7 +414,7 @@
         var tableBody = document.getElementById('userManagementTableBody');
         var paginationInfo = document.getElementById('userManagementPaginationInfo');
         var paginationControls = document.getElementById('userManagementPaginationControls');
-        var exportButton = document.querySelector('.btn-export');
+        var exportButton = document.getElementById('userManagementExportButton');
         var alertHost = document.getElementById('userManagementAlertHost');
 
         var totalDonorsEl = document.getElementById('userStatTotalDonors');
@@ -802,6 +804,25 @@
                 });
         }
 
+        function buildExportUrl() {
+            if (!exportUrl) {
+                return '';
+            }
+
+            var url = new URL(exportUrl, window.location.origin);
+            if (state.search) {
+                url.searchParams.set('search', state.search);
+            }
+            if (state.bloodType) {
+                url.searchParams.set('blood_type', state.bloodType);
+            }
+            if (state.status) {
+                url.searchParams.set('status', state.status);
+            }
+
+            return url.toString();
+        }
+
         function renderActionButtons(donorId, isActive) {
             var deactivateButton = isActive
                 ? '<button class="btn-action btn-action--deactivate" type="button" title="Deactivate Donor" aria-label="Deactivate Donor" data-action="deactivate" data-donor-id="' + escapeHtml(donorId) + '">'
@@ -902,27 +923,6 @@
             }
         }
 
-        function createPageButton(label, targetPage, options) {
-            var button = document.createElement('button');
-            button.className = 'pagination__btn' + (options && options.active ? ' pagination__btn--active' : '');
-            button.type = 'button';
-            button.textContent = label;
-            button.setAttribute('aria-label', options && options.ariaLabel ? options.ariaLabel : ('Page ' + label));
-            if (options && options.active) {
-                button.setAttribute('aria-current', 'page');
-            }
-            if (options && options.disabled) {
-                button.disabled = true;
-                button.setAttribute('aria-disabled', 'true');
-            }
-
-            if (!button.disabled) {
-                button.dataset.page = String(targetPage);
-            }
-
-            return button;
-        }
-
         function renderPagination(meta) {
             if (!paginationInfo || !paginationControls) {
                 return;
@@ -936,39 +936,11 @@
                 to: Number(meta.to || 0)
             };
 
-            var total = Number(meta.total || 0);
-            var from = Number(meta.from || 0);
-            var to = Number(meta.to || 0);
-            var currentPage = Number(meta.current_page || 1);
-            var lastPage = Number(meta.last_page || 1);
-
-            paginationInfo.textContent = 'Showing ' + from + '-' + to + ' of ' + total + ' donors';
-            paginationControls.innerHTML = '';
-
-            if (total <= 0) {
-                return;
+            if (window.eDonateAdminPagination) {
+                window.eDonateAdminPagination.render(paginationControls, state.meta, null, {
+                    infoElement: paginationInfo
+                });
             }
-
-            paginationControls.appendChild(createPageButton('<', Math.max(1, currentPage - 1), {
-                disabled: currentPage <= 1,
-                ariaLabel: 'Previous page'
-            }));
-
-            var start = Math.max(1, currentPage - 2);
-            var end = Math.min(lastPage, start + 4);
-            start = Math.max(1, end - 4);
-
-            for (var pageIndex = start; pageIndex <= end; pageIndex += 1) {
-                paginationControls.appendChild(createPageButton(String(pageIndex), pageIndex, {
-                    active: pageIndex === currentPage,
-                    ariaLabel: 'Page ' + pageIndex
-                }));
-            }
-
-            paginationControls.appendChild(createPageButton('>', Math.min(lastPage, currentPage + 1), {
-                disabled: currentPage >= lastPage,
-                ariaLabel: 'Next page'
-            }));
         }
 
         function buildRequestUrl() {
@@ -1422,6 +1394,18 @@
         if (exportButton) {
             exportButton.addEventListener('click', function (event) {
                 event.preventDefault();
+
+                var downloadUrl = buildExportUrl();
+                if (!downloadUrl) {
+                    showAlert('danger', 'Donor export is not available right now.');
+                    return;
+                }
+
+                setTextButtonLoading(exportButton, true, 'Preparing Export...');
+                window.location.assign(downloadUrl);
+                window.setTimeout(function () {
+                    setTextButtonLoading(exportButton, false, 'Preparing Export...');
+                }, 1200);
             });
         }
 

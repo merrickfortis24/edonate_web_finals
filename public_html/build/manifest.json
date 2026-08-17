@@ -8,7 +8,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/adminlte.css": {
-    "file": "assets/adminlte-BihUcY4u.css",
+    "file": "assets/adminlte-CKWCs8G_.css",
     "src": "resources/css/adminlte.css",
     "isEntry": true,
     "name": "adminlte",
@@ -17,7 +17,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-Hk5VdufY.css",
+    "file": "assets/app-BtQpASlu.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -26,7 +26,7 @@
     ]
   },
   "resources/js/adminlte.js": {
-    "file": "assets/adminlte-CDpFgCoi.js",
+    "file": "assets/adminlte-BL06H41j.js",
     "name": "adminlte",
     "src": "resources/js/adminlte.js",
     "isEntry": true

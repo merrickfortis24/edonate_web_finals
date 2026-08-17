@@ -107,6 +107,10 @@
 			<section class="notif-list" id="notificationList" aria-label="Notifications">
 				<div class="notification-state text-center text-muted py-4">Loading notifications...</div>
 			</section>
+			<div class="admin-pagination admin-pagination--js notification-pagination" aria-label="Table pagination">
+				<span class="admin-pagination__info" id="notificationPaginationInfo">Showing 0 to 0 of 0 entries</span>
+				<nav class="admin-pagination__links" id="notificationPaginationLinks" aria-label="Pagination links"></nav>
+			</div>
 		</div>
 	</main>
 
@@ -121,7 +125,7 @@
 					<div class="text-center text-muted py-4">Loading details...</div>
 				</div>
 				<div class="modal-footer">
-					<a href="#" class="btn btn-outline-primary d-none" id="notificationRelatedLink">Open Related Record</a>
+					<a class="btn btn-outline-primary d-none" id="notificationRelatedLink">Open Related Record</a>
 					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
 				</div>
 			</div>

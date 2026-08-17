@@ -130,9 +130,9 @@
           </tbody>
         </table>
       </div>
-      <div class="records-footer">
-        <p class="records-footer__info" id="processingPaginationInfo">Showing 0 to 0 of 0 records</p>
-        <nav class="pagination" id="processingPaginationPages" aria-label="Table pagination"></nav>
+      <div class="admin-pagination admin-pagination--js records-footer" aria-label="Table pagination">
+        <p class="admin-pagination__info records-footer__info" id="processingPaginationInfo">Showing 0 to 0 of 0 entries</p>
+        <nav class="admin-pagination__links" id="processingPaginationPages" aria-label="Pagination links"></nav>
       </div>
     </section>
   </main>
@@ -339,12 +339,11 @@
       }).join('');
     }
     function renderPagination(meta) {
-      paginationInfo.textContent = 'Showing ' + (meta.from || 0) + ' to ' + (meta.to || 0) + ' of ' + (meta.total || 0) + ' records';
-      var pages = [];
-      for (var i = 1; i <= (meta.last_page || 1); i += 1) {
-        pages.push('<button class="pagination__page ' + (i === meta.current_page ? 'is-active' : '') + '" data-page="' + i + '" type="button">' + i + '</button>');
+      if (window.eDonateAdminPagination) {
+        window.eDonateAdminPagination.render(paginationPages, meta, null, {
+          infoElement: paginationInfo
+        });
       }
-      paginationPages.innerHTML = pages.join('');
     }
     function loadRows() {
       if (!api.listUrl) return;

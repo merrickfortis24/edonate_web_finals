@@ -15,8 +15,7 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshBtn: '#eligibilityRefreshBtn',
         tableBody: '#eligibilityTableBody',
         paginationInfo: '#eligibilityPaginationInfo',
-        prevBtn: '#eligibilityPrevBtn',
-        nextBtn: '#eligibilityNextBtn',
+        paginationLinks: '#eligibilityPaginationLinks',
         statTotal: '#eligibilityStatTotal',
         statForReview: '#eligibilityStatForReview',
         statEligible: '#eligibilityStatEligible',
@@ -93,13 +92,7 @@ document.addEventListener('DOMContentLoaded', function () {
     function setLoading(loading) {
         config.isLoading = loading;
         const refresh = document.querySelector(selectors.refreshBtn);
-        const prev = document.querySelector(selectors.prevBtn);
-        const next = document.querySelector(selectors.nextBtn);
         if (refresh) refresh.disabled = loading;
-        if (loading) {
-            if (prev) prev.disabled = true;
-            if (next) next.disabled = true;
-        }
     }
 
     function setStats(stats) {
@@ -275,15 +268,22 @@ document.addEventListener('DOMContentLoaded', function () {
         config.currentPage = current;
         config.totalRecords = total;
 
+        const links = document.querySelector(selectors.paginationLinks);
         const info = document.querySelector(selectors.paginationInfo);
-        if (info) {
-            info.textContent = 'Showing ' + from + ' to ' + to + ' of ' + total + ' records (Page ' + current + ' of ' + last + ')';
+        if (window.eDonateAdminPagination && links) {
+            window.eDonateAdminPagination.render(links, {
+                current_page: current,
+                last_page: last,
+                total,
+                from,
+                to,
+            }, function (nextPage) {
+                config.currentPage = nextPage;
+                loadSubmissions();
+            }, { infoElement: info });
+        } else if (info) {
+            info.textContent = 'Showing ' + from + ' to ' + to + ' of ' + total + ' entries';
         }
-
-        const prev = document.querySelector(selectors.prevBtn);
-        const next = document.querySelector(selectors.nextBtn);
-        if (prev) prev.disabled = current <= 1;
-        if (next) next.disabled = current >= last;
     }
 
     async function fetchDetail(id) {
@@ -555,16 +555,6 @@ document.addEventListener('DOMContentLoaded', function () {
     function bindEvents() {
         document.querySelector(selectors.refreshBtn)?.addEventListener('click', function () {
             config.currentPage = 1;
-            loadSubmissions();
-        });
-        document.querySelector(selectors.prevBtn)?.addEventListener('click', function () {
-            if (config.currentPage > 1) {
-                config.currentPage -= 1;
-                loadSubmissions();
-            }
-        });
-        document.querySelector(selectors.nextBtn)?.addEventListener('click', function () {
-            config.currentPage += 1;
             loadSubmissions();
         });
         document.querySelector(selectors.searchInput)?.addEventListener('input', function () {

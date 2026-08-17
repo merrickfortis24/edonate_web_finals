@@ -252,19 +252,38 @@
     justify-content: center;
 }
 
-/* Admin pagination uses Bootstrap markup; keep it separate from the legacy
- * custom .pagination bar used by the JavaScript-driven admin grids. */
+/* Shared AdminLTE-style pagination footer. Both server-rendered Laravel
+ * paginators and JSON-backed admin tables use this same structure. */
 .edonate-admin-page .admin-pagination {
+    align-items: center;
     display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: space-between;
+    min-width: 0;
+    width: 100%;
+    padding: 1rem 1.25rem;
+    background: var(--edonate-card-bg);
+    border-top: 1px solid var(--bs-border-color);
+    border-radius: 0 0 var(--r-md, 0.75rem) var(--r-md, 0.75rem);
+}
+
+.edonate-admin-page .admin-pagination__info {
+    color: var(--bs-secondary-color);
+    flex: 1 1 220px;
+    min-width: 0;
+    margin: 0;
+}
+
+.edonate-admin-page .admin-pagination__links {
+    display: flex;
+    flex: 0 1 auto;
     justify-content: flex-end;
+    max-width: 100%;
     min-width: 0;
 }
 
-.edonate-admin-page .admin-pagination nav {
-    max-width: 100%;
-}
-
-.edonate-admin-page .admin-pagination .pagination {
+.edonate-admin-page .admin-pagination__links .pagination {
     align-items: center;
     background: transparent;
     border: 0;
@@ -277,12 +296,28 @@
     padding: 0;
 }
 
-.edonate-admin-page .admin-pagination .page-link {
+.edonate-admin-page .admin-pagination__links .page-item {
+    flex: 0 0 auto;
+}
+
+.edonate-admin-page .admin-pagination__links .page-link {
     align-items: center;
     display: inline-flex;
     justify-content: center;
     min-width: 2.25rem;
     min-height: 2.25rem;
+    white-space: nowrap;
+}
+
+.edonate-admin-page .admin-pagination__links .page-item.active .page-link {
+    background-color: var(--edonate-red);
+    border-color: var(--edonate-red);
+    color: #fff;
+}
+
+.edonate-admin-page .admin-pagination__links .page-item.disabled .page-link {
+    color: var(--bs-secondary-color);
+    pointer-events: none;
 }
 
 .edonate-admin-page .bg-body-surface,
@@ -643,36 +678,6 @@
     display: inline-block;
     font-size: 0.68rem;
     margin-top: 0.3rem;
-}
-
-.edonate-admin-page.admin-users-page .pagination {
-    width: 100%;
-    min-width: 0;
-    flex-wrap: wrap;
-    gap: 12px;
-}
-
-.edonate-admin-page.admin-users-page .pagination__info {
-    min-width: 0;
-    flex: 1 1 180px;
-}
-
-.edonate-admin-page.admin-users-page .pagination__controls {
-    flex: 0 1 auto;
-    flex-wrap: wrap;
-    margin-left: auto;
-}
-
-.edonate-admin-page.admin-users-page .pagination__btn {
-    background: var(--edonate-card-bg);
-    border-color: var(--bs-border-color);
-    color: var(--bs-body-color);
-}
-
-.edonate-admin-page.admin-users-page .pagination__btn--active {
-    background: var(--edonate-red);
-    border-color: var(--edonate-red);
-    color: #fff;
 }
 
 /*
@@ -1115,19 +1120,26 @@
         min-width: 0;
     }
 
-    .edonate-admin-page.admin-users-page .pagination {
+    .edonate-admin-page .admin-pagination {
         align-items: flex-start;
-        padding: 14px;
+        flex-direction: column;
+        padding: 0.875rem 1rem;
     }
 
-    .edonate-admin-page.admin-users-page .pagination__info,
-    .edonate-admin-page.admin-users-page .pagination__controls {
+    .edonate-admin-page .admin-pagination__info,
+    .edonate-admin-page .admin-pagination__links {
+        flex: 1 1 100%;
         width: 100%;
-        flex-basis: 100%;
-        margin-left: 0;
     }
 
-    .edonate-admin-page.admin-users-page .pagination__controls {
-        justify-content: flex-end;
+    .edonate-admin-page .admin-pagination__links {
+        justify-content: flex-start;
+        overflow-x: auto;
+        padding-bottom: 0.125rem;
+    }
+
+    .edonate-admin-page .admin-pagination__links .pagination {
+        justify-content: flex-start;
+        flex-wrap: wrap;
     }
 }
