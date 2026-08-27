@@ -16,6 +16,7 @@ $dryRun = isset($options['dry-run']);
 $skipCache = isset($options['skip-cache-clear']);
 $webRoot = resolveWebRoot($projectRoot, $options);
 $laravelPublic = resolveLaravelPublic($projectRoot, $webRoot);
+$legacyPublic = resolveLegacyPublic($projectRoot, $webRoot);
 
 if (! is_dir($laravelPublic)) {
     fail("Laravel public directory not found: {$laravelPublic}");
@@ -35,6 +36,7 @@ if (! is_dir($webRoot)) {
 }
 
 $laravelPublicReal = normalizePath($laravelPublic);
+$legacyPublicReal = $legacyPublic !== null ? normalizePath($legacyPublic) : null;
 if ($webRoot === $laravelPublicReal) {
     writeln("Laravel public path is already the served web root: {$webRoot}");
     if (! $skipCache) {
@@ -53,16 +55,25 @@ $totals = [
 
 writeln("Project root: {$projectRoot}");
 writeln("Laravel public assets: {$laravelPublicReal}");
+if ($legacyPublicReal !== null && $legacyPublicReal !== $laravelPublicReal) {
+    writeln("Legacy public asset fallback: {$legacyPublicReal}");
+}
 writeln("Served web root: {$webRoot}");
 writeln("asset('js/admin/...') resolves to /js/admin/... and is served from {$webRoot}/js/admin/.");
 
 foreach ($assetDirs as $dir) {
-    $source = $laravelPublicReal . DIRECTORY_SEPARATOR . $dir;
     $destination = $webRoot . DIRECTORY_SEPARATOR . $dir;
+    $source = resolvePublicAssetSource($laravelPublicReal, $legacyPublicReal, $dir, true);
 
-    if (! is_dir($source)) {
+    if ($source === null) {
         $totals['skipped_dirs']++;
         writeln("Skip missing public/{$dir}");
+        continue;
+    }
+
+    if (normalizePath($source) === normalizePath($destination)) {
+        $totals['unchanged']++;
+        writeln("Skip {$dir}: source is already the served web root.");
         continue;
     }
 
@@ -72,12 +83,18 @@ foreach ($assetDirs as $dir) {
 }
 
 foreach ($publicFiles as $file) {
-    $source = $laravelPublicReal . DIRECTORY_SEPARATOR . $file;
     $destination = $webRoot . DIRECTORY_SEPARATOR . $file;
+    $source = resolvePublicAssetSource($laravelPublicReal, $legacyPublicReal, $file, false);
 
-    if (! is_file($source)) {
+    if ($source === null) {
         $totals['skipped_dirs']++;
         writeln("Skip missing public/{$file}");
+        continue;
+    }
+
+    if (normalizePath($source) === normalizePath($destination)) {
+        $totals['unchanged']++;
+        writeln("Skip {$file}: source is already the served web root.");
         continue;
     }
 
@@ -183,6 +200,43 @@ function resolveLaravelPublic(string $projectRoot, ?string $webRoot): string
     }
 
     return $defaultPublic;
+}
+
+function resolveLegacyPublic(string $projectRoot, ?string $webRoot): ?string
+{
+    $nestedPublic = dirname($projectRoot) . DIRECTORY_SEPARATOR . 'public_html';
+
+    if ($webRoot !== null && normalizePath($nestedPublic) !== normalizePath($webRoot) && is_dir($nestedPublic)) {
+        return $nestedPublic;
+    }
+
+    if ($webRoot !== null && is_dir($webRoot)) {
+        return $webRoot;
+    }
+
+    return null;
+}
+
+function resolvePublicAssetSource(
+    string $primaryPublic,
+    ?string $fallbackPublic,
+    string $relativePath,
+    bool $directory,
+): ?string {
+    $candidates = [$primaryPublic];
+
+    if ($fallbackPublic !== null && $fallbackPublic !== $primaryPublic) {
+        $candidates[] = $fallbackPublic;
+    }
+
+    foreach ($candidates as $candidatePublic) {
+        $source = $candidatePublic . DIRECTORY_SEPARATOR . $relativePath;
+        if ($directory ? is_dir($source) : is_file($source)) {
+            return $source;
+        }
+    }
+
+    return null;
 }
 
 function syncDirectory(string $source, string $destination, bool $dryRun): array

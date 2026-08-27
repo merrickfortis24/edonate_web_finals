@@ -7,7 +7,8 @@ This deployment uses the current Hostinger nested structure:
 ```text
 /home/USER/domains/edonate.online/public_html/
 |-- edonate_web/      # Laravel app root
-|-- public_html/      # source copy of Laravel public files from the repo
+|   `-- public/images/ # canonical branded image assets
+|-- public_html/      # served/generated public asset copy
 |-- index.php         # live Hostinger front controller
 |-- .htaccess
 |-- build/
@@ -16,10 +17,13 @@ This deployment uses the current Hostinger nested structure:
 `-- vendor/           # public assets only
 ```
 
-The outer `public_html` is Hostinger's served document root. It must contain
-the public files copied from the nested `public_html/public_html` folder:
-`index.php`, `.htaccess`, `build/`, `css/`, `js/`, `vendor/leaflet/`,
-`favicon.ico`, and `robots.txt`.
+The outer `public_html` is Hostinger's served document root. The canonical
+Laravel source for branded images is now `edonate_web/public/images/`.
+`scripts/sync-public-assets.php` prefers assets from `edonate_web/public/` and
+falls back to the legacy nested public-asset source for directories that have
+not been migrated yet. It copies the resolved public files into the served
+outer root, including `images/`, `index.php`, `.htaccess`, `build/`, `css/`,
+`js/`, `vendor/leaflet/`, `favicon.ico`, and `robots.txt`.
 
 Keep private Laravel files in `edonate_web`: `.env`, `app/`, `bootstrap/`,
 `config/`, `database/`, `resources/`, `routes/`, `storage/`, Composer
@@ -64,7 +68,7 @@ php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/publ
 ```
 
 The script copies `index.php`, `.htaccess`, `build/`, `css/`, `js/`,
-`vendor/`, `favicon.ico`, and `robots.txt` into the served outer
+`images/`, `vendor/`, `favicon.ico`, and `robots.txt` into the served outer
 `public_html`.
 
 Keep the existing production `APP_KEY` unless you intentionally want to
