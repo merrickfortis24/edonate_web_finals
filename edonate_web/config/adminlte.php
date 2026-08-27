@@ -15,9 +15,12 @@ return [
     'use_full_favicon' => true,
     'google_fonts' => ['allowed' => true],
 
-    'logo' => '<i class="bi bi-droplet-fill text-danger me-2" aria-hidden="true"></i><strong>eDonate</strong>',
-    'logo_img' => false,
-    'logo_img_class' => '',
+    // Keep the sidebar icon as an image so the brand remains recognizable when
+    // AdminLTE collapses the sidebar to its mini layout. The full wordmark is
+    // rendered alongside it while the sidebar is expanded.
+    'logo' => '<strong>eDonate</strong>',
+    'logo_img' => 'images/edonate-icon.png',
+    'logo_img_class' => 'edonate-sidebar-logo',
     'logo_img_alt' => 'eDonate',
     'auth_logo' => ['enabled' => false],
 

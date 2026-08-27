@@ -101,26 +101,21 @@
 			padding: 60px 36px;
 		}
 
-		.card__left__icon {
-			width: 154px;
-			height: 154px;
-			border-radius: 50%;
-			background: rgba(255, 255, 255, 0.1);
-			border: 1px solid rgba(255, 255, 255, 0.3);
-			display: flex;
-			align-items: center;
-			justify-content: center;
+		.card__left__logo {
+			display: block;
+			overflow: hidden;
+			width: min(100%, 360px);
+			/* Leave a little vertical breathing room so the source artwork is not clipped. */
+			aspect-ratio: 4.2 / 1;
 		}
 
-		.card__left__icon svg {
-			width: 86px;
-			height: 86px;
-		}
-
-		.card__left__brand {
-			font-size: var(--fs-md);
-			font-weight: 700;
-			margin-top: 8px;
+		.card__left__logo img {
+			display: block;
+			height: 100%;
+			filter: drop-shadow(0 0 2px rgba(255, 255, 255, .85));
+			object-fit: cover;
+			object-position: center 47%;
+			width: 100%;
 		}
 
 		.card__left__tagline {
@@ -321,20 +316,6 @@
 				padding: 40px 24px;
 			}
 
-			.card__left__icon {
-				width: 110px;
-				height: 110px;
-			}
-
-			.card__left__icon svg {
-				width: 62px;
-				height: 62px;
-			}
-
-			.card__left__brand {
-				font-size: 17px;
-			}
-
 			.card__left__tagline {
 				font-size: 16px;
 				margin-top: 20px;
@@ -377,20 +358,6 @@
 
 			.card__left {
 				padding: 48px 32px 40px;
-			}
-
-			.card__left__icon {
-				width: 90px;
-				height: 90px;
-			}
-
-			.card__left__icon svg {
-				width: 50px;
-				height: 50px;
-			}
-
-			.card__left__brand {
-				font-size: 16px;
 			}
 
 			.card__left__tagline {
@@ -452,17 +419,9 @@
 	<main class="page" role="main">
 		<div class="login-card">
 			<section class="card__left" aria-label="eDonate branding">
-				<div class="card__left__icon" aria-hidden="true">
-					<svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-						<path
-							d="M32 6C32 6 15 24 15 37.5C15 47.7173 23.2827 56 33.5 56C43.7173 56 52 47.7173 52 37.5C52 24 32 6 32 6Z"
-							fill="white" />
-						<path d="M39.5 37.5C39.5 41.6421 36.1421 45 32 45" stroke="#b60c0c" stroke-width="4"
-							stroke-linecap="round" />
-					</svg>
+				<div class="card__left__logo">
+					<img src="{{ asset('images/edonate-logo.png') }}" alt="eDonate">
 				</div>
-
-				<p class="card__left__brand">eDonate</p>
 
 				<p class="card__left__tagline">
 					Give blood, save lives.<br>

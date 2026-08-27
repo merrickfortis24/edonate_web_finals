@@ -62,16 +62,24 @@ class DonorDashboardController extends Controller
             ->limit(8)
             ->get();
 
-        $alertsCount = Notification::query()
+        $notificationQuery = Notification::query()
             ->where('donor_id', $donor->donor_id)
             ->when(Schema::hasTable('notifications') && Schema::hasColumn('notifications', 'recipient_type'), function ($query): void {
                 $query->where(function ($builder): void {
                     $builder->whereNull('recipient_type')
-                        ->orWhereIn('recipient_type', ['donor', 'all_donors']);
+                    ->orWhereIn('recipient_type', ['donor', 'all_donors']);
                 });
-            })
+            });
+
+        $alertsCount = (clone $notificationQuery)
             ->where('is_read', 0)
             ->count();
+
+        $notificationBanner = (clone $notificationQuery)
+            ->where('is_read', 0)
+            ->orderByDesc('created_at')
+            ->orderByDesc('notification_id')
+            ->first();
 
         $latestVerification = DonorVerification::query()
             ->where('donor_id', $donor->donor_id)
@@ -109,6 +117,7 @@ class DonorDashboardController extends Controller
             'navLinks' => $navLinks,
             'activeNav' => 'home',
             'alertsCount' => $alertsCount,
+            'notificationBanner' => $notificationBanner,
             'bloodTypes' => BloodType::query()->orderBy('blood_type')->pluck('blood_type'),
             'identityVerificationStatus' => $identityVerificationStatus,
             'latestVerification' => $latestVerification,

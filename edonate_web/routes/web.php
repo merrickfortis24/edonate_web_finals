@@ -154,6 +154,10 @@ Route::middleware('admin.auth')->group(function () {
             ->whereNumber('appointment')
             ->middleware('throttle:admin-write')
             ->name('admin.appointments.check-in');
+        Route::get('/admin/appointments/{appointment}/complete', [AdminAuthController::class, 'completeDonationPage'])
+            ->whereNumber('appointment')
+            ->middleware('throttle:admin-api')
+            ->name('admin.appointments.complete-page');
         Route::patch('/admin/appointments/{appointment}/complete', [AdminAuthController::class, 'completeAppointment'])
             ->whereNumber('appointment')
             ->middleware('throttle:admin-write')

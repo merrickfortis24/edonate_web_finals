@@ -145,7 +145,36 @@
 			text-align: center;
 		}
 
-		.hero-logo { font-weight: 800; font-size: 1.5rem; }
+		.hero-logo {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			font-weight: 800;
+			font-size: 1.5rem;
+		}
+
+		.hero-logo__image {
+			display: block;
+			overflow: hidden;
+			width: min(100%, 24rem);
+			/* Leave a little vertical breathing room so the source artwork is not clipped. */
+			aspect-ratio: 4.2 / 1;
+		}
+
+		.hero-logo__image img {
+			display: block;
+			height: 100%;
+			filter: drop-shadow(0 0 2px rgba(255, 255, 255, .85));
+			object-fit: cover;
+			object-position: center 47%;
+			width: 100%;
+		}
+
+		.hero-logo__subtitle {
+			font-size: .85rem;
+			font-weight: 600;
+			margin-top: .55rem;
+		}
 
 		.card-overlay {
 			background: linear-gradient(180deg, #f5f5f7 0%, #ececef 100%);
@@ -202,8 +231,11 @@
 </head>
 <body>
 <header class="hero-header">
-	<div class="hero-logo">eDonate
-		<div style="font-size:.85rem;font-weight:600;margin-top:.15rem">Blood Donation App</div>
+	<div class="hero-logo">
+		<span class="hero-logo__image">
+			<img src="{{ asset('images/edonate-logo.png') }}" alt="eDonate">
+		</span>
+		<div class="hero-logo__subtitle">Blood Donation App</div>
 	</div>
 </header>
 

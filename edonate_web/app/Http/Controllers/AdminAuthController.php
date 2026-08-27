@@ -1156,6 +1156,53 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Display the protected completion workspace opened from Donation
+     * Processing. The page is intentionally limited to checked-in
+     * appointments and reuses the donor detail query used by Digital Donor ID.
+     */
+    public function completeDonationPage(Request $request, int $appointment)
+    {
+        $entry = $this->donationProcessingBaseQuery()
+            ->where('ap.appointment_id', $appointment)
+            ->first();
+
+        if (! $entry) {
+            abort(404, 'Appointment not found.');
+        }
+
+        $status = Str::lower(trim((string) ($entry->normalized_status ?? '')));
+        if ($status !== 'checked_in') {
+            abort(422, 'Only checked-in appointments can be completed.');
+        }
+
+        $donor = $this->getUserManagementDonorDetail((int) $entry->donor_id);
+        if ($donor === null) {
+            abort(404, 'Donor not found.');
+        }
+
+        return view('admin.complete_donation', [
+            'completionPayload' => [
+                'appointment' => [
+                    'appointment_id' => (int) $entry->appointment_id,
+                    'appointment_code' => 'AP'.str_pad((string) ((int) $entry->appointment_id), 3, '0', STR_PAD_LEFT),
+                    'donor_id' => (int) $entry->donor_id,
+                    'appointment_date' => ! empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
+                    'appointment_time' => ! empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
+                    'event_title' => trim((string) ($entry->event_title ?? 'Legacy appointment')),
+                    'center_label' => trim((string) ($entry->donation_center ?: $entry->event_location_name ?: 'N/A')),
+                ],
+                'donor' => $donor,
+                'canVerifyBloodType' => Str::lower(trim((string) $request->session()->get('admin_role'))) === 'admin',
+                'verificationBloodTypes' => $this->userManagementBloodTypeFormOptions(),
+                'api' => [
+                    'completeUrl' => route('admin.appointments.complete', ['appointment' => $appointment]),
+                    'returnUrl' => route('admin.donation-records'),
+                ],
+            ],
+        ]);
+    }
+
+    /**
      * Complete a checked-in appointment and create exactly one donation record.
      */
     public function completeAppointment(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
@@ -1170,12 +1217,20 @@ class AdminAuthController extends BaseController
         ]);
 
         $result = $service->completeDonation($appointment, $this->currentAdminId($request), $validated, $request);
+        // The completion response is also used to refresh the Digital ID
+        // window. Some focused test schemas (and older installations) do not
+        // have the optional locations table, so keep the canonical donation
+        // response independent from that optional detail join.
+        $donorPayload = Schema::hasTable('locations')
+            ? $this->getUserManagementDonorDetail((int) $result['appointment']->donor_id)
+            : null;
 
         return response()->json([
             'message' => $result['already'] ?? false
                 ? 'This appointment already has a completed donation record.'
                 : 'Donation completed and record created.',
             'donation_id' => $result['record']->donation_id ?? null,
+            'donor' => $donorPayload,
         ]);
     }
 
@@ -1267,6 +1322,8 @@ class AdminAuthController extends BaseController
                 'api' => [
                     'listUrl' => route('admin.donation-records.data'),
                     'completeUrlTemplate' => route('admin.appointments.complete', ['appointment' => '__ID__']),
+                    'completePageUrlTemplate' => route('admin.appointments.complete-page', ['appointment' => '__ID__']),
+                    'returnUrl' => route('admin.donation-records'),
                     'deferUrlTemplate' => route('admin.appointments.defer', ['appointment' => '__ID__']),
                     'initialAppointmentId' => $request->integer('appointment_id') ?: null,
                 ],
@@ -3898,6 +3955,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'label' => $unreadNotifications > 9 ? '9+' : (string) $unreadNotifications,
                 'visible' => $unreadNotifications > 0,
             ],
+            'notification_banner' => $this->dashboardTry('notification_banner', function (): ?array {
+                return $this->dashboardLatestUnreadAdminNotification();
+            }, null),
             'monthly_donations' => $this->dashboardTry('monthly_donations', function (): array {
                 return $this->buildDashboardMonthlyDonations();
             }, $this->emptyDashboardMonthlyDonations()),
@@ -4167,21 +4227,67 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
     }
 
     /**
-     * Count unread donor notifications for the dashboard badge.
+     * Count unread admin notifications for the dashboard badge.
+     *
+     * Donor notifications belong to the donor's Alerts page. The admin bell
+     * and Notification Center are backed by admin_notifications, so the two
+     * inboxes must not share a count.
      */
     private function dashboardUnreadNotificationCount(): int
     {
-        if (! $this->dashboardTableHasColumns('notifications', ['is_read'])) {
+        if (! $this->dashboardTableHasColumns('admin_notifications', ['admin_notification_id', 'is_read'])) {
             return 0;
         }
 
-        $query = DB::table('notifications')->where('is_read', 0);
+        $query = DB::table('admin_notifications')
+            ->where(function ($builder): void {
+                $builder->where('is_read', 0)->orWhereNull('is_read');
+            });
 
-        if ($this->dashboardTableHasColumns('notifications', ['deleted_at'])) {
+        if ($this->dashboardTableHasColumns('admin_notifications', ['deleted_at'])) {
             $query->whereNull('deleted_at');
         }
 
         return (int) $query->count();
+    }
+
+    /**
+     * Resolve the latest unread admin notification for the dashboard banner.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function dashboardLatestUnreadAdminNotification(): ?array
+    {
+        if (! $this->dashboardTableHasColumns('admin_notifications', ['admin_notification_id', 'title', 'message', 'is_read'])) {
+            return null;
+        }
+
+        $query = DB::table('admin_notifications')
+            ->where(function ($builder): void {
+                $builder->where('is_read', 0)->orWhereNull('is_read');
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('admin_notification_id');
+
+        if ($this->dashboardTableHasColumns('admin_notifications', ['deleted_at'])) {
+            $query->whereNull('deleted_at');
+        }
+
+        $notification = $query->first();
+
+        if (! $notification) {
+            return null;
+        }
+
+        return [
+            'title' => trim((string) ($notification->title ?? 'Notification')) ?: 'Notification',
+            'message' => trim((string) ($notification->message ?? '')),
+            'type' => trim((string) ($notification->notification_type ?? 'system')) ?: 'system',
+            'created_at' => $notification->created_at
+                ? Carbon::parse($notification->created_at)->format('M j, Y g:i A')
+                : null,
+            'url' => route('admin.notification-center'),
+        ];
     }
 
     /**

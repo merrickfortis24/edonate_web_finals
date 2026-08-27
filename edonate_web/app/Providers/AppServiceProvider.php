@@ -16,9 +16,11 @@ use App\Observers\DonationRecordObserver;
 use App\Observers\EligibilityStatusObserver;
 use App\Observers\LocationObserver;
 use App\Observers\NotificationObserver;
+use App\Services\AdminNotificationService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Kreait\Firebase\Factory;
@@ -64,6 +66,16 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerRateLimiters();
+
+        View::composer('adminlte::partials.navbar', function ($view): void {
+            $unreadCount = 0;
+
+            if ((int) session('admin_id', 0) > 0) {
+                $unreadCount = app(AdminNotificationService::class)->unreadCount();
+            }
+
+            $view->with('adminUnreadNotificationCount', $unreadCount);
+        });
 
         Donor::observe(DonorObserver::class);
         Location::observe(LocationObserver::class);

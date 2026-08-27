@@ -17,6 +17,25 @@ class AdminNotificationService
      */
     private ?array $columnCache = null;
 
+    /**
+     * Return the number of unread notifications shown in the admin bell.
+     *
+     * This deliberately reads admin_notifications rather than donor-facing
+     * notifications so the badge matches the Admin Notification Center.
+     */
+    public function unreadCount(): int
+    {
+        if (! $this->hasAdminNotificationsTable() || ! $this->hasColumn('is_read')) {
+            return 0;
+        }
+
+        return (int) AdminNotification::query()
+            ->where(function ($query): void {
+                $query->where('is_read', false)->orWhereNull('is_read');
+            })
+            ->count();
+    }
+
     public function create(array $data): ?AdminNotification
     {
         if (! $this->hasAdminNotificationsTable()) {

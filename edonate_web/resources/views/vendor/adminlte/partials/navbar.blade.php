@@ -9,6 +9,11 @@
         ->implode('');
 @endphp
 
+@php
+    $adminUnreadNotificationCount = max(0, (int) ($adminUnreadNotificationCount ?? 0));
+    $adminNotificationBadgeLabel = $adminUnreadNotificationCount > 9 ? '9+' : (string) $adminUnreadNotificationCount;
+@endphp
+
 <nav class="app-header {{ config('adminlte.classes_topnav', 'navbar-expand bg-body') }} navbar">
     <div class="{{ config('adminlte.classes_topnav_container', 'container-fluid') }}">
         <ul class="navbar-nav align-items-center">
@@ -27,8 +32,12 @@
 
         <ul class="navbar-nav ms-auto align-items-center">
             <li class="nav-item">
-                <a class="nav-link" href="{{ route('admin.notification-center') }}" aria-label="Open Notification Center">
+                <a class="nav-link admin-navbar-notification-link" href="{{ route('admin.notification-center') }}" aria-label="Open Notification Center{{ $adminUnreadNotificationCount > 0 ? ', ' . $adminUnreadNotificationCount . ' unread notifications' : '' }}">
                     <i class="bi bi-bell" aria-hidden="true"></i>
+                    @if ($adminUnreadNotificationCount > 0)
+                        <span class="badge rounded-pill text-bg-danger admin-navbar-notification-badge" aria-hidden="true">{{ $adminNotificationBadgeLabel }}</span>
+                        <span class="visually-hidden">{{ $adminUnreadNotificationCount }} unread notifications</span>
+                    @endif
                 </a>
             </li>
             <li class="nav-item dropdown user-menu">

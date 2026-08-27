@@ -171,26 +171,21 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <section class="digital-donor-id-card" aria-label="Digital Donor ID card">
-                        <div class="digital-donor-id-card__header">
-                            <span class="digital-donor-id-card__brand"><span aria-hidden="true">♥</span> eDonate</span>
-                            <span class="digital-donor-id-card__badge" id="userManagementViewVerificationBadge">UNVERIFIED DONOR</span>
-                        </div>
-                        <div class="digital-donor-id-card__identity">
-                            <div class="digital-donor-id-card__avatar edonate-user-avatar" id="userManagementViewCardAvatar" aria-hidden="true">--</div>
-                            <div class="min-w-0">
-                                <div class="digital-donor-id-card__name" id="userManagementViewCardName">-</div>
-                                <div class="digital-donor-id-card__code" id="userManagementViewCardCode">-</div>
-                            </div>
-                        </div>
-                        <div class="digital-donor-id-card__fields">
-                            <div><span>Blood Type</span><strong id="userManagementViewCardBloodType">Not Yet Determined</strong></div>
-                            <div><span>Identity</span><strong id="userManagementViewCardIdentity">Unverified</strong></div>
-                            <div><span>Eligibility</span><strong id="userManagementViewCardEligibility">-</strong></div>
-                            <div><span>Registered</span><strong id="userManagementViewCardRegistered">-</strong></div>
-                        </div>
-                        <div class="digital-donor-id-card__account" id="userManagementViewCardAccountStatus">ACTIVE ACCOUNT</div>
-                    </section>
+                    @php
+                        $userManagementDigitalIdDonor = (object) [
+                            'name' => 'Donor record',
+                            'donor_id' => '—',
+                            'blood_type' => null,
+                            'address' => null,
+                            'contact_number' => null,
+                            'last_donation_date' => null,
+                            'next_eligible_date' => null,
+                            'verification_status' => 'unverified',
+                            'eligibility_status' => 'eligible',
+                            'is_active' => true,
+                        ];
+                    @endphp
+                    <x-digital-id :donor="$userManagementDigitalIdDonor" field-prefix="userManagementViewCard" />
 
                     <h6 class="text-uppercase small text-muted mt-4 mb-3">Donor profile details</h6>
                     <div class="row g-3">
@@ -425,20 +420,35 @@
         var viewModalElement = document.getElementById('userManagementViewModal');
         var editModalElement = document.getElementById('userManagementEditModal');
         var deactivateModalElement = document.getElementById('userManagementDeactivateModal');
-        var viewModal = viewModalElement && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getOrCreateInstance(viewModalElement) : null;
-        var editModal = editModalElement && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getOrCreateInstance(editModalElement) : null;
-        var deactivateModal = deactivateModalElement && typeof bootstrap !== 'undefined' ? bootstrap.Modal.getOrCreateInstance(deactivateModalElement) : null;
+        var viewModal = null;
+        var editModal = null;
+        var deactivateModal = null;
+
+        var viewDigitalIdCard = viewModalElement
+            ? viewModalElement.querySelector('[data-digital-id-card]')
+            : null;
+
+        function digitalIdField(name) {
+            if (!viewDigitalIdCard) {
+                return null;
+            }
+
+            return viewDigitalIdCard.querySelector('[data-digital-id-field="' + name + '"]');
+        }
 
         var viewModalSubtitle = document.getElementById('userManagementViewModalSubtitle');
-        var viewVerificationBadge = document.getElementById('userManagementViewVerificationBadge');
-        var viewCardAvatar = document.getElementById('userManagementViewCardAvatar');
-        var viewCardName = document.getElementById('userManagementViewCardName');
-        var viewCardCode = document.getElementById('userManagementViewCardCode');
-        var viewCardBloodType = document.getElementById('userManagementViewCardBloodType');
-        var viewCardIdentity = document.getElementById('userManagementViewCardIdentity');
-        var viewCardEligibility = document.getElementById('userManagementViewCardEligibility');
-        var viewCardRegistered = document.getElementById('userManagementViewCardRegistered');
-        var viewCardAccountStatus = document.getElementById('userManagementViewCardAccountStatus');
+        var viewVerificationBadge = digitalIdField('verificationBadge');
+        var viewCardAvatar = digitalIdField('avatar');
+        var viewCardName = digitalIdField('name');
+        var viewCardCode = digitalIdField('code');
+        var viewCardBloodType = digitalIdField('bloodType');
+        var viewCardIdentity = digitalIdField('identity');
+        var viewCardEligibility = digitalIdField('eligibility');
+        var viewCardAddress = digitalIdField('address');
+        var viewCardContactNumber = digitalIdField('contactNumber');
+        var viewCardLastDonationDate = digitalIdField('lastDonationDate');
+        var viewCardNextEligibleDate = digitalIdField('nextEligibleDate');
+        var viewCardAccountStatus = digitalIdField('accountStatus');
         var viewDonorCode = document.getElementById('userManagementViewDonorCode');
         var viewFullName = document.getElementById('userManagementViewFullName');
         var viewEmail = document.getElementById('userManagementViewEmail');
@@ -526,9 +536,9 @@
             return fallbackMessage;
         }
 
-        function formatDate(value) {
+        function formatDate(value, fallback) {
             if (!value) {
-                return '-';
+                return fallback || '-';
             }
 
             var parsed = new Date(String(value) + 'T00:00:00');
@@ -608,17 +618,6 @@
             return parts.slice(0, 2).map(function (part) { return part.charAt(0); }).join('').toUpperCase();
         }
 
-        function digitalBloodTypeLabel(donor) {
-            var bloodType = String(donor.blood_type || '').trim();
-            var bloodStatus = String(donor.blood_type_status || 'not_yet_determined').toLowerCase();
-
-            if (!bloodType) {
-                return 'Not Yet Determined';
-            }
-
-            return bloodStatus === 'verified' ? 'Verified ' + bloodType : 'Self-Reported ' + bloodType;
-        }
-
         function buildDonorActionUrl(template, donorId) {
             if (!template) {
                 return '';
@@ -627,13 +626,13 @@
             return String(template).replace('__DONOR_ID__', encodeURIComponent(String(donorId)));
         }
 
-        function displayValue(value) {
+        function displayValue(value, fallback) {
             if (value === null || typeof value === 'undefined') {
-                return '-';
+                return fallback || '-';
             }
 
             var stringValue = String(value);
-            return stringValue.trim() === '' ? '-' : stringValue;
+            return stringValue.trim() === '' ? (fallback || '-') : stringValue;
         }
 
         function setValue(target, value) {
@@ -704,6 +703,16 @@
                     bootstrap.Alert.getOrCreateInstance(alertElement).close();
                 }
             }, 3200);
+        }
+
+        function ensureModal(element, current) {
+            var bootstrapApi = window.bootstrap;
+
+            if (current || !element || !bootstrapApi || !bootstrapApi.Modal) {
+                return current;
+            }
+
+            return bootstrapApi.Modal.getOrCreateInstance(element);
         }
 
         function showInlineFeedback(element, type, message) {
@@ -997,7 +1006,7 @@
             }
             if (viewVerificationBadge) {
                 viewVerificationBadge.textContent = verificationLabel(verificationStatus);
-                viewVerificationBadge.className = 'digital-donor-id-card__badge digital-donor-id-card__badge--' + verificationStatus;
+                viewVerificationBadge.className = 'digital-id-card__status digital-id-card__status--' + verificationStatus;
             }
             if (viewCardAvatar) {
                 viewCardAvatar.textContent = donorInitials(donorPayload.full_name);
@@ -1009,7 +1018,7 @@
                 viewCardCode.textContent = displayValue(donorPayload.donor_code);
             }
             if (viewCardBloodType) {
-                viewCardBloodType.textContent = digitalBloodTypeLabel(donorPayload);
+                viewCardBloodType.textContent = displayValue(donorPayload.blood_type, 'Not yet determined');
             }
             if (viewCardIdentity) {
                 viewCardIdentity.textContent = verificationText(verificationStatus);
@@ -1017,12 +1026,30 @@
             if (viewCardEligibility) {
                 viewCardEligibility.textContent = statusLabel(donorPayload.eligibility_status);
             }
-            if (viewCardRegistered) {
-                viewCardRegistered.textContent = formatDateTime(donorPayload.date_registered);
+            if (viewCardAddress) {
+                viewCardAddress.textContent = displayValue(donorPayload.full_address, 'Not recorded');
+            }
+            if (viewCardContactNumber) {
+                viewCardContactNumber.textContent = displayValue(donorPayload.contact_number, 'Not recorded');
+            }
+            if (viewCardLastDonationDate) {
+                viewCardLastDonationDate.textContent = formatDate(donorPayload.last_donation_date, 'Not recorded');
+            }
+            if (viewCardNextEligibleDate) {
+                viewCardNextEligibleDate.textContent = formatDate(donorPayload.next_eligible_date, 'Not set');
+                var hasFutureEligibilityDate = false;
+                if (donorPayload.next_eligible_date) {
+                    var nextEligibleDate = new Date(String(donorPayload.next_eligible_date) + 'T00:00:00');
+                    var today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    hasFutureEligibilityDate = !Number.isNaN(nextEligibleDate.getTime()) && nextEligibleDate > today;
+                }
+                viewCardNextEligibleDate.classList.toggle('digital-id-card__field-value--waiting', hasFutureEligibilityDate);
+                viewCardNextEligibleDate.classList.toggle('digital-id-card__field-value--eligible', !hasFutureEligibilityDate);
             }
             if (viewCardAccountStatus) {
                 viewCardAccountStatus.textContent = donorPayload.is_active === false ? 'INACTIVE ACCOUNT' : 'ACTIVE ACCOUNT';
-                viewCardAccountStatus.classList.toggle('digital-donor-id-card__account--inactive', donorPayload.is_active === false);
+                viewCardAccountStatus.classList.toggle('digital-id-card__account--inactive', donorPayload.is_active === false);
             }
 
             setValue(viewDonorCode, donorPayload.donor_code);
@@ -1126,8 +1153,11 @@
             loadDonorDetails(donorId)
                 .then(function (responsePayload) {
                     populateViewModal(responsePayload.donor || {});
+                    viewModal = ensureModal(viewModalElement, viewModal);
                     if (viewModal) {
                         viewModal.show();
+                    } else {
+                        throw new Error('The Digital Donor ID viewer is still loading. Please try again.');
                     }
                 })
                 .catch(function (error) {
@@ -1144,8 +1174,11 @@
             loadDonorDetails(donorId)
                 .then(function (responsePayload) {
                     populateEditModal(responsePayload.donor || {}, responsePayload.options || {});
+                    editModal = ensureModal(editModalElement, editModal);
                     if (editModal) {
                         editModal.show();
+                    } else {
+                        throw new Error('The edit form is still loading. Please try again.');
                     }
                 })
                 .catch(function (error) {
@@ -1168,8 +1201,11 @@
                 deactivatePrompt.textContent = buildDeactivatePrompt(state.deactivateTarget);
             }
 
+            deactivateModal = ensureModal(deactivateModalElement, deactivateModal);
             if (deactivateModal) {
                 deactivateModal.show();
+            } else {
+                showAlert('danger', 'The deactivation dialog is still loading. Please try again.');
             }
         }
 
