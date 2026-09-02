@@ -14,6 +14,8 @@ class AdminLteLayoutTest extends TestCase
 
         $this->assertStringContainsString('<div class="app-wrapper">', $html);
         $this->assertStringContainsString('<title>eDonate - Unauthorized</title>', $html);
+        $this->assertStringContainsString('rel="icon" type="image/png"', $html);
+        $this->assertStringContainsString('images/edonate-icon.png?v=', $html);
         $this->assertStringContainsString('<aside class="app-sidebar edonate-sidebar shadow"', $html);
         $this->assertStringContainsString('images/edonate-icon.png', $html);
         $this->assertStringContainsString('class="edonate-sidebar-logo"', $html);
@@ -54,6 +56,16 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringNotContainsString('User Roles and Permissions', $html);
         $this->assertStringNotContainsString('Profile', $html);
         $this->assertStringNotContainsString('Settings', $html);
+    }
+
+    public function test_admin_dashboard_keeps_only_the_shared_portal_notification_button(): void
+    {
+        $html = $this->renderPageForRole('admin.admin_dashboard', 'admin', '/admin/dashboard');
+
+        $this->assertStringContainsString('admin-navbar-notification-link', $html);
+        $this->assertStringContainsString('aria-label="Open Notification Center', $html);
+        $this->assertStringNotContainsString('aria-label="Go to Notification Center"', $html);
+        $this->assertStringContainsString('aria-label="Go to Settings"', $html);
     }
 
     public function test_admin_profile_uses_the_shared_adminlte_shell_and_existing_rbac_editor_link(): void

@@ -13,6 +13,8 @@
     $triggerUrl = trim((string) ($twoFactorChallengeModal['triggerUrl'] ?? ''));
     $completeUrl = trim((string) ($twoFactorChallengeModal['completeUrl'] ?? ''));
     $channelName = trim((string) ($twoFactorChallengeModal['channelName'] ?? ''));
+    $primaryMethod = trim((string) ($twoFactorChallengeModal['primaryMethod'] ?? 'password'));
+    $googlePrimaryLogin = $primaryMethod === 'google';
     $hasPromptView = $challengeId !== '' && preg_match('/^\d{2}$/', $promptNumber) === 1;
     // Keep the fallback visible after a failed TOTP/recovery submission so
     // the validation message and the next input are immediately available.
@@ -83,7 +85,11 @@
                     </div>
 
                     <div id="adminMfaUnavailablePanel" class="alert alert-warning {{ $hasPromptView ? 'd-none' : '' }}" role="alert">
-                        Number matching is not available for this login yet. Use your Google Authenticator code instead.
+                        @if ($googlePrimaryLogin)
+                            Google sign-in was verified. Enter your Google Authenticator code to complete admin sign-in.
+                        @else
+                            Number matching is not available for this login yet. Use your Google Authenticator code instead.
+                        @endif
                     </div>
 
                     <div id="adminMfaTotpPanel" class="mfa-totp-panel {{ $showPromptByDefault ? 'd-none' : '' }}">

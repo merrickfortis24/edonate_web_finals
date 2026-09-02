@@ -6,6 +6,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="csrf-token" content="{{ csrf_token() }}">
 	<title>Admin Login Page | eDonate</title>
+	<x-edonate-favicon />
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
@@ -332,6 +333,80 @@
 			opacity: 0.9;
 		}
 
+		.form__social-divider {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			margin: 22px 0 14px;
+			color: #777;
+			font-size: var(--fs-sm);
+		}
+
+		.form__social-divider::before,
+		.form__social-divider::after {
+			content: '';
+			flex: 1;
+			height: 1px;
+			background: #dedede;
+		}
+
+		.form__google-btn {
+			width: 100%;
+			min-height: 42px;
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 10px;
+			border: 1px solid #d0d5dd;
+			border-radius: var(--radius-input);
+			background: #fff;
+			box-shadow: 0 2px 5px rgba(0, 0, 0, .08);
+			color: #303030;
+			font-family: var(--font-family);
+			font-size: var(--fs-sm);
+			font-weight: 600;
+			cursor: pointer;
+			transition: background .2s ease, box-shadow .2s ease, opacity .2s ease;
+		}
+
+		.form__google-btn:hover:not(:disabled) {
+			background: #fafafa;
+			box-shadow: 0 3px 8px rgba(0, 0, 0, .12);
+		}
+
+		.form__google-btn:focus-visible {
+			outline: 2px solid var(--color-text-red);
+			outline-offset: 2px;
+		}
+
+		.form__google-btn:disabled {
+			cursor: not-allowed;
+			opacity: .62;
+		}
+
+		.form__google-btn svg {
+			width: 18px;
+			height: 18px;
+			flex: 0 0 auto;
+		}
+
+		.form__google-help {
+			margin-top: 9px;
+			color: #777;
+			font-size: 11px;
+			line-height: 1.4;
+			text-align: center;
+		}
+
+		.form__google-status {
+			min-height: 18px;
+			margin-top: 9px;
+			color: var(--color-text-red);
+			font-size: 12px;
+			line-height: 1.45;
+			text-align: center;
+		}
+
 		.form__alert {
 			border-radius: 10px;
 			padding: 10px 12px;
@@ -552,6 +627,21 @@
 
 					<button type="submit" class="form__submit btn">Log In</button>
 				</form>
+
+				@if (config('services.firebase.admin_google_login_enabled', true))
+					<div class="form__social-divider" aria-hidden="true"><span>or</span></div>
+					<button type="button" class="form__google-btn" id="adminGoogleSignInBtn">
+						<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+							<path fill="#4285F4" d="M21.35 12.27c0-.73-.07-1.43-.2-2.1H12v3.98h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.27Z" />
+							<path fill="#34A853" d="M12 21.7c2.63 0 4.84-.87 6.45-2.36l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.55 0-4.71-1.72-5.49-4.03H3.27v2.53A9.74 9.74 0 0 0 12 21.7Z" />
+							<path fill="#FBBC05" d="M6.51 13.78A5.86 5.86 0 0 1 6.2 12c0-.62.11-1.22.31-1.78V7.69H3.27A9.74 9.74 0 0 0 2.25 12c0 1.56.37 3.04 1.02 4.31l3.24-2.53Z" />
+							<path fill="#EA4335" d="M12 6.19c1.43 0 2.71.49 3.72 1.45l2.79-2.79C16.84 3.27 14.63 2.3 12 2.3a9.74 9.74 0 0 0-8.73 5.39l3.24 2.53C7.29 7.91 9.45 6.19 12 6.19Z" />
+						</svg>
+						<span id="adminGoogleSignInLabel">Continue with Google</span>
+					</button>
+					<p class="form__google-help">Google may ask you to confirm this sign-in on your phone.</p>
+					<p class="form__google-status" id="adminGoogleSignInStatus" role="status" aria-live="polite"></p>
+				@endif
 			</section>
 		</div>
 	</main>
@@ -564,6 +654,101 @@
 		integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
 		crossorigin="anonymous"></script>
 	@stack('admin_scripts')
+
+	@if (config('services.firebase.admin_google_login_enabled', true))
+		<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+		<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+		<script>
+			(function () {
+				const button = document.getElementById('adminGoogleSignInBtn');
+				const label = document.getElementById('adminGoogleSignInLabel');
+				const status = document.getElementById('adminGoogleSignInStatus');
+				const remember = document.getElementById('remember');
+				if (!button) {
+					return;
+				}
+
+				const firebaseConfig = {
+					apiKey: @json(config('services.firebase.web.api_key')),
+					authDomain: @json(config('services.firebase.web.auth_domain')),
+					projectId: @json(config('services.firebase.web.project_id')),
+					appId: @json(config('services.firebase.web.app_id')),
+				};
+				const hasConfig = Object.values(firebaseConfig).every(function (value) {
+					return typeof value === 'string' && value.trim() !== '';
+				});
+
+				function setStatus(message) {
+					if (status) {
+						status.textContent = message || '';
+					}
+				}
+
+				if (!hasConfig || typeof firebase === 'undefined') {
+					button.disabled = true;
+					setStatus('Google sign-in is not configured for this environment.');
+					return;
+				}
+
+				try {
+					if (!firebase.apps.length) {
+						firebase.initializeApp(firebaseConfig);
+					}
+				} catch (error) {
+					button.disabled = true;
+					setStatus('Google sign-in could not be initialized.');
+					return;
+				}
+
+				button.addEventListener('click', async function () {
+					button.disabled = true;
+					const originalLabel = label ? label.textContent : 'Continue with Google';
+					if (label) label.textContent = 'Connecting to Google...';
+					setStatus('');
+
+					try {
+						const provider = new firebase.auth.GoogleAuthProvider();
+						provider.setCustomParameters({ prompt: 'select_account' });
+						const result = await firebase.auth().signInWithPopup(provider);
+						const user = result && result.user;
+						if (!user) {
+							throw new Error('Google did not return an account.');
+						}
+
+						const idToken = await user.getIdToken(true);
+						const response = await fetch(@json(route('admin.login.google')), {
+							method: 'POST',
+							credentials: 'same-origin',
+							headers: {
+								'Content-Type': 'application/json',
+								'Accept': 'application/json',
+								'X-Requested-With': 'XMLHttpRequest',
+								'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+							},
+							body: JSON.stringify({
+								id_token: idToken,
+								remember: !!(remember && remember.checked),
+							}),
+						});
+						const data = await response.json().catch(function () { return {}; });
+						if (!response.ok) {
+							throw new Error(data.message || 'This Google account cannot access the admin portal.');
+						}
+
+						window.location.assign(data.redirect_url || @json(route('admin.login')));
+					} catch (error) {
+						setStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
+						if (firebase.auth && firebase.auth().currentUser) {
+							await firebase.auth().signOut().catch(function () {});
+						}
+					} finally {
+						button.disabled = false;
+						if (label) label.textContent = originalLabel;
+					}
+				});
+			})();
+		</script>
+	@endif
 </body>
 
 </html>

@@ -32,6 +32,8 @@
 
     <title>{{ $title }}</title>
 
+    <x-edonate-favicon />
+
     <script>
         (function () {
             var storageKey = 'lte-theme';

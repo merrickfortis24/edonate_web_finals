@@ -15,6 +15,7 @@ use App\Services\AdminMfaService;
 use App\Services\BloodAvailabilityService;
 use App\Services\DonationProcessingService;
 use App\Services\FacilityBloodInventoryService;
+use App\Services\FirebaseGoogleIdentityService;
 use App\Services\GeocodingService;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -30,6 +31,7 @@ use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -144,11 +146,189 @@ class AdminAuthController extends BaseController
                 ->withErrors(['email' => 'Invalid email or password.']);
         }
 
-        $role = $this->normalizeRole((string) ($admin->role ?? ''));
-        if (! $this->isSupportedRole($role)) {
+        $login = $this->prepareAdminLoginAfterPrimaryAuthentication(
+            $request,
+            $admin,
+            $request->boolean('remember'),
+            'password',
+            true
+        );
+
+        if (! ($login['ok'] ?? false)) {
             return back()
                 ->withInput($request->only('email', 'remember'))
-                ->withErrors(['email' => 'Your account role is not authorized to access this portal.']);
+                ->withErrors(['email' => (string) ($login['message'] ?? 'Unable to complete admin sign-in.')]);
+        }
+
+        if (($login['status'] ?? '') === 'two_factor') {
+            return redirect()
+                ->route('admin.login')
+                ->with('success', (string) ($login['message'] ?? 'Enter your Google Authenticator code to continue.'));
+        }
+
+        if (($login['status'] ?? '') === 'enrollment') {
+            return redirect()
+                ->route('admin.login')
+                ->with('warning', (string) ($login['message'] ?? 'Set up Google Authenticator to continue.'));
+        }
+
+        return redirect()->to((string) ($login['redirect_url'] ?? route('admin.login')));
+    }
+
+    /**
+     * Authenticate an existing admin with a verified Firebase Google identity.
+     *
+     * Google sign-in is an additional primary sign-in option. Existing local
+     * Google Authenticator 2FA remains required for accounts that have it
+     * enabled, and this path deliberately skips the unreliable custom Web Push
+     * challenge instead of silently treating Google sign-in as a push approval.
+     */
+    public function googleLogin(Request $request, FirebaseGoogleIdentityService $googleIdentity): JsonResponse
+    {
+        if (! (bool) config('services.firebase.admin_google_login_enabled', true)) {
+            return response()->json([
+                'message' => 'Google sign-in is not enabled for the admin portal.',
+            ], 404);
+        }
+
+        $validated = $request->validate([
+            'id_token' => ['required', 'string', 'max:12000'],
+            'remember' => ['nullable', 'boolean'],
+        ]);
+
+        try {
+            $identity = $googleIdentity->verify((string) $validated['id_token']);
+        } catch (Throwable $exception) {
+            $failureType = FirebaseGoogleIdentityService::classifyVerificationFailure($exception);
+
+            // Do not report the exception object: Kreait verification messages
+            // can include a prefix of the submitted Firebase ID token.
+            Log::warning('Admin Google sign-in token verification failed.', [
+                'failure_type' => $failureType,
+                'exception_class' => $exception::class,
+                'firebase_project' => (string) config('services.firebase.web.project_id', ''),
+                'ip' => $request->ip(),
+            ]);
+
+            $this->pushFirebaseSecurityEvent('admin_login_google_failed', [
+                'reason' => $failureType,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'message' => 'Google sign-in could not be verified. Please try again.',
+            ], 401);
+        }
+
+        if (($identity['provider'] ?? '') !== 'google.com' || ! ($identity['email_verified'] ?? false)) {
+            $failureType = ($identity['provider'] ?? '') !== 'google.com'
+                ? 'non_google_firebase_provider'
+                : 'unverified_google_email';
+
+            Log::notice('Admin Google sign-in identity rejected.', [
+                'failure_type' => $failureType,
+                'ip' => $request->ip(),
+            ]);
+
+            $this->pushFirebaseSecurityEvent('admin_login_google_failed', [
+                'reason' => $failureType,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'message' => 'Please use a verified Google account for admin sign-in.',
+            ], 401);
+        }
+
+        $email = Str::lower(trim((string) ($identity['email'] ?? '')));
+        $admin = DB::table('admins')
+            ->whereRaw('LOWER(email) = ?', [$email])
+            ->first();
+
+        if (! $admin) {
+            Log::notice('Admin Google sign-in account rejected.', [
+                'failure_type' => 'unauthorized_admin_email',
+                'ip' => $request->ip(),
+            ]);
+
+            $this->pushFirebaseSecurityEvent('admin_login_google_failed', [
+                'reason' => 'unauthorized_admin_email',
+                'email' => $email,
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'message' => 'This Google account is not authorized to access the admin portal.',
+            ], 403);
+        }
+
+        $login = $this->prepareAdminLoginAfterPrimaryAuthentication(
+            $request,
+            $admin,
+            $request->boolean('remember'),
+            'google',
+            false
+        );
+
+        if (! ($login['ok'] ?? false)) {
+            Log::notice('Admin Google sign-in account rejected.', [
+                'failure_type' => 'unauthorized_admin_role',
+                'admin_id' => (int) ($admin->admin_id ?? 0),
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'message' => (string) ($login['message'] ?? 'Your account role is not authorized to access this portal.'),
+            ], 403);
+        }
+
+        if (($login['status'] ?? '') === 'two_factor') {
+            return response()->json([
+                'message' => (string) ($login['message'] ?? 'Enter your Google Authenticator code to continue.'),
+                'requires_two_factor' => true,
+                'redirect_url' => route('admin.login'),
+            ]);
+        }
+
+        if (($login['status'] ?? '') === 'enrollment') {
+            return response()->json([
+                'message' => (string) ($login['message'] ?? 'Set up Google Authenticator to continue.'),
+                'requires_two_factor_setup' => true,
+                'redirect_url' => route('admin.login'),
+            ]);
+        }
+
+        $this->pushFirebaseSecurityEvent('admin_login_google_success', [
+            'admin_id' => (int) ($admin->admin_id ?? 0),
+            'email' => $email,
+            'ip' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'message' => 'Google sign-in successful.',
+            'redirect_url' => (string) ($login['redirect_url'] ?? route('admin.login')),
+        ]);
+    }
+
+    /**
+     * Apply the existing role, 2FA, enrollment, session, remember-me, and
+     * audit rules after any accepted primary authentication method.
+     *
+     * @return array{ok:bool,status?:string,role?:string,redirect_url?:string,message?:string}
+     */
+    private function prepareAdminLoginAfterPrimaryAuthentication(
+        Request $request,
+        object $admin,
+        bool $rememberRequested,
+        string $primaryMethod = 'password',
+        bool $sendBrowserPrompt = true
+    ): array {
+        $role = $this->normalizeRole((string) ($admin->role ?? ''));
+        if (! $this->isSupportedRole($role)) {
+            return [
+                'ok' => false,
+                'message' => 'Your account role is not authorized to access this portal.',
+            ];
         }
 
         $globalTwoFactorRequired = $this->isGlobalTwoFactorRequired();
@@ -159,22 +339,32 @@ class AdminAuthController extends BaseController
                 $request,
                 $admin,
                 $role,
-                $request->boolean('remember')
+                $rememberRequested,
+                $primaryMethod,
+                $sendBrowserPrompt
             );
 
-            $this->pushFirebaseSecurityEvent('admin_login_password_passed', [
-                'admin_id' => (int) ($admin->admin_id ?? 0),
-                'email' => Str::lower(trim((string) ($admin->email ?? ''))),
-                'ip' => $request->ip(),
-            ]);
+            $this->pushFirebaseSecurityEvent(
+                $primaryMethod === 'google' ? 'admin_login_google_passed' : 'admin_login_password_passed',
+                [
+                    'admin_id' => (int) ($admin->admin_id ?? 0),
+                    'email' => Str::lower(trim((string) ($admin->email ?? ''))),
+                    'ip' => $request->ip(),
+                ]
+            );
 
-            return redirect()
-                ->route('admin.login')
-                ->with('success', 'Enter your Google Authenticator code to continue.');
+            return [
+                'ok' => true,
+                'status' => 'two_factor',
+                'role' => $role,
+                'redirect_url' => route('admin.login'),
+                'message' => $primaryMethod === 'google'
+                    ? 'Google sign-in verified. Enter your Google Authenticator code to continue.'
+                    : 'Enter your Google Authenticator code to continue.',
+            ];
         }
 
         $this->clearPendingTwoFactorLogin($request);
-
         $this->setAdminSession($request, $admin, $role);
 
         if ($globalTwoFactorRequired && $this->supportsTwoFactorStorage() && ! $accountTwoFactorEnabled) {
@@ -186,18 +376,27 @@ class AdminAuthController extends BaseController
                 'ip' => $request->ip(),
             ]);
 
-            return redirect()
-                ->route('admin.login')
-                ->with('warning', 'Set up Google Authenticator to continue.');
+            return [
+                'ok' => true,
+                'status' => 'enrollment',
+                'role' => $role,
+                'redirect_url' => route('admin.login'),
+                'message' => 'Set up Google Authenticator to continue.',
+            ];
         }
 
-        if ($request->boolean('remember')) {
+        if ($rememberRequested) {
             $this->issueRememberMeToken((int) $admin->admin_id);
         } else {
             $this->clearRememberMeToken((int) $admin->admin_id);
         }
 
-        return redirect()->route($this->dashboardRouteForRole($role));
+        return [
+            'ok' => true,
+            'status' => 'authenticated',
+            'role' => $role,
+            'redirect_url' => route($this->dashboardRouteForRole($role)),
+        ];
     }
 
     /**
@@ -2766,11 +2965,17 @@ class AdminAuthController extends BaseController
                 'promptNumber' => '',
                 'promptAvailable' => false,
                 'challengeId' => '',
+                'primaryMethod' => '',
             ];
         }
 
-        $challengeId = trim((string) ($pending['challenge_id'] ?? ''));
-        $challenge = app(AdminMfaService::class)->getChallenge($challengeId);
+        $browserPromptEnabled = (bool) ($pending['browser_prompt_enabled'] ?? true);
+        $challengeId = $browserPromptEnabled
+            ? trim((string) ($pending['challenge_id'] ?? ''))
+            : '';
+        $challenge = $challengeId !== ''
+            ? app(AdminMfaService::class)->getChallenge($challengeId)
+            : null;
         $promptNumber = is_array($challenge)
             ? trim((string) ($challenge['number'] ?? ''))
             : trim((string) ($pending['prompt_number'] ?? ''));
@@ -2780,12 +2985,13 @@ class AdminAuthController extends BaseController
             'maskedEmail' => $this->maskEmail((string) ($pending['email'] ?? '')),
             'remainingSeconds' => max(0, (int) ($pending['expires_at'] ?? 0) - now()->timestamp),
             'promptNumber' => $promptNumber,
-            'promptAvailable' => (bool) ($pending['prompt_available'] ?? false),
+            'promptAvailable' => $browserPromptEnabled && (bool) ($pending['prompt_available'] ?? false),
             'challengeId' => $challengeId,
             'statusUrl' => route('admin.2fa.prompt.status'),
             'triggerUrl' => route('admin.2fa.prompt.trigger'),
             'completeUrl' => route('admin.2fa.prompt.complete'),
             'channelName' => $challengeId !== '' ? 'admin-mfa.'.$challengeId : '',
+            'primaryMethod' => trim((string) ($pending['primary_method'] ?? 'password')),
         ];
     }
 
@@ -3310,10 +3516,19 @@ class AdminAuthController extends BaseController
     /**
      * Stage pending 2FA challenge data in session after password validation.
      */
-    private function stagePendingTwoFactorLogin(Request $request, object $admin, string $role, bool $rememberRequested): void
+    private function stagePendingTwoFactorLogin(
+        Request $request,
+        object $admin,
+        string $role,
+        bool $rememberRequested,
+        string $primaryMethod = 'password',
+        bool $sendBrowserPrompt = true
+    ): void
     {
         $request->session()->regenerate();
-        $challenge = app(AdminMfaService::class)->createChallenge((int) ($admin->admin_id ?? 0));
+        $challenge = $sendBrowserPrompt
+            ? app(AdminMfaService::class)->createChallenge((int) ($admin->admin_id ?? 0))
+            : null;
 
         $pending = [
             'admin_id' => (int) ($admin->admin_id ?? 0),
@@ -3322,13 +3537,19 @@ class AdminAuthController extends BaseController
             'remember' => $rememberRequested,
             'attempts' => 0,
             'expires_at' => now()->addMinutes(self::TWO_FACTOR_PENDING_TTL_MINUTES)->timestamp,
-            'challenge_id' => $challenge['id'],
-            'prompt_number' => $challenge['number'],
-            'prompt_expires_at' => $challenge['expires_at'],
+            'challenge_id' => (string) ($challenge['id'] ?? ''),
+            'prompt_number' => (string) ($challenge['number'] ?? ''),
+            'prompt_expires_at' => (int) ($challenge['expires_at'] ?? 0),
             'prompt_available' => false,
+            'browser_prompt_enabled' => $sendBrowserPrompt,
+            'primary_method' => $primaryMethod,
         ];
 
         $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, $pending);
+
+        if (! $sendBrowserPrompt || ! is_array($challenge)) {
+            return;
+        }
 
         $delivery = app(AdminMfaService::class)->sendPromptNotification(
             (int) ($admin->admin_id ?? 0),
@@ -3588,7 +3809,8 @@ class AdminAuthController extends BaseController
     }
 
     /**
-     * Push security-related admin auth events into Firebase Realtime Database.
+     * Best-effort security-event write. Authentication must never depend on
+     * Realtime Database availability, OAuth token exchange, or database rules.
      */
     private function pushFirebaseSecurityEvent(string $eventType, array $payload = []): void
     {
@@ -3610,9 +3832,10 @@ class AdminAuthController extends BaseController
                 'created_at' => now()->toIso8601String(),
             ]);
         } catch (Throwable $exception) {
-            logger()->warning('Failed to push admin security event to Firebase.', [
+            Log::warning('Firebase admin security event write failed.', [
+                'failure_type' => 'firebase_audit_write_failed',
                 'event_type' => $eventType,
-                'error' => $exception->getMessage(),
+                'exception_class' => $exception::class,
             ]);
         }
     }

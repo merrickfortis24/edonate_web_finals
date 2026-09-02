@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Donor;
 use App\Models\DonorAuthentication;
+use App\Services\FirebaseGoogleIdentityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,6 +15,10 @@ use Throwable;
 
 class SocialAuthController extends Controller
 {
+    public function __construct(private readonly FirebaseGoogleIdentityService $googleIdentity)
+    {
+    }
+
     /**
      * Handle Firebase Google Sign-In from frontend.
      */
@@ -28,14 +33,12 @@ class SocialAuthController extends Controller
         ]);
 
         try {
-            $firebaseAuth = app('firebase.auth');
-            $verifiedToken = $firebaseAuth->verifyIdToken($validated['id_token']);
-            $claims = $verifiedToken->claims();
+            $identity = $this->googleIdentity->verify((string) $validated['id_token']);
 
-            $tokenUid = (string) $claims->get('sub');
-            $tokenEmail = (string) $claims->get('email');
-            $tokenEmailVerified = (bool) $claims->get('email_verified', false);
-            $tokenName = (string) $claims->get('name', '');
+            $tokenUid = (string) ($identity['uid'] ?? '');
+            $tokenEmail = (string) ($identity['email'] ?? '');
+            $tokenEmailVerified = (bool) ($identity['email_verified'] ?? false);
+            $tokenName = (string) ($identity['name'] ?? '');
 
             if ($tokenUid !== $validated['uid']) {
                 return response()->json([
@@ -53,6 +56,12 @@ class SocialAuthController extends Controller
                 return response()->json([
                     'message' => 'Google account email is not verified.',
                 ], 422);
+            }
+
+            if (($identity['provider'] ?? '') !== 'google.com') {
+                return response()->json([
+                    'message' => 'Please continue with a Google account.',
+                ], 401);
             }
 
             $displayName = trim($validated['full_name'] ?: $tokenName);
