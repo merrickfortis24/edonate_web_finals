@@ -39,6 +39,16 @@ return [
         'credentials' => env('FIREBASE_CREDENTIALS'),
         'database_url' => env('FIREBASE_DATABASE_URL'),
         'security_events_path' => env('FIREBASE_SECURITY_EVENTS_PATH', 'admin_security_events'),
+        'web' => [
+            'api_key' => env('FIREBASE_WEB_API_KEY'),
+            'auth_domain' => env('FIREBASE_WEB_AUTH_DOMAIN'),
+            'project_id' => env('FIREBASE_WEB_PROJECT_ID'),
+            'app_id' => env('FIREBASE_WEB_APP_ID'),
+        ],
+        'admin_google_login_enabled' => filter_var(
+            env('ADMIN_GOOGLE_LOGIN_ENABLED', 'true'),
+            FILTER_VALIDATE_BOOL
+        ),
     ],
 
     'webpush' => [

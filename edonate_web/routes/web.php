@@ -113,6 +113,9 @@ Route::get('/admin/login', [AdminAuthController::class, 'create'])->name('admin.
 Route::post('/admin/login', [AdminAuthController::class, 'store'])
     ->middleware('throttle:admin-login')
     ->name('admin.login.store');
+Route::post('/admin/auth/google', [AdminAuthController::class, 'googleLogin'])
+    ->middleware('throttle:admin-login')
+    ->name('admin.login.google');
 Route::post('/admin/2fa/challenge', [AdminAuthController::class, 'verifyTwoFactorChallenge'])
     ->middleware('throttle:admin-2fa')
     ->name('admin.2fa.verify');

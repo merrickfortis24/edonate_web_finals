@@ -405,10 +405,10 @@
 <script>
 	(function () {
 		const config = {
-			apiKey: @json(env('FIREBASE_WEB_API_KEY')),
-			authDomain: @json(env('FIREBASE_WEB_AUTH_DOMAIN')),
-			projectId: @json(env('FIREBASE_WEB_PROJECT_ID')),
-			appId: @json(env('FIREBASE_WEB_APP_ID')),
+			apiKey: @json(config('services.firebase.web.api_key')),
+			authDomain: @json(config('services.firebase.web.auth_domain')),
+			projectId: @json(config('services.firebase.web.project_id')),
+			appId: @json(config('services.firebase.web.app_id')),
 		};
 
 		const hasConfig = config.apiKey && config.authDomain && config.projectId && config.appId;
