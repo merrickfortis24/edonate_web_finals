@@ -1,0 +1,107 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edonate-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 65002
+          script: |
+            set -e
+
+            DEPLOY_ROOT="/home/u156729731/domains/edonate.online/public_html"
+            APP_ROOT="$DEPLOY_ROOT/edonate_web"
+            FIREBASE_CREDENTIALS_PATH="$APP_ROOT/storage/app/firebase/service-account.json"
+            REPO_URL="git@github.com:merrickfortis24/edonate_web_finals.git"
+
+            cd "$DEPLOY_ROOT"
+            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
+
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git fsck --no-progress >/dev/null 2>&1; then
+              echo "Valid git repository detected."
+            else
+              echo "Git repository missing, corrupt, or incomplete. Reinitializing repository..."
+              rm -rf .git
+              git init
+            fi
+
+            if git remote get-url origin >/dev/null 2>&1; then
+              git remote remove origin
+            fi
+
+            git remote add origin "$REPO_URL"
+            git fetch --prune origin main
+            git reset --hard origin/main
+
+            # Fail safely when persistent production configuration is absent.
+            # Neither .env nor the Firebase service account is stored in Git.
+            if [ ! -f "$APP_ROOT/.env" ]; then
+              echo "Production .env is missing from $APP_ROOT." >&2
+              exit 1
+            fi
+
+            if [ ! -f "$FIREBASE_CREDENTIALS_PATH" ]; then
+              echo "Firebase service-account file is missing from its protected server path." >&2
+              exit 1
+            fi
+
+            php -r '
+              $path = $argv[1];
+              $credentials = json_decode((string) file_get_contents($path), true);
+              if (! is_array($credentials) || ($credentials["project_id"] ?? "") !== "edonate-project") {
+                  fwrite(STDERR, "Firebase service-account project_id does not match edonate-project.\n");
+                  exit(1);
+              }
+              echo "Firebase service-account project verified.\n";
+            ' "$FIREBASE_CREDENTIALS_PATH"
+
+            # Hostinger serves DEPLOY_ROOT, while Laravel remains in APP_ROOT.
+            test -f "$DEPLOY_ROOT/public_html/index.php"
+            test -f "$DEPLOY_ROOT/public_html/.htaccess"
+
+            cd "$APP_ROOT"
+            php scripts/sync-public-assets.php --web-root="$DEPLOY_ROOT"
+
+            # Clear cached environment values before any database operation.
+            php artisan optimize:clear
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan view:cache
+
+            # Boot the cached production configuration and resolve Firebase Auth.
+            # This validates the configured path/project without printing secrets.
+            php -r '
+              require "vendor/autoload.php";
+              $app = require "bootstrap/app.php";
+              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              $app->make("firebase.auth");
+              echo "Firebase Auth configuration verified.\n";
+            '
+
+            test -f "$DEPLOY_ROOT/index.php"
+            test -f "$DEPLOY_ROOT/.htaccess"
+            test -f "$APP_ROOT/vendor/autoload.php"
+            grep -Fq "edonate_web/vendor/autoload.php" "$DEPLOY_ROOT/index.php"
+            grep -Fq "edonate_web/bootstrap/app.php" "$DEPLOY_ROOT/index.php"
+            grep -Fq "RewriteRule ^ index.php" "$DEPLOY_ROOT/.htaccess"
+            php artisan route:list --path=admin/login --no-ansi | grep -Fq "admin/login"
