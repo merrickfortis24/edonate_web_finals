@@ -19,8 +19,7 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshBtn: '#questionsRefreshBtn',
         tableBody: '#questionsTableBody',
         paginationInfo: '#questionsPaginationInfo',
-        prevBtn: '#questionsPrevBtn',
-        nextBtn: '#questionsNextBtn',
+        paginationLinks: '#questionsPaginationLinks',
 
         modal: '#questionFormModal',
         form: '#questionForm',
@@ -325,18 +324,15 @@ document.addEventListener('DOMContentLoaded', function () {
         config.currentPage = currentPage;
         config.totalRecords = total;
 
+        const links = getElement(selectors.paginationLinks);
         const info = getElement(selectors.paginationInfo);
-        if (info) {
-            info.textContent = `Showing ${from} to ${to} of ${total} questions`;
-        }
-
-        const prevBtn = getElement(selectors.prevBtn);
-        const nextBtn = getElement(selectors.nextBtn);
-        if (prevBtn) {
-            prevBtn.disabled = config.isLoading || currentPage === 1;
-        }
-        if (nextBtn) {
-            nextBtn.disabled = config.isLoading || currentPage >= lastPage;
+        if (window.eDonateAdminPagination && links) {
+            window.eDonateAdminPagination.render(links, paginationMeta, function (nextPage) {
+                config.currentPage = nextPage;
+                loadQuestions();
+            }, { infoElement: info });
+        } else if (info) {
+            info.textContent = `Showing ${from} to ${to} of ${total} entries`;
         }
     }
 
@@ -617,18 +613,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     getElement(selectors.refreshBtn)?.addEventListener('click', () => {
         config.currentPage = 1;
-        loadQuestions();
-    });
-
-    getElement(selectors.prevBtn)?.addEventListener('click', () => {
-        if (config.currentPage > 1) {
-            config.currentPage--;
-            loadQuestions();
-        }
-    });
-
-    getElement(selectors.nextBtn)?.addEventListener('click', () => {
-        config.currentPage++;
         loadQuestions();
     });
 

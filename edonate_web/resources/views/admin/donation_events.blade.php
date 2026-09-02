@@ -88,9 +88,9 @@
             </table>
         </section>
 
-        <div class="event-pagination" aria-label="Donation event pagination">
-            <span id="eventPaginationInfo">Showing 0 to 0 of 0 events</span>
-            <div id="eventPaginationPages"></div>
+        <div class="admin-pagination admin-pagination--js event-pagination" aria-label="Table pagination">
+            <span class="admin-pagination__info" id="eventPaginationInfo">Showing 0 to 0 of 0 entries</span>
+            <nav class="admin-pagination__links" id="eventPaginationPages" aria-label="Pagination links"></nav>
         </div>
     </div>
 </main>
@@ -243,21 +243,10 @@
         }
 
         function renderPagination(meta) {
-            var total = Number(meta.total || 0);
-            var from = Number(meta.from || 0);
-            var to = Number(meta.to || 0);
-            var currentPage = Number(meta.current_page || 1);
-            var lastPage = Number(meta.last_page || 1);
-            paginationInfo.textContent = 'Showing ' + from + ' to ' + to + ' of ' + total + ' events';
-            paginationPages.innerHTML = '';
-
-            for (var page = 1; page <= lastPage; page += 1) {
-                var button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'event-page-btn' + (page === currentPage ? ' is-active' : '');
-                button.textContent = String(page);
-                button.dataset.page = String(page);
-                paginationPages.appendChild(button);
+            if (window.eDonateAdminPagination) {
+                window.eDonateAdminPagination.render(paginationPages, meta, null, {
+                    infoElement: paginationInfo
+                });
             }
         }
 

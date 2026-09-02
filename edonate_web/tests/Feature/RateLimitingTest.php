@@ -39,6 +39,7 @@ class RateLimitingTest extends TestCase
                 'inventory_update_per_minute' => 2,
                 'document_access_per_minute' => 2,
                 'admin_2fa_per_ten_minutes' => 2,
+                'admin_mfa_mobile_per_five_minutes' => 2,
             ]
         ));
 
@@ -62,6 +63,7 @@ class RateLimitingTest extends TestCase
                 'donor-login',
                 'admin-login',
                 'admin-2fa',
+                'admin-mfa-mobile',
                 'otp-send',
                 'otp-verify',
                 'password-reset',
@@ -164,6 +166,8 @@ class RateLimitingTest extends TestCase
             'auth.google' => 'throttle:donor-login',
             'admin.login.store' => 'throttle:admin-login',
             'admin.2fa.verify' => 'throttle:admin-2fa',
+            'admin.mfa.mobile' => 'throttle:public-api',
+            'admin.mfa.mobile.approve' => 'throttle:admin-mfa-mobile',
             'admin.password.email' => 'throttle:password-reset',
             'donor.check-eligibility.submit' => 'throttle:eligibility-submit',
             'donor.verification.store' => 'throttle:verification-upload',

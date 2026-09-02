@@ -68,6 +68,38 @@
                 </div>
             </section>
 
+            <section class="card shadow-sm mb-3" aria-labelledby="browserApprovalTitle">
+                <header class="card-header fw-semibold" id="browserApprovalTitle">Browser Number-Matching Approval</header>
+                <div class="card-body">
+                    <p class="text-secondary mb-3">
+                        Register this browser if you want to approve future admin sign-ins from a push notification.
+                        The phone/browser that receives the notification will show three numbers to choose from.
+                    </p>
+
+                    @if (!empty($webPushPublicKey))
+                        <button
+                            type="button"
+                            class="btn btn-outline-danger"
+                            id="registerAdminMfaDeviceButton"
+                            data-vapid-public-key="{{ $webPushPublicKey }}"
+                            data-register-url="{{ $webPushRegistrationUrl ?? route('admin.mfa.devices.store') }}"
+                            data-service-worker-url="{{ $webPushServiceWorkerUrl ?? asset('sw.js') }}"
+                        >
+                            <i class="bi bi-phone me-1" aria-hidden="true"></i>
+                            Register This Browser
+                        </button>
+                        <span class="small text-body-secondary ms-2" id="adminMfaDeviceStatus" role="status">
+                            {{ (int) ($registeredDeviceCount ?? 0) }} browser device(s) registered.
+                        </span>
+                    @else
+                        <div class="alert alert-warning mb-0" role="alert">
+                            Browser approval is not configured yet. Add <code>VAPID_PUBLIC_KEY</code> and
+                            <code>VAPID_PRIVATE_KEY</code> to the environment, then clear the config cache.
+                        </div>
+                    @endif
+                </div>
+            </section>
+
             @if (!$twoFactorEnabled)
                 <section class="card shadow-sm mb-3">
                     <header class="card-header fw-semibold">Step 1: Scan QR Code</header>
@@ -167,3 +199,110 @@
         </div>
     </main>
 @endsection
+
+@if (!empty($webPushPublicKey))
+    @push('admin_scripts')
+        <script>
+            (function () {
+                var button = document.getElementById('registerAdminMfaDeviceButton');
+                var status = document.getElementById('adminMfaDeviceStatus');
+                if (!button || !status) {
+                    return;
+                }
+
+                function setStatus(message, isError) {
+                    status.textContent = message;
+                    status.classList.toggle('text-danger', !!isError);
+                    status.classList.toggle('text-success', !isError);
+                }
+
+                function urlBase64ToUint8Array(value) {
+                    var padding = '='.repeat((4 - (value.length % 4)) % 4);
+                    var base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+                    var rawData = window.atob(base64);
+                    var output = new Uint8Array(rawData.length);
+
+                    for (var index = 0; index < rawData.length; index += 1) {
+                        output[index] = rawData.charCodeAt(index);
+                    }
+
+                    return output;
+                }
+
+                function csrfToken() {
+                    var token = document.querySelector('meta[name="csrf-token"]');
+                    return token ? token.getAttribute('content') : '';
+                }
+
+                function friendlyError(error) {
+                    var message = error && error.message ? error.message : '';
+                    if (/push service error/i.test(message)) {
+                        return 'The browser push service is unavailable. Enable push messaging for this browser or try Chrome/Edge, then register again.';
+                    }
+
+                    return message || 'Unable to register this browser.';
+                }
+
+                button.addEventListener('click', async function () {
+                    button.disabled = true;
+                    setStatus('Requesting browser notification permission…', false);
+
+                    try {
+                        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+                            throw new Error('This browser does not support push notifications.');
+                        }
+
+                        var permission = Notification.permission;
+                        if (permission !== 'granted') {
+                            permission = await Notification.requestPermission();
+                        }
+                        if (permission !== 'granted') {
+                            throw new Error('Notification permission was not granted.');
+                        }
+
+                        await navigator.serviceWorker.register(button.dataset.serviceWorkerUrl, {
+                            scope: '/'
+                        });
+                        // register() may resolve while the worker is still
+                        // installing. PushManager.subscribe() requires an
+                        // active worker, so wait for the browser's ready
+                        // registration before accessing pushManager.
+                        var registration = await navigator.serviceWorker.ready;
+                        if (!registration || !registration.active) {
+                            throw new Error('The notification service is still starting. Please try again shortly.');
+                        }
+                        var subscription = await registration.pushManager.getSubscription();
+                        if (!subscription) {
+                            subscription = await registration.pushManager.subscribe({
+                                userVisibleOnly: true,
+                                applicationServerKey: urlBase64ToUint8Array(button.dataset.vapidPublicKey)
+                            });
+                        }
+
+                        var response = await fetch(button.dataset.registerUrl, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken(),
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: JSON.stringify(subscription.toJSON())
+                        });
+                        var payload = await response.json();
+                        if (!response.ok || !payload.success) {
+                            throw new Error(payload.message || 'Unable to register this browser.');
+                        }
+
+                        setStatus(payload.message || 'This browser is registered for approvals.', false);
+                    } catch (error) {
+                        setStatus(friendlyError(error), true);
+                    } finally {
+                        button.disabled = false;
+                    }
+                });
+            })();
+        </script>
+    @endpush
+@endif

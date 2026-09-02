@@ -12,6 +12,8 @@
     'api' => [
       'listUrl' => '',
       'completeUrlTemplate' => '',
+      'completePageUrlTemplate' => '',
+      'returnUrl' => '',
       'deferUrlTemplate' => '',
       'initialAppointmentId' => null,
     ],
@@ -35,6 +37,11 @@
 
 <div class="main container-fluid px-0">
   <main class="page-body container-fluid py-3">
+    <div id="processingCompletionNotice" class="alert alert-success d-none align-items-center justify-content-between gap-3" role="status" aria-live="polite">
+      <span><i class="bi bi-check-circle me-2" aria-hidden="true"></i>Donation completed successfully.</span>
+      <button type="button" class="btn-close" aria-label="Dismiss completion notice"></button>
+    </div>
+
     <section class="stats-grid row g-3" aria-label="Donation processing overview">
       <div class="col-6 col-xl-3">
         <div class="stat-card stat-card--red h-100">
@@ -130,65 +137,12 @@
           </tbody>
         </table>
       </div>
-      <div class="records-footer">
-        <p class="records-footer__info" id="processingPaginationInfo">Showing 0 to 0 of 0 records</p>
-        <nav class="pagination" id="processingPaginationPages" aria-label="Table pagination"></nav>
+      <div class="admin-pagination admin-pagination--js records-footer" aria-label="Table pagination">
+        <p class="admin-pagination__info records-footer__info" id="processingPaginationInfo">Showing 0 to 0 of 0 entries</p>
+        <nav class="admin-pagination__links" id="processingPaginationPages" aria-label="Pagination links"></nav>
       </div>
     </section>
   </main>
-</div>
-
-<div class="modal fade" id="completeDonationModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form class="modal-content" id="completeDonationForm">
-      <div class="modal-header">
-        <h5 class="modal-title">Complete Donation</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="completeAppointmentId" />
-        <div class="mb-3">
-          <label class="form-label" for="completeBloodUnits">Blood Units</label>
-          <input class="form-control" id="completeBloodUnits" type="number" min="1" max="10" value="1" required />
-        </div>
-        <div class="mb-3">
-          <label class="form-label" for="completeDonationDate">Donation Date</label>
-          <input class="form-control" id="completeDonationDate" type="date" />
-        </div>
-        <div class="mb-3">
-          <div class="small text-muted mb-1">Current Blood Type</div>
-          <div class="fw-semibold" id="completeCurrentBloodType">Not yet determined</div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label" for="completeVerifiedBloodType">Verified Blood Type</label>
-          <select class="form-select" id="completeVerifiedBloodType" @disabled(! $canVerifyBloodType)>
-            <option value="">Not yet determined</option>
-            @foreach ($verificationBloodTypeOptions as $type)
-              <option value="{{ $type['id'] }}">{{ $type['label'] }}</option>
-            @endforeach
-          </select>
-          <div class="form-text">{{ $canVerifyBloodType ? 'Only enter a confirmed laboratory result.' : 'Only an administrator may record a verified blood type.' }}</div>
-        </div>
-        <div class="mb-3 d-none" id="completeBloodTypeChangeFields">
-          <div class="alert alert-warning py-2 small mb-2">This result differs from the donor's current verified blood type. Confirm the correction and record its reason.</div>
-          <div class="form-check mb-2">
-            <input class="form-check-input" id="completeConfirmBloodTypeChange" type="checkbox" value="1" />
-            <label class="form-check-label" for="completeConfirmBloodTypeChange">I confirm this verified blood type correction.</label>
-          </div>
-          <label class="form-label" for="completeBloodTypeChangeReason">Reason for change</label>
-          <textarea class="form-control" id="completeBloodTypeChangeReason" rows="2" maxlength="1000"></textarea>
-        </div>
-        <div>
-          <label class="form-label" for="completeRemarks">Remarks</label>
-          <textarea class="form-control" id="completeRemarks" rows="3" maxlength="1000"></textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-primary">Save Completion</button>
-      </div>
-    </form>
-  </div>
 </div>
 
 <div class="modal fade" id="deferDonationModal" tabindex="-1" aria-hidden="true">
@@ -241,10 +195,8 @@
     var tableBody = document.getElementById('processingTableBody');
     var paginationInfo = document.getElementById('processingPaginationInfo');
     var paginationPages = document.getElementById('processingPaginationPages');
-    var completeModalElement = document.getElementById('completeDonationModal');
     var deferModalElement = document.getElementById('deferDonationModal');
-    var completeModal = window.bootstrap && completeModalElement ? new window.bootstrap.Modal(completeModalElement) : null;
-    var deferModal = window.bootstrap && deferModalElement ? new window.bootstrap.Modal(deferModalElement) : null;
+    var deferModal = null;
 
     function qs(id) { return document.getElementById(id); }
     function esc(value) {
@@ -285,6 +237,10 @@
     function actionUrl(template, id) {
       return String(template || '').replace('__ID__', encodeURIComponent(id));
     }
+    function ensureModal(element, current) {
+      if (current || !element || !window.bootstrap || !window.bootstrap.Modal) return current;
+      return window.bootstrap.Modal.getOrCreateInstance(element);
+    }
     function collectFilters() {
       return {
         page: state.page,
@@ -307,12 +263,36 @@
     function renderActions(row) {
       var buttons = [];
       if (row.actions && row.actions.can_complete) {
-        buttons.push('<button class="btn btn-sm btn-success" title="Complete Donation" aria-label="Complete Donation" data-action="complete" data-id="' + row.appointment_id + '">Complete Donation</button>');
+        var completionUrl = esc(actionUrl(api.completePageUrlTemplate, row.appointment_id));
+        buttons.push('<a href="' + completionUrl + '" class="btn btn-sm btn-success" title="Complete Donation" aria-label="Complete Donation">Complete Donation</a>');
       }
       if (row.actions && row.actions.can_defer) {
         buttons.push('<button class="btn btn-sm btn-warning" title="Defer Donation On Site" aria-label="Defer Donation On Site" data-action="defer" data-id="' + row.appointment_id + '">Defer On Site</button>');
       }
       return buttons.length ? '<div class="records-actions">' + buttons.join('') + '</div>' : '<span class="text-muted">No actions</span>';
+    }
+    function showCompletionNotice() {
+      var notice = qs('processingCompletionNotice');
+      if (!notice) return;
+
+      var params;
+      try {
+        params = new URLSearchParams(window.location.search);
+      } catch (error) {
+        return;
+      }
+
+      if (params.get('completed') !== '1') return;
+      notice.classList.remove('d-none');
+      notice.classList.add('d-flex');
+
+      try {
+        params.delete('completed');
+        var query = params.toString();
+        window.history.replaceState({}, document.title, window.location.pathname + (query ? '?' + query : '') + window.location.hash);
+      } catch (error) {
+        // Keeping the query parameter is harmless if history is unavailable.
+      }
     }
     function renderRows(rows) {
       state.rows = {};
@@ -339,12 +319,11 @@
       }).join('');
     }
     function renderPagination(meta) {
-      paginationInfo.textContent = 'Showing ' + (meta.from || 0) + ' to ' + (meta.to || 0) + ' of ' + (meta.total || 0) + ' records';
-      var pages = [];
-      for (var i = 1; i <= (meta.last_page || 1); i += 1) {
-        pages.push('<button class="pagination__page ' + (i === meta.current_page ? 'is-active' : '') + '" data-page="' + i + '" type="button">' + i + '</button>');
+      if (window.eDonateAdminPagination) {
+        window.eDonateAdminPagination.render(paginationPages, meta, null, {
+          infoElement: paginationInfo
+        });
       }
-      paginationPages.innerHTML = pages.join('');
     }
     function loadRows() {
       if (!api.listUrl) return;
@@ -389,53 +368,16 @@
       if (!button) return;
       var id = button.getAttribute('data-id');
       var action = button.getAttribute('data-action');
-      if (action === 'complete') {
-        var row = state.rows[String(id)] || {};
-        qs('completeAppointmentId').value = id;
-        qs('completeDonationDate').value = new Date().toISOString().slice(0, 10);
-        qs('completeBloodUnits').value = 1;
-        qs('completeRemarks').value = '';
-        qs('completeVerifiedBloodType').value = '';
-        qs('completeConfirmBloodTypeChange').checked = false;
-        qs('completeBloodTypeChangeReason').value = '';
-        qs('completeBloodTypeChangeFields').classList.add('d-none');
-        var currentType = row.blood_type || 'Not yet determined';
-        var currentStatus = String(row.blood_type_status || 'not_yet_determined').replace(/_/g, ' ');
-        qs('completeCurrentBloodType').textContent = currentType + ' (' + currentStatus + ')';
-        qs('completeVerifiedBloodType').setAttribute('data-current-id', row.blood_type_id || '');
-        qs('completeVerifiedBloodType').setAttribute('data-current-status', row.blood_type_status || 'not_yet_determined');
-        completeModal ? completeModal.show() : null;
-      } else if (action === 'defer') {
-        qs('deferAppointmentId').value = id;
-        qs('deferReason').value = '';
-        qs('deferNextEligibleDate').value = '';
-        qs('deferRemarks').value = '';
-        deferModal ? deferModal.show() : null;
-      }
-    });
-    qs('completeDonationForm').addEventListener('submit', function (event) {
-      event.preventDefault();
-      var id = qs('completeAppointmentId').value;
-      sendPatch(actionUrl(api.completeUrlTemplate, id), {
-        blood_units: qs('completeBloodUnits').value,
-        donation_date: qs('completeDonationDate').value,
-        verified_blood_type_id: qs('completeVerifiedBloodType').value || null,
-        confirm_blood_type_change: qs('completeConfirmBloodTypeChange').checked,
-        blood_type_change_reason: qs('completeBloodTypeChangeReason').value,
-        remarks: qs('completeRemarks').value
-      }).then(function () {
-        completeModal ? completeModal.hide() : null;
-        loadRows();
-      }).catch(showError);
-    });
-    qs('completeVerifiedBloodType').addEventListener('change', function () {
-      var isDifferentVerifiedType = this.value !== ''
-        && this.getAttribute('data-current-status') === 'verified'
-        && this.value !== this.getAttribute('data-current-id');
-      qs('completeBloodTypeChangeFields').classList.toggle('d-none', !isDifferentVerifiedType);
-      if (!isDifferentVerifiedType) {
-        qs('completeConfirmBloodTypeChange').checked = false;
-        qs('completeBloodTypeChangeReason').value = '';
+      if (action !== 'defer') return;
+      qs('deferAppointmentId').value = id;
+      qs('deferReason').value = '';
+      qs('deferNextEligibleDate').value = '';
+      qs('deferRemarks').value = '';
+      deferModal = ensureModal(deferModalElement, deferModal);
+      if (deferModal) {
+        deferModal.show();
+      } else {
+        showError({ message: 'The deferral form is still loading. Please try again.' });
       }
     });
     qs('deferDonationForm').addEventListener('submit', function (event) {
@@ -449,6 +391,10 @@
         deferModal ? deferModal.hide() : null;
         loadRows();
       }).catch(showError);
+    });
+    qs('processingCompletionNotice').querySelector('.btn-close').addEventListener('click', function () {
+      qs('processingCompletionNotice').classList.add('d-none');
+      qs('processingCompletionNotice').classList.remove('d-flex');
     });
     paginationPages.addEventListener('click', function (event) {
       var button = event.target.closest('button[data-page]');
@@ -465,6 +411,7 @@
         element._timer = window.setTimeout(loadRows, id === 'processingSearchInput' ? 250 : 0);
       });
     });
+    showCompletionNotice();
     loadRows();
   })();
 </script>

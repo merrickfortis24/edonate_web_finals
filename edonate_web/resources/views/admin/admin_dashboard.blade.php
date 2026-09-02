@@ -44,12 +44,16 @@
 	@php
 		$dashboard = $dashboardPayload ?? [];
 		$stats = data_get($dashboard, 'stats', []);
+		$notificationBanner = data_get($dashboard, 'notification_banner');
 		$recentActivities = data_get($dashboard, 'recent_activities', []);
 		$pendingApprovals = data_get($dashboard, 'pending_approvals', []);
 		$dashboardLinks = data_get($dashboard, 'links', []);
 	@endphp
 	<div class="main container-fluid px-0">
 		<main class="content container-fluid py-3">
+			@if ($notificationBanner)
+				<x-admin-notification-banner :notification="$notificationBanner" />
+			@endif
 			<section class="dashboard-stats row" aria-label="Dashboard statistics">
 				<div class="col-6 col-lg-3">
 					<div class="stat-card stat-card--red h-100">

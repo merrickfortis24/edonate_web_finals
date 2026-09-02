@@ -457,9 +457,17 @@ class DonorPortalController extends Controller
             ->where('donor_id', $donor->donor_id)
             ->count();
 
-        $alertsCount = $this->donorNotificationQuery((int) $donor->donor_id)
+        $notificationQuery = $this->donorNotificationQuery((int) $donor->donor_id);
+
+        $alertsCount = (clone $notificationQuery)
             ->where('is_read', 0)
             ->count();
+
+        $notificationBanner = (clone $notificationQuery)
+            ->where('is_read', 0)
+            ->orderByDesc('created_at')
+            ->orderByDesc('notification_id')
+            ->first();
 
         $user = (object) [
             'first_name' => $donor->first_name,
@@ -476,6 +484,7 @@ class DonorPortalController extends Controller
             'navLinks' => $this->navLinks(),
             'activeNav' => $activeNav,
             'alertsCount' => $alertsCount,
+            'notificationBanner' => $notificationBanner,
             'totalDonations' => $totalDonations,
         ];
     }

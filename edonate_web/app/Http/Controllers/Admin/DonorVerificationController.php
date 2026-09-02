@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Donor;
 use App\Models\DonorVerification;
 use App\Models\Notification;
+use App\Services\AdminNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -133,6 +134,10 @@ class DonorVerificationController extends Controller
                 ->with('error', 'Only pending verification requests can be approved.');
         }
 
+        $donor = Donor::query()->find($verification->donor_id);
+        $donorName = trim((string) ($donor?->first_name ?? '') . ' ' . (string) ($donor?->last_name ?? ''));
+        $donorName = $donorName !== '' ? $donorName : 'Donor #' . (int) $verification->donor_id;
+
         DB::transaction(function () use ($request, $verification): void {
             DonorVerification::query()
                 ->where('verification_id', $verification->verification_id)
@@ -156,6 +161,14 @@ class DonorVerificationController extends Controller
             'Your identity verification has been approved. You can now book a donation appointment.'
         );
 
+        app(AdminNotificationService::class)->createAdminEvent(
+            'donor_verification_approved',
+            'Donor Verification Approved',
+            "{$donorName}'s identity verification was approved.",
+            'donor_verification',
+            (int) $verification->verification_id
+        );
+
         $this->writeAudit($request, 'donor_verification_approved', 'Approved donor identity verification.', (int) $verification->verification_id, [
             'donor_id' => (int) $verification->donor_id,
             'status' => 'verified',
@@ -173,6 +186,10 @@ class DonorVerificationController extends Controller
                 ->route('admin.donor-verifications.index')
                 ->with('error', 'Only pending verification requests can be rejected.');
         }
+
+        $donor = Donor::query()->find($verification->donor_id);
+        $donorName = trim((string) ($donor?->first_name ?? '') . ' ' . (string) ($donor?->last_name ?? ''));
+        $donorName = $donorName !== '' ? $donorName : 'Donor #' . (int) $verification->donor_id;
 
         $validated = $request->validate([
             'rejection_reason' => ['required', 'string', 'max:2000'],
@@ -201,6 +218,14 @@ class DonorVerificationController extends Controller
             (int) $verification->donor_id,
             'donor_verification_rejected',
             'Your identity verification was rejected. Reason: ' . $reason
+        );
+
+        app(AdminNotificationService::class)->createAdminEvent(
+            'donor_verification_rejected',
+            'Donor Verification Rejected',
+            "{$donorName}'s identity verification was rejected.",
+            'donor_verification',
+            (int) $verification->verification_id
         );
 
         $this->writeAudit($request, 'donor_verification_rejected', 'Rejected donor identity verification.', (int) $verification->verification_id, [

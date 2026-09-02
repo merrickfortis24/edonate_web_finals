@@ -54,7 +54,7 @@
                 </div>
             </div>
 
-            <form class="eligibility-filter row g-3 align-items-center" role="search" aria-label="Filter submissions" action="#" method="get" onsubmit="return false;">
+            <div class="eligibility-filter row g-3 align-items-center" role="search" aria-label="Filter submissions">
                 <div class="eligibility-filter__search col-12 col-lg">
                     <span class="eligibility-filter__search-icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -86,7 +86,7 @@
                 <button type="button" class="btn btn-primary col-12 col-md-auto" id="eligibilityRefreshBtn" aria-label="Refresh submissions">
                     <span aria-hidden="true">Refresh</span>
                 </button>
-            </form>
+            </div>
 
             <div class="eligibility-table-wrapper mt-4 table-responsive">
                 <table class="eligibility-table table table-hover" role="grid" aria-label="Eligibility submissions table">
@@ -112,18 +112,9 @@
                 </table>
             </div>
 
-            <nav class="eligibility-pagination mt-4" aria-label="Table pagination">
-                <div class="row align-items-center">
-                    <div class="col-auto">
-                        <span id="eligibilityPaginationInfo" class="text-muted">Loading...</span>
-                    </div>
-                    <div class="col-auto ms-auto">
-                        <div class="btn-group" role="group" aria-label="Pagination controls">
-                            <button type="button" class="btn btn-outline-secondary" id="eligibilityPrevBtn" aria-label="Previous page">Previous</button>
-                            <button type="button" class="btn btn-outline-secondary" id="eligibilityNextBtn" aria-label="Next page">Next</button>
-                        </div>
-                    </div>
-                </div>
+            <nav class="admin-pagination admin-pagination--js eligibility-pagination mt-4" aria-label="Table pagination">
+                <span id="eligibilityPaginationInfo" class="admin-pagination__info">Showing 0 to 0 of 0 entries</span>
+                <span class="admin-pagination__links" id="eligibilityPaginationLinks" aria-label="Pagination links"></span>
             </nav>
         </section>
     </main>

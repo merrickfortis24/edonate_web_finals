@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', function () {
         sendBtn: '#notificationSendBtn',
         markAllBtn: '#notificationMarkAllReadBtn',
         clearAllBtn: '#notificationClearAllBtn',
+        paginationInfo: '#notificationPaginationInfo',
+        paginationLinks: '#notificationPaginationLinks',
         statTotal: '#notificationStatTotal',
         statUnread: '#notificationStatUnread',
         statRead: '#notificationStatRead',
@@ -224,6 +226,24 @@ document.addEventListener('DOMContentLoaded', function () {
         }).join('');
     }
 
+    function renderPagination(meta) {
+        const links = document.querySelector(selectors.paginationLinks);
+        const info = document.querySelector(selectors.paginationInfo);
+        if (!window.eDonateAdminPagination || !links) return;
+
+        window.eDonateAdminPagination.render(links, meta || {
+            current_page: state.page,
+            last_page: 1,
+            per_page: state.perPage,
+            total: 0,
+            from: 0,
+            to: 0,
+        }, function (nextPage) {
+            state.page = nextPage;
+            loadNotifications();
+        }, { infoElement: info });
+    }
+
     async function loadNotifications() {
         if (state.isLoading || !api.listUrl) return;
 
@@ -239,10 +259,12 @@ document.addEventListener('DOMContentLoaded', function () {
             const response = await requestJson(`${api.listUrl}?${params}`);
 
             renderNotifications(response.data || []);
+            renderPagination(response.meta || {});
             updateSummary(response.summary || {});
         } catch (error) {
             console.error('Failed to load notifications:', error);
             setListState('Unable to load notifications. Please try again.', 'text-danger');
+            renderPagination({ current_page: state.page, last_page: 1, per_page: state.perPage, total: 0, from: 0, to: 0 });
             showToast(error.message || 'Unable to load notifications.', 'error');
         } finally {
             setLoading(false);

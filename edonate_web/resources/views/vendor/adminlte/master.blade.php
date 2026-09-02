@@ -36,72 +36,37 @@
         (function () {
             var storageKey = 'lte-theme';
 
-            function isAllowed(theme) {
-                return theme === 'light' || theme === 'dark';
-            }
+            function applyLightTheme() {
+                var theme = 'light';
+                document.documentElement.setAttribute('data-bs-theme', theme);
+                document.documentElement.style.colorScheme = theme;
 
-            function normalize(theme) {
-                return isAllowed(theme) ? theme : 'light';
-            }
-
-            function readTheme() {
                 try {
-                    var storedTheme = window.localStorage.getItem(storageKey);
-
-                    if (isAllowed(storedTheme)) {
-                        return storedTheme;
-                    }
-
-                    // AdminLTE's color-mode initializer falls back to the OS
-                    // preference when this key is missing. eDonate defaults
-                    // to light, so persist that default before AdminLTE runs.
-                    window.localStorage.setItem(storageKey, 'light');
+                    // Keep AdminLTE's own color-mode initializer on the same
+                    // fixed light default when a previous preference exists.
+                    window.localStorage.setItem(storageKey, theme);
                 } catch (error) {
                     // Browsers may block localStorage in private or restricted modes.
                 }
 
-                return 'light';
+                return theme;
             }
 
-            function applyTheme(theme) {
-                var nextTheme = normalize(theme);
-                document.documentElement.setAttribute('data-bs-theme', nextTheme);
-                document.documentElement.style.colorScheme = nextTheme;
-                return nextTheme;
-            }
-
-            function writeTheme(theme) {
-                var nextTheme = applyTheme(theme);
-
-                try {
-                    window.localStorage.setItem(storageKey, nextTheme);
-                } catch (error) {
-                    // Browsers may block localStorage in private or restricted modes.
-                }
-
-                window.dispatchEvent(new CustomEvent('edonate:themechange', {
-                    detail: { theme: nextTheme },
-                }));
-
-                return nextTheme;
-            }
-
-            applyTheme(readTheme());
+            applyLightTheme();
 
             // AdminLTE applies its own preferred theme at DOMContentLoaded.
-            // Re-apply eDonate's default after that initializer so the light
-            // default also works when localStorage is unavailable.
+            // Re-apply eDonate's fixed light default after that initializer.
             document.addEventListener('DOMContentLoaded', function () {
                 window.setTimeout(function () {
-                    applyTheme(readTheme());
+                    applyLightTheme();
                 }, 0);
             });
 
             window.eDonateTheme = {
                 storageKey: storageKey,
-                getTheme: readTheme,
-                setTheme: writeTheme,
-                applyTheme: applyTheme,
+                getTheme: function () { return 'light'; },
+                setTheme: applyLightTheme,
+                applyTheme: applyLightTheme,
             };
         })();
     </script>

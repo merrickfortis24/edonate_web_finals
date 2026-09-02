@@ -7,8 +7,7 @@
 
 @section('header_actions')
     <div class="appointment-header__views" role="group" aria-label="Appointment view mode">
-        <button class="appointment-view-btn appointment-view-btn--active btn" type="button">List View</button>
-        <button class="appointment-view-btn appointment-view-btn--outline btn" type="button">Calendar View</button>
+        <span class="appointment-view-btn appointment-view-btn--active" role="status" aria-label="Current appointment view: List View">List View</span>
     </div>
 @endsection
 
@@ -60,7 +59,7 @@
             </div>
         </div>
 
-        <form class="appointment-filter row g-3 align-items-center" role="search" aria-label="Filter appointments" action="#" method="get" onsubmit="return false;">
+        <div class="appointment-filter row g-3 align-items-center" role="search" aria-label="Filter appointments">
             <div class="appointment-filter__search col-12 col-lg">
                 <span class="appointment-filter__search-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -110,7 +109,7 @@
                     <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
                 </span>
             </div>
-        </form>
+        </div>
 
         <section class="appointment-table" aria-label="Appointment list">
             <div class="appointment-table-scroll appointment-table-wrapper table-responsive"
@@ -139,9 +138,9 @@
                 </div>
             </div>
 
-            <div class="appointment-pagination" aria-label="Pagination">
-                <span class="appointment-pagination__info" id="appointmentPaginationInfo">Showing 0 to 0 of 0 appointments</span>
-                <div class="appointment-pagination__pages" id="appointmentPaginationPages"></div>
+            <div class="appointment-pagination admin-pagination admin-pagination--js" aria-label="Table pagination">
+                <span class="admin-pagination__info appointment-pagination__info" id="appointmentPaginationInfo">Showing 0 to 0 of 0 entries</span>
+                <nav class="admin-pagination__links appointment-pagination__pages" id="appointmentPaginationPages" aria-label="Pagination links"></nav>
             </div>
         </section>
     </section>
@@ -498,9 +497,11 @@
             }
 
             if (normalizedStatus === 'checked_in') {
-                var processUrl = donationProcessingUrl
-                    ? donationProcessingUrl + '?appointment_id=' + encodeURIComponent(String(appointmentId || ''))
-                    : '#';
+                if (!donationProcessingUrl) {
+                    return '<span class="text-muted" title="Donation processing is unavailable">Processing unavailable</span>';
+                }
+
+                var processUrl = donationProcessingUrl + '?appointment_id=' + encodeURIComponent(String(appointmentId || ''));
                 return '<a class="appointment-btn appointment-btn--process" href="' + processUrl + '" title="Process Donation" aria-label="Process Donation">'
                     + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3v18M3 12h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path></svg>'
                     + 'Process Donation'
@@ -575,74 +576,16 @@
             }
         }
 
-        function createPageButton(label, targetPage, options) {
-            var button = document.createElement('button');
-            button.className = 'appointment-page-btn';
-            if (options && options.active) {
-                button.className += ' appointment-page-btn--active';
-            }
-            if (options && options.nav) {
-                button.className += ' appointment-page-btn--nav';
-            }
-
-            button.type = 'button';
-            button.textContent = label;
-            button.setAttribute('aria-label', options && options.ariaLabel ? options.ariaLabel : ('Page ' + label));
-
-            if (options && options.active) {
-                button.setAttribute('aria-current', 'page');
-            }
-
-            if (options && options.disabled) {
-                button.disabled = true;
-                button.setAttribute('aria-disabled', 'true');
-            } else {
-                button.dataset.page = String(targetPage);
-            }
-
-            return button;
-        }
-
         function renderPagination(meta) {
             if (!paginationInfo || !paginationPages) {
                 return;
             }
 
-            var total = Number(meta.total || 0);
-            var from = Number(meta.from || 0);
-            var to = Number(meta.to || 0);
-            var currentPage = Number(meta.current_page || 1);
-            var lastPage = Number(meta.last_page || 1);
-
-            paginationInfo.textContent = 'Showing ' + from + ' to ' + to + ' of ' + total + ' appointments';
-            paginationPages.innerHTML = '';
-
-            if (total <= 0) {
-                return;
+            if (window.eDonateAdminPagination) {
+                window.eDonateAdminPagination.render(paginationPages, meta, null, {
+                    infoElement: paginationInfo
+                });
             }
-
-            paginationPages.appendChild(createPageButton('<', Math.max(1, currentPage - 1), {
-                nav: true,
-                disabled: currentPage <= 1,
-                ariaLabel: 'Previous page'
-            }));
-
-            var start = Math.max(1, currentPage - 2);
-            var end = Math.min(lastPage, start + 4);
-            start = Math.max(1, end - 4);
-
-            for (var pageIndex = start; pageIndex <= end; pageIndex += 1) {
-                paginationPages.appendChild(createPageButton(String(pageIndex), pageIndex, {
-                    active: pageIndex === currentPage,
-                    ariaLabel: 'Page ' + pageIndex
-                }));
-            }
-
-            paginationPages.appendChild(createPageButton('>', Math.min(lastPage, currentPage + 1), {
-                nav: true,
-                disabled: currentPage >= lastPage,
-                ariaLabel: 'Next page'
-            }));
         }
 
         function setLoadingState() {
@@ -977,12 +920,6 @@
             });
         }
         
-
-        document.querySelectorAll('.appointment-view-btn').forEach(function (element) {
-            element.addEventListener('click', function (event) {
-                event.preventDefault();
-            });
-        });
 
         /* ── Reschedule Modal Controller ── */
         // Legacy appointment-page modals are intentionally disabled. Attendance

@@ -146,9 +146,7 @@
             </table>
         </div>
 
-        <div class="admin-pagination mt-3">
-            {{ $verifications->links('pagination::bootstrap-5') }}
-        </div>
+        <x-admin-pagination :paginator="$verifications" class="mt-3" />
     </section>
 </main>
 

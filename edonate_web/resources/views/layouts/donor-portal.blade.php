@@ -38,6 +38,10 @@
             </div>
         @endif
 
+        @if (($notificationBanner ?? null) && ($activeNav ?? '') !== 'alerts')
+            <x-dashboard.notification-banner :notification="$notificationBanner" />
+        @endif
+
         <section class="mt-6">
             {{ $slot }}
         </section>

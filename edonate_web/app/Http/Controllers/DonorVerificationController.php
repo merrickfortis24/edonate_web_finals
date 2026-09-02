@@ -173,16 +173,24 @@ class DonorVerificationController extends Controller
             ->where('donor_id', $donor->donor_id)
             ->count();
 
-        $alertsCount = Notification::query()
+        $notificationQuery = Notification::query()
             ->where('donor_id', $donor->donor_id)
             ->when(Schema::hasTable('notifications') && Schema::hasColumn('notifications', 'recipient_type'), function ($query): void {
                 $query->where(function ($builder): void {
                     $builder->whereNull('recipient_type')
-                        ->orWhereIn('recipient_type', ['donor', 'all_donors']);
+                    ->orWhereIn('recipient_type', ['donor', 'all_donors']);
                 });
-            })
+            });
+
+        $alertsCount = (clone $notificationQuery)
             ->where('is_read', 0)
             ->count();
+
+        $notificationBanner = (clone $notificationQuery)
+            ->where('is_read', 0)
+            ->orderByDesc('created_at')
+            ->orderByDesc('notification_id')
+            ->first();
 
         return [
             'donor' => $donor,
@@ -196,6 +204,7 @@ class DonorVerificationController extends Controller
             'navLinks' => $this->navLinks(),
             'activeNav' => $activeNav,
             'alertsCount' => $alertsCount,
+            'notificationBanner' => $notificationBanner,
             'totalDonations' => $totalDonations,
         ];
     }

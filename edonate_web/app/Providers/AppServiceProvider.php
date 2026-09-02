@@ -16,9 +16,11 @@ use App\Observers\DonationRecordObserver;
 use App\Observers\EligibilityStatusObserver;
 use App\Observers\LocationObserver;
 use App\Observers\NotificationObserver;
+use App\Services\AdminNotificationService;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Kreait\Firebase\Factory;
@@ -65,6 +67,16 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->registerRateLimiters();
 
+        View::composer('adminlte::partials.navbar', function ($view): void {
+            $unreadCount = 0;
+
+            if ((int) session('admin_id', 0) > 0) {
+                $unreadCount = app(AdminNotificationService::class)->unreadCount();
+            }
+
+            $view->with('adminUnreadNotificationCount', $unreadCount);
+        });
+
         Donor::observe(DonorObserver::class);
         Location::observe(LocationObserver::class);
         Appointment::observe(AppointmentObserver::class);
@@ -109,6 +121,22 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinutes(10, $this->rateLimit('admin_2fa_per_ten_minutes', 5))
                 ->by('admin-2fa|'.$identity.'|ip:'.$this->clientIp($request));
+        });
+
+        RateLimiter::for('admin-2fa-status', function (Request $request) {
+            $pending = $request->session()->get('pending_admin_2fa', []);
+            $challenge = is_array($pending) ? (string) ($pending['challenge_id'] ?? '') : '';
+            $sessionId = $request->session()->getId();
+
+            return Limit::perMinute($this->rateLimit('admin_2fa_status_per_minute', 120))
+                ->by('admin-2fa-status|challenge:'.$this->keyPart($challenge).'|session:'.$sessionId.'|ip:'.$this->clientIp($request));
+        });
+
+        RateLimiter::for('admin-mfa-mobile', function (Request $request) {
+            $challenge = (string) $request->route('challenge', '');
+
+            return Limit::perMinutes(5, $this->rateLimit('admin_mfa_mobile_per_five_minutes', 5))
+                ->by('admin-mfa-mobile|challenge:'.$this->keyPart($challenge).'|ip:'.$this->clientIp($request));
         });
 
         RateLimiter::for('otp-send', function (Request $request) {

@@ -44,6 +44,10 @@
             </div>
         @endif
 
+        @if ($notificationBanner ?? null)
+            <x-dashboard.notification-banner :notification="$notificationBanner" />
+        @endif
+
         <section class="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             <div class="space-y-6 md:col-span-2 xl:col-span-2">
                 <x-dashboard.card title="Quick Actions" subtitle="Launch key donor actions quickly.">

@@ -20,6 +20,10 @@
 			'systemName' => 'eDonate',
 			'systemEmail' => 'admin@edonate.local',
 			'contactNumber' => '+63 917 123 4567',
+			'updateUrl' => route('admin.settings.general.update'),
+		],
+		'account' => [
+			'updateUrl' => route('admin.settings.account.update'),
 		],
 		'notifications' => [
 			'email' => false,
@@ -46,9 +50,6 @@
 				<ul class="nav nav-tabs card-header-tabs settings-tabs flex-nowrap overflow-auto px-3 pt-3" id="settingsTabs" role="tablist">
 					<li class="nav-item" role="presentation">
 						<button class="nav-link active" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" type="button" role="tab" aria-controls="settings-general-pane" aria-selected="true">General</button>
-					</li>
-					<li class="nav-item" role="presentation">
-						<button class="nav-link" id="settings-appearance-tab" data-bs-toggle="tab" data-bs-target="#settings-appearance-pane" type="button" role="tab" aria-controls="settings-appearance-pane" aria-selected="false">Appearance</button>
 					</li>
 					<li class="nav-item" role="presentation">
 						<button class="nav-link" id="settings-account-tab" data-bs-toggle="tab" data-bs-target="#settings-account-pane" type="button" role="tab" aria-controls="settings-account-pane" aria-selected="false">Account</button>
@@ -104,43 +105,6 @@
 									</button>
 								</div>
 							</form>
-							</div>
-						</article>
-					</div>
-
-					<div class="tab-pane fade" id="settings-appearance-pane" role="tabpanel" aria-labelledby="settings-appearance-tab" tabindex="0">
-						<article class="card settings-card border-0 shadow-none">
-							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
-								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
-									<i class="bi bi-circle-half fs-5"></i>
-								</span>
-								<div>
-									<h2 class="h5 mb-1 settings-card__title">Appearance</h2>
-									<p class="small text-body-secondary mb-0 settings-card__subtitle">Choose how the eDonate Admin Portal looks.</p>
-								</div>
-							</header>
-
-							<div class="card-body px-0 pb-0">
-							<div class="settings-theme-control card border bg-body-tertiary" aria-labelledby="settingsThemeLabel">
-								<div class="settings-theme-copy">
-									<h3 id="settingsThemeLabel">Theme</h3>
-									<p>Light mode is the default. Your choice is saved on this browser.</p>
-								</div>
-
-								<div class="settings-theme-options">
-									<div class="form-check form-switch settings-theme-switch mb-0">
-										<input class="form-check-input" type="checkbox" id="settingsThemeToggle" role="switch" autocomplete="off">
-										<label class="form-check-label" for="settingsThemeToggle">
-											<span class="settings-theme-switch__state settings-theme-switch__state--light">
-												<i class="bi bi-sun me-2" aria-hidden="true"></i>Light
-											</span>
-											<span class="settings-theme-switch__state settings-theme-switch__state--dark">
-												<i class="bi bi-moon-stars me-2" aria-hidden="true"></i>Dark
-											</span>
-										</label>
-									</div>
-								</div>
-							</div>
 							</div>
 						</article>
 					</div>
@@ -261,10 +225,25 @@
 
 									<p class="small text-body-secondary mt-2 mb-0" id="settingsTwoFactorEnrollmentHint"></p>
 
-									<p class="small text-body-secondary mt-2 mb-0">
-										Manage enrollment, QR setup, and disable actions on
-										<a href="{{ route('admin.2fa.setup') }}">Google Authenticator setup page</a>.
-									</p>
+									<div class="card border bg-body-tertiary mt-3">
+										<div class="card-body p-3 d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+											<div>
+												<h3 class="h6 mb-1">Google Authenticator &amp; Browser Approval</h3>
+												<p class="small text-body-secondary mb-0">
+													Manage your authenticator enrollment, QR setup, and the phone/browser that receives
+													number-matching sign-in notifications.
+												</p>
+											</div>
+											<a
+												href="{{ route('admin.2fa.setup') }}"
+												class="btn btn-outline-danger text-nowrap"
+												aria-label="Open Google Authenticator and browser approval setup"
+											>
+												<i class="bi bi-shield-lock me-1" aria-hidden="true"></i>
+												Manage 2FA &amp; Register Browser
+											</a>
+										</div>
+									</div>
 								</div>
 
 								<div class="row g-3 mt-1">
@@ -318,11 +297,15 @@
 		var payload = (window.AdminPageData && window.AdminPageData.settings) ? window.AdminPageData.settings : {};
 		var csrfToken = '{{ csrf_token() }}';
 		var settingsData = {
-			general: Object.assign({
+		general: Object.assign({
 				systemName: '',
 				systemEmail: '',
 				contactNumber: '',
+				updateUrl: '{{ route('admin.settings.general.update') }}',
 			}, payload.general || {}),
+			account: Object.assign({
+				updateUrl: '{{ route('admin.settings.account.update') }}',
+			}, payload.account || {}),
 			notifications: Object.assign({
 				email: false,
 				emailAddress: '',
@@ -371,7 +354,8 @@
 		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
 		var updateNotificationUrl = String(settingsData.notifications.updateUrl || '');
-		var themeToggle = document.getElementById('settingsThemeToggle');
+		var updateGeneralUrl = String(settingsData.general.updateUrl || '');
+		var updateAccountUrl = String(settingsData.account.updateUrl || '');
 		var confirmModal = null;
 
 		function getConfirmModal() {
@@ -442,7 +426,12 @@
 				return {};
 			}).then(function (payload) {
 				if (!response.ok) {
-					throw new Error(extractApiError(payload) || 'Unable to save settings.');
+					var message = response.status === 429
+						? 'Too many requests. Please try again shortly.'
+						: extractApiError(payload);
+					var error = new Error(message || 'Unable to save settings.');
+					error.status = response.status;
+					throw error;
 				}
 
 				return payload;
@@ -516,44 +505,6 @@
 			twoFactorEnrollmentHint.textContent = 'Current account: not yet enrolled. If global 2FA is enabled, this account will be redirected to setup before dashboard access.';
 		}
 
-		function getPortalTheme() {
-			if (window.eDonateTheme && typeof window.eDonateTheme.getTheme === 'function') {
-				return window.eDonateTheme.getTheme();
-			}
-
-			try {
-				var storedTheme = window.localStorage.getItem('lte-theme');
-				return storedTheme === 'dark' ? 'dark' : 'light';
-			} catch (error) {
-				return 'light';
-			}
-		}
-
-		function setPortalTheme(theme) {
-			var nextTheme = theme === 'dark' ? 'dark' : 'light';
-
-			if (window.eDonateTheme && typeof window.eDonateTheme.setTheme === 'function') {
-				nextTheme = window.eDonateTheme.setTheme(nextTheme);
-			} else {
-				document.documentElement.setAttribute('data-bs-theme', nextTheme);
-				try {
-					window.localStorage.setItem('lte-theme', nextTheme);
-				} catch (error) {
-					// localStorage may be unavailable in restricted browsing modes.
-				}
-			}
-
-			syncThemeControl(nextTheme);
-		}
-
-		function syncThemeControl(theme) {
-			if (!themeToggle) {
-				return;
-			}
-
-			themeToggle.checked = theme === 'dark';
-		}
-
 		function hydrateFromPayload() {
 			if (systemNameInput) {
 				systemNameInput.value = settingsData.general.systemName;
@@ -580,18 +531,7 @@
 			}
 
 			renderTwoFactorEnrollmentHint();
-			syncThemeControl(getPortalTheme());
 		}
-
-		if (themeToggle) {
-			themeToggle.addEventListener('change', function () {
-				setPortalTheme(themeToggle.checked ? 'dark' : 'light');
-			});
-		}
-
-		window.addEventListener('edonate:themechange', function (event) {
-			syncThemeControl(event.detail && event.detail.theme);
-		});
 
 		if (confirmSaveButton) {
 			confirmSaveButton.addEventListener('click', function () {
@@ -634,14 +574,41 @@
 				openConfirmModal('General Settings', function () {
 					setButtonLoading(saveGeneralButton, true);
 
-					window.setTimeout(function () {
-						settingsData.general.systemName = systemNameInput.value.trim();
-						settingsData.general.systemEmail = systemEmailInput.value.trim();
-						settingsData.general.contactNumber = contactNumberInput.value.trim();
-
+					if (!updateGeneralUrl) {
 						setButtonLoading(saveGeneralButton, false);
-						showAlert('success', 'General settings saved successfully.');
-					}, 700);
+						showAlert('danger', 'General settings endpoint is not configured.');
+						return;
+					}
+
+					fetch(updateGeneralUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-CSRF-TOKEN': csrfToken,
+							'X-Requested-With': 'XMLHttpRequest',
+						},
+						credentials: 'same-origin',
+						body: JSON.stringify({
+							system_name: systemNameInput.value.trim(),
+							system_email: systemEmailInput.value.trim(),
+							contact_number: contactNumberInput.value.trim(),
+						}),
+					})
+						.then(parseApiResponse)
+						.then(function (responsePayload) {
+							if (responsePayload && responsePayload.general) {
+								settingsData.general = Object.assign(settingsData.general, responsePayload.general);
+								hydrateFromPayload();
+							}
+							showAlert('success', String((responsePayload && responsePayload.message) || 'General settings saved successfully.'));
+						})
+						.catch(function (error) {
+							showAlert('danger', error.message || 'Unable to save general settings.');
+						})
+						.finally(function () {
+							setButtonLoading(saveGeneralButton, false);
+						});
 				});
 			});
 		}
@@ -658,12 +625,39 @@
 				openConfirmModal('Account Settings', function () {
 					setButtonLoading(saveAccountButton, true);
 
-					window.setTimeout(function () {
+					if (!updateAccountUrl) {
 						setButtonLoading(saveAccountButton, false);
-						accountForm.reset();
-						accountForm.classList.remove('was-validated');
-						showAlert('success', 'Password updated successfully.');
-					}, 700);
+						showAlert('danger', 'Account settings endpoint is not configured.');
+						return;
+					}
+
+					fetch(updateAccountUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-CSRF-TOKEN': csrfToken,
+							'X-Requested-With': 'XMLHttpRequest',
+						},
+						credentials: 'same-origin',
+						body: JSON.stringify({
+							current_password: currentPasswordInput.value,
+							new_password: newPasswordInput.value,
+							new_password_confirmation: confirmPasswordInput.value,
+						}),
+					})
+						.then(parseApiResponse)
+						.then(function (responsePayload) {
+							accountForm.reset();
+							accountForm.classList.remove('was-validated');
+							showAlert('success', String((responsePayload && responsePayload.message) || 'Password updated successfully.'));
+						})
+						.catch(function (error) {
+							showAlert('danger', error.message || 'Unable to update password.');
+						})
+						.finally(function () {
+							setButtonLoading(saveAccountButton, false);
+						});
 				});
 			});
 		}
