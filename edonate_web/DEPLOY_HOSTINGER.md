@@ -74,6 +74,22 @@ service worker `sw.js` into the served outer `public_html`.
 Keep the existing production `APP_KEY` unless you intentionally want to
 invalidate encrypted cookies and encrypted application data.
 
+If the domain shows `403 Forbidden`, verify the two required files in the
+served root before clearing Laravel caches:
+
+```bash
+cd ~/domains/edonate.online/public_html
+test -f index.php && echo "live index.php: OK" || echo "live index.php: MISSING"
+test -f .htaccess && echo "live .htaccess: OK" || echo "live .htaccess: MISSING"
+test -f public_html/index.php && echo "source index.php: OK" || echo "source index.php: MISSING"
+test -f public_html/.htaccess && echo "source .htaccess: OK" || echo "source .htaccess: MISSING"
+```
+
+The Hostinger document root must be `/home/USER/domains/edonate.online/public_html`.
+It must not point to the private `edonate_web` application directory or to the
+checked-in `public_html` source directory. The deployment workflow runs only
+for `main`; pushing an agent branch alone does not deploy it.
+
 ## API Rate Limits
 
 The application uses Laravel's named rate limiters and the configured

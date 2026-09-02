@@ -17,6 +17,7 @@ $skipCache = isset($options['skip-cache-clear']);
 $webRoot = resolveWebRoot($projectRoot, $options);
 $laravelPublic = resolveLaravelPublic($projectRoot, $webRoot);
 $legacyPublic = resolveLegacyPublic($projectRoot, $webRoot);
+$checkedInPublic = resolveCheckedInPublic($projectRoot, $webRoot);
 
 if (! is_dir($laravelPublic)) {
     fail("Laravel public directory not found: {$laravelPublic}");
@@ -37,6 +38,7 @@ if (! is_dir($webRoot)) {
 
 $laravelPublicReal = normalizePath($laravelPublic);
 $legacyPublicReal = $legacyPublic !== null ? normalizePath($legacyPublic) : null;
+$checkedInPublicReal = $checkedInPublic !== null ? normalizePath($checkedInPublic) : null;
 if ($webRoot === $laravelPublicReal) {
     writeln("Laravel public path is already the served web root: {$webRoot}");
     if (! $skipCache) {
@@ -58,16 +60,25 @@ writeln("Laravel public assets: {$laravelPublicReal}");
 if ($legacyPublicReal !== null && $legacyPublicReal !== $laravelPublicReal) {
     writeln("Legacy public asset fallback: {$legacyPublicReal}");
 }
+if ($checkedInPublicReal !== null && $checkedInPublicReal !== $laravelPublicReal && $checkedInPublicReal !== $legacyPublicReal) {
+    writeln("Checked-in public asset fallback: {$checkedInPublicReal}");
+}
 writeln("Served web root: {$webRoot}");
 writeln("asset('js/admin/...') resolves to /js/admin/... and is served from {$webRoot}/js/admin/.");
 
 foreach ($assetDirs as $dir) {
     $destination = $webRoot . DIRECTORY_SEPARATOR . $dir;
-    $source = resolvePublicAssetSource($laravelPublicReal, $legacyPublicReal, $dir, true);
+    $source = resolvePublicAssetSource($laravelPublicReal, $legacyPublicReal, $dir, true, $checkedInPublicReal);
 
     if ($source === null) {
+        if (is_dir($destination)) {
+            $totals['unchanged']++;
+            writeln("Keep existing served public/{$dir}; no alternate source is available.");
+            continue;
+        }
+
         $totals['skipped_dirs']++;
-        writeln("Skip missing public/{$dir}");
+        writeln("Skip missing source public/{$dir}");
         continue;
     }
 
@@ -84,11 +95,17 @@ foreach ($assetDirs as $dir) {
 
 foreach ($publicFiles as $file) {
     $destination = $webRoot . DIRECTORY_SEPARATOR . $file;
-    $source = resolvePublicAssetSource($laravelPublicReal, $legacyPublicReal, $file, false);
+    $source = resolvePublicAssetSource($laravelPublicReal, $legacyPublicReal, $file, false, $checkedInPublicReal);
 
     if ($source === null) {
+        if (is_file($destination)) {
+            $totals['unchanged']++;
+            writeln("Keep existing served {$file}; no alternate source is available.");
+            continue;
+        }
+
         $totals['skipped_dirs']++;
-        writeln("Skip missing public/{$file}");
+        writeln("Skip missing source public/{$file}");
         continue;
     }
 
@@ -112,6 +129,19 @@ foreach ($publicFiles as $file) {
     }
 
     $totals['copied']++;
+}
+
+$requiredWebFiles = ['index.php', '.htaccess'];
+$missingRequiredFiles = array_values(array_filter(
+    $requiredWebFiles,
+    static fn (string $file): bool => ! is_file($webRoot . DIRECTORY_SEPARATOR . $file)
+));
+
+if ($missingRequiredFiles !== []) {
+    fail(
+        "Served web root is missing required file(s): " . implode(', ', $missingRequiredFiles) . ".\n" .
+        "Restore the tracked public_html files before serving the domain; otherwise Hostinger may return 403 Forbidden."
+    );
 }
 
 writeln("Public sync complete. Copied: {$totals['copied']}; unchanged: {$totals['unchanged']}; missing source items: {$totals['skipped_dirs']}.");
@@ -217,17 +247,37 @@ function resolveLegacyPublic(string $projectRoot, ?string $webRoot): ?string
     return null;
 }
 
+function resolveCheckedInPublic(string $projectRoot, ?string $webRoot): ?string
+{
+    // The repository also keeps a checked-in outer public_html directory for
+    // Vite output and the Hostinger front controller. It is a useful source
+    // when syncing to a different web root, but must not be treated as a
+    // second source when it is the actual destination.
+    $checkedInPublic = dirname($projectRoot) . DIRECTORY_SEPARATOR . 'public_html';
+
+    if (! is_dir($checkedInPublic)) {
+        return null;
+    }
+
+    if ($webRoot !== null && normalizePath($checkedInPublic) === normalizePath($webRoot)) {
+        return null;
+    }
+
+    return $checkedInPublic;
+}
+
 function resolvePublicAssetSource(
     string $primaryPublic,
     ?string $fallbackPublic,
     string $relativePath,
     bool $directory,
+    ?string $checkedInPublic = null,
 ): ?string {
-    $candidates = [$primaryPublic];
-
-    if ($fallbackPublic !== null && $fallbackPublic !== $primaryPublic) {
-        $candidates[] = $fallbackPublic;
-    }
+    $candidates = array_values(array_unique(array_filter([
+        $primaryPublic,
+        $fallbackPublic,
+        $checkedInPublic,
+    ], static fn (?string $candidate): bool => $candidate !== null)));
 
     foreach ($candidates as $candidatePublic) {
         $source = $candidatePublic . DIRECTORY_SEPARATOR . $relativePath;
