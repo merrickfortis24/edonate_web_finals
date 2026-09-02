@@ -34,6 +34,10 @@ class AdminLteLayoutTest extends TestCase
         $this->assertIsString($adminLogin);
         $this->assertStringContainsString("asset('images/edonate-logo.png')", $donorLogin);
         $this->assertStringContainsString("asset('images/edonate-logo.png')", $adminLogin);
+        $this->assertStringContainsString('data-password-toggle', $donorLogin);
+        $this->assertStringContainsString('data-password-toggle', $adminLogin);
+        $this->assertStringContainsString('x-password-toggle-script', $donorLogin);
+        $this->assertStringContainsString('x-password-toggle-script', $adminLogin);
         $this->assertStringNotContainsString('card__left__icon', $adminLogin);
     }
 

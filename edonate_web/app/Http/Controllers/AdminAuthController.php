@@ -11,6 +11,7 @@ use App\Models\DonorAuthentication;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
+use App\Services\AdminMfaService;
 use App\Services\BloodAvailabilityService;
 use App\Services\DonationProcessingService;
 use App\Services\FacilityBloodInventoryService;
@@ -288,44 +289,50 @@ class AdminAuthController extends BaseController
             ]);
         }
 
-        $this->clearPendingTwoFactorLogin($request);
-
-        $role = $this->normalizeRole((string) ($pending['role'] ?? ($admin->role ?? '')));
-        $this->setAdminSession($request, $admin, $role);
-
-        if ($this->supportsTwoFactorStorage()) {
-            DB::table('admins')
-                ->where('admin_id', (int) $admin->admin_id)
-                ->update([
-                    'two_factor_last_verified_at' => now(),
-                ]);
-        }
-
-        if (! empty($pending['remember'])) {
-            $this->issueRememberMeToken((int) $admin->admin_id);
-        } else {
-            $this->clearRememberMeToken((int) $admin->admin_id);
-        }
-
-        $this->logRbacAdminAudit(
+        return $this->completePendingTwoFactorLogin(
             $request,
-            'login',
-            'Completed admin login with two-factor authentication.',
-            (int) $admin->admin_id,
-            [
-                'two_factor_method' => $usedRecoveryCode ? 'recovery_code' : 'totp',
-            ]
+            $pending,
+            $admin,
+            $usedRecoveryCode ? 'recovery_code' : 'totp'
         );
+    }
 
-        $this->pushFirebaseSecurityEvent('admin_2fa_success', [
-            'admin_id' => (int) ($admin->admin_id ?? 0),
-            'method' => $usedRecoveryCode ? 'recovery_code' : 'totp',
-            'ip' => $request->ip(),
-        ]);
+    /**
+     * Complete the same pending login flow after a registered device approves
+     * the number-matching challenge. AdminMfaController calls this method so
+     * push approval and TOTP share session, remember-me, audit, and role rules.
+     *
+     * @param array<string, mixed> $pending
+     */
+    public function completePromptTwoFactorLogin(Request $request, array $pending): RedirectResponse
+    {
+        $adminId = (int) ($pending['admin_id'] ?? 0);
+        $admin = $adminId > 0
+            ? DB::table('admins')->where('admin_id', $adminId)->first()
+            : null;
 
-        return redirect()
-            ->route($this->dashboardRouteForRole($role))
-            ->with('success', 'Two-factor authentication successful.');
+        if (! $admin || ! $this->isSupportedRole((string) ($admin->role ?? ''))) {
+            $this->clearPendingTwoFactorLogin($request);
+
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Your account is no longer available for this login attempt.');
+        }
+
+        if (! $this->isTwoFactorEnabledForAdmin($admin)) {
+            $this->clearPendingTwoFactorLogin($request);
+
+            return redirect()
+                ->route('admin.login')
+                ->with('error', 'Two-factor authentication is not configured for this account. Please log in again.');
+        }
+
+        return $this->completePendingTwoFactorLogin(
+            $request,
+            $pending,
+            $admin,
+            'web_push_number_match'
+        );
     }
 
     /**
@@ -2697,6 +2704,12 @@ class AdminAuthController extends BaseController
                 ? Carbon::parse((string) $admin->two_factor_confirmed_at)
                 : null,
             'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
+            'webPushPublicKey' => trim((string) config('services.webpush.vapid_public_key', '')),
+            'webPushRegistrationUrl' => route('admin.mfa.devices.store'),
+            'webPushServiceWorkerUrl' => asset('sw.js'),
+            'registeredDeviceCount' => Schema::hasTable('admin_devices')
+                ? DB::table('admin_devices')->where('user_id', (int) ($admin->admin_id ?? 0))->count()
+                : 0,
         ];
     }
 
@@ -2750,13 +2763,29 @@ class AdminAuthController extends BaseController
                 'show' => false,
                 'maskedEmail' => '',
                 'remainingSeconds' => 0,
+                'promptNumber' => '',
+                'promptAvailable' => false,
+                'challengeId' => '',
             ];
         }
+
+        $challengeId = trim((string) ($pending['challenge_id'] ?? ''));
+        $challenge = app(AdminMfaService::class)->getChallenge($challengeId);
+        $promptNumber = is_array($challenge)
+            ? trim((string) ($challenge['number'] ?? ''))
+            : trim((string) ($pending['prompt_number'] ?? ''));
 
         return [
             'show' => true,
             'maskedEmail' => $this->maskEmail((string) ($pending['email'] ?? '')),
             'remainingSeconds' => max(0, (int) ($pending['expires_at'] ?? 0) - now()->timestamp),
+            'promptNumber' => $promptNumber,
+            'promptAvailable' => (bool) ($pending['prompt_available'] ?? false),
+            'challengeId' => $challengeId,
+            'statusUrl' => route('admin.2fa.prompt.status'),
+            'triggerUrl' => route('admin.2fa.prompt.trigger'),
+            'completeUrl' => route('admin.2fa.prompt.complete'),
+            'channelName' => $challengeId !== '' ? 'admin-mfa.'.$challengeId : '',
         ];
     }
 
@@ -3284,14 +3313,30 @@ class AdminAuthController extends BaseController
     private function stagePendingTwoFactorLogin(Request $request, object $admin, string $role, bool $rememberRequested): void
     {
         $request->session()->regenerate();
-        $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, [
+        $challenge = app(AdminMfaService::class)->createChallenge((int) ($admin->admin_id ?? 0));
+
+        $pending = [
             'admin_id' => (int) ($admin->admin_id ?? 0),
             'email' => Str::lower(trim((string) ($admin->email ?? ''))),
             'role' => $this->normalizeRole($role),
             'remember' => $rememberRequested,
             'attempts' => 0,
             'expires_at' => now()->addMinutes(self::TWO_FACTOR_PENDING_TTL_MINUTES)->timestamp,
-        ]);
+            'challenge_id' => $challenge['id'],
+            'prompt_number' => $challenge['number'],
+            'prompt_expires_at' => $challenge['expires_at'],
+            'prompt_available' => false,
+        ];
+
+        $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, $pending);
+
+        $delivery = app(AdminMfaService::class)->sendPromptNotification(
+            (int) ($admin->admin_id ?? 0),
+            $challenge['id']
+        );
+
+        $pending['prompt_available'] = (bool) ($delivery['available'] ?? false);
+        $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, $pending);
     }
 
     /**
@@ -3322,7 +3367,63 @@ class AdminAuthController extends BaseController
      */
     private function clearPendingTwoFactorLogin(Request $request): void
     {
+        $pending = $request->session()->get(self::TWO_FACTOR_PENDING_SESSION_KEY);
+        if (is_array($pending)) {
+            app(AdminMfaService::class)->forgetChallenge((string) ($pending['challenge_id'] ?? ''));
+        }
+
         $request->session()->forget(self::TWO_FACTOR_PENDING_SESSION_KEY);
+    }
+
+    /**
+     * Finish an already authenticated password + second-factor login.
+     *
+     * @param array<string, mixed> $pending
+     */
+    private function completePendingTwoFactorLogin(
+        Request $request,
+        array $pending,
+        object $admin,
+        string $method
+    ): RedirectResponse {
+        $this->clearPendingTwoFactorLogin($request);
+
+        $role = $this->normalizeRole((string) ($pending['role'] ?? ($admin->role ?? '')));
+        $this->setAdminSession($request, $admin, $role);
+
+        if ($this->supportsTwoFactorStorage()) {
+            DB::table('admins')
+                ->where('admin_id', (int) $admin->admin_id)
+                ->update([
+                    'two_factor_last_verified_at' => now(),
+                ]);
+        }
+
+        if (! empty($pending['remember'])) {
+            $this->issueRememberMeToken((int) $admin->admin_id);
+        } else {
+            $this->clearRememberMeToken((int) $admin->admin_id);
+        }
+
+        $this->logRbacAdminAudit(
+            $request,
+            'login',
+            'Completed admin login with two-factor authentication.',
+            (int) $admin->admin_id,
+            [
+                'two_factor_method' => $method,
+            ]
+        );
+
+        $this->pushFirebaseSecurityEvent('admin_2fa_success', [
+            'admin_id' => (int) ($admin->admin_id ?? 0),
+            'method' => $method,
+            'ip' => $request->ip(),
+        ]);
+
+        return redirect()
+            ->route($this->dashboardRouteForRole($role))
+            ->with('success', 'Two-factor authentication successful.');
     }
 
     /**
@@ -3905,11 +4006,20 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function buildLoginStats(): array
     {
-        $successfulDonationCount = (int) DB::table('donation_records as dr')
-            ->whereRaw('('.$this->donationRecordStatusExpression('dr').') = ?', ['completed'])
-            ->count();
+        // Login must remain available while an older/incomplete local schema
+        // is being restored. The Hostinger dump contains this table, but a
+        // database imported without the Phase 7 tables must not turn a public
+        // login page into a 500 response.
+        $successfulDonationCount = $this->dashboardTableHasColumns(
+            'donation_records',
+            ['donation_date']
+        )
+            ? (int) $this->dashboardSuccessfulDonationQuery()->count()
+            : 0;
 
-        $donorCount = (int) DB::table('donors')->count();
+        $donorCount = $this->dashboardTableExists('donors')
+            ? (int) DB::table('donors')->count()
+            : 0;
         $livesSavedCount = $successfulDonationCount * 3;
 
         return [

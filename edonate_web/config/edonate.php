@@ -33,5 +33,7 @@ return [
         'inventory_update_per_minute' => (int) env('EDONATE_RATE_INVENTORY_UPDATE_PER_MINUTE', 20),
         'document_access_per_minute' => (int) env('EDONATE_RATE_DOCUMENT_ACCESS_PER_MINUTE', 30),
         'admin_2fa_per_ten_minutes' => (int) env('EDONATE_RATE_ADMIN_2FA_PER_TEN_MINUTES', 5),
+        'admin_2fa_status_per_minute' => (int) env('EDONATE_RATE_ADMIN_2FA_STATUS_PER_MINUTE', 120),
+        'admin_mfa_mobile_per_five_minutes' => (int) env('EDONATE_RATE_ADMIN_MFA_MOBILE_PER_FIVE_MINUTES', 5),
     ],
 ];

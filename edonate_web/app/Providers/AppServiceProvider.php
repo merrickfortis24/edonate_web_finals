@@ -123,6 +123,22 @@ class AppServiceProvider extends ServiceProvider
                 ->by('admin-2fa|'.$identity.'|ip:'.$this->clientIp($request));
         });
 
+        RateLimiter::for('admin-2fa-status', function (Request $request) {
+            $pending = $request->session()->get('pending_admin_2fa', []);
+            $challenge = is_array($pending) ? (string) ($pending['challenge_id'] ?? '') : '';
+            $sessionId = $request->session()->getId();
+
+            return Limit::perMinute($this->rateLimit('admin_2fa_status_per_minute', 120))
+                ->by('admin-2fa-status|challenge:'.$this->keyPart($challenge).'|session:'.$sessionId.'|ip:'.$this->clientIp($request));
+        });
+
+        RateLimiter::for('admin-mfa-mobile', function (Request $request) {
+            $challenge = (string) $request->route('challenge', '');
+
+            return Limit::perMinutes(5, $this->rateLimit('admin_mfa_mobile_per_five_minutes', 5))
+                ->by('admin-mfa-mobile|challenge:'.$this->keyPart($challenge).'|ip:'.$this->clientIp($request));
+        });
+
         RateLimiter::for('otp-send', function (Request $request) {
             $email = $this->normalizedAccountIdentifier($request);
             $ip = $this->clientIp($request);

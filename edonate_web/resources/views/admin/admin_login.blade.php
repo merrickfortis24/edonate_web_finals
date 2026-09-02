@@ -4,6 +4,7 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="csrf-token" content="{{ csrf_token() }}">
 	<title>Admin Login Page | eDonate</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -220,6 +221,49 @@
 			padding: 0 14px;
 			outline: none;
 			margin-bottom: 16px;
+		}
+
+		.password-field {
+			position: relative;
+			margin-bottom: 16px;
+		}
+
+		.password-field .form__input {
+			margin-bottom: 0;
+			padding-right: 48px;
+		}
+
+		.password-toggle {
+			position: absolute;
+			top: 50%;
+			right: 8px;
+			width: 32px;
+			height: 32px;
+			transform: translateY(-50%);
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 0;
+			border: 0;
+			border-radius: 50%;
+			background: transparent;
+			color: var(--color-text-dark);
+			cursor: pointer;
+		}
+
+		.password-toggle:hover {
+			background: rgba(182, 12, 12, 0.08);
+			color: var(--color-text-red);
+		}
+
+		.password-toggle:focus-visible {
+			outline: 2px solid var(--color-text-red);
+			outline-offset: 2px;
+		}
+
+		.password-toggle svg {
+			width: 18px;
+			height: 18px;
 		}
 
 		.form__input::placeholder {
@@ -482,8 +526,20 @@
 						value="{{ old('email') }}" autocomplete="email" required>
 
 					<label class="form__label" for="password">Password</label>
-					<input class="form__input form-control" id="password" type="password" name="password"
-						autocomplete="current-password" required>
+					<div class="password-field">
+						<input class="form__input form-control" id="password" type="password" name="password"
+							autocomplete="current-password" required>
+						<button type="button" class="password-toggle" data-password-toggle
+							data-password-toggle-target="password" aria-controls="password" aria-label="Show password"
+							title="Show password" aria-pressed="false">
+							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" data-password-icon="show">
+								<path fill="currentColor" d="M12 5c-5 0-8.8 3.1-10.5 7C3.2 15.9 7 19 12 19s8.8-3.1 10.5-7C20.8 8.1 17 5 12 5Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2.2A1.8 1.8 0 1 0 12 10a1.8 1.8 0 0 0 0 3.6Z" />
+							</svg>
+							<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" data-password-icon="hide" hidden>
+								<path fill="currentColor" d="m3.3 2.3 18.4 18.4-1.4 1.4-3.1-3.1A11.8 11.8 0 0 1 12 20C7 20 3.2 16.9 1.5 13a12.8 12.8 0 0 1 4.1-5.1L1.9 3.7l1.4-1.4ZM7 9.3A10.8 10.8 0 0 0 3.7 13c1.7 2.9 4.7 5 8.3 5 1.1 0 2.1-.2 3-.5l-2.1-2.1A4.5 4.5 0 0 1 7 9.3Zm5-3.3c5 0 8.8 3.1 10.5 7a12.8 12.8 0 0 1-3.7 4.7l-1.5-1.5a10.8 10.8 0 0 0 3.1-3.2c-1.7-2.9-4.7-5-8.3-5-.7 0-1.4.1-2 .2L8.5 6.7c1.1-.4 2.3-.7 3.5-.7Zm0 3a3 3 0 0 1 3 3c0 .4-.1.8-.2 1.1l-3.9-3.9c.3-.1.7-.2 1.1-.2Z" />
+							</svg>
+						</button>
+					</div>
 
 					<div class="form__meta">
 						<label class="form__remember" for="remember">
@@ -502,6 +558,7 @@
 
 	@include('admin._two_factor_setup_modal')
 	@include('admin._two_factor_challenge_modal')
+	<x-password-toggle-script />
 
 	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
 		integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"

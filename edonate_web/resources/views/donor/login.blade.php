@@ -192,6 +192,28 @@
 		.form-control { border-radius: 0.75rem; padding-left: 3.25rem; }
 		.input-icon { position: absolute; left: 0.9rem; top: 50%; transform: translateY(-50%); width: 1.6rem; height: 1.6rem; color: #6b7280; }
 		.input-group { position: relative; }
+		.password-input-group .form-control { padding-right: 3.25rem; }
+		.password-toggle {
+			position: absolute;
+			right: 0.7rem;
+			top: 50%;
+			z-index: 5;
+			width: 2.25rem;
+			height: 2.25rem;
+			transform: translateY(-50%);
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 0;
+			border: 0;
+			border-radius: 50%;
+			background: transparent;
+			color: #6b7280;
+			cursor: pointer;
+		}
+		.password-toggle:hover { background: rgba(198, 47, 60, 0.08); color: #9b1a1f; }
+		.password-toggle:focus-visible { outline: 2px solid #c62f3c; outline-offset: 2px; }
+		.password-toggle svg { width: 1.1rem; height: 1.1rem; }
 
 		.btn-signin { background: #6b0f12; border-radius: .75rem; color: #fff; padding: .85rem 1rem; font-weight:700; }
 		.btn-signin:hover { background: #50090a; }
@@ -258,7 +280,7 @@
 			<form method="POST" action="{{ route('donor.login.store') }}" novalidate>
 				@csrf
 
-				<div class="mb-3 input-group">
+				<div class="mb-3 input-group password-input-group">
 					<span class="input-icon">
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-envelope" viewBox="0 0 16 16">
 							<path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v.217l-8 5.333-8-5.333V4z"/>
@@ -297,6 +319,16 @@
 						autocomplete="current-password"
 						placeholder="Enter your password"
 					>
+					<button type="button" class="password-toggle" data-password-toggle
+						data-password-toggle-target="password" aria-controls="password" aria-label="Show password"
+						title="Show password" aria-pressed="false">
+						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" data-password-icon="show">
+							<path fill="currentColor" d="M12 5c-5 0-8.8 3.1-10.5 7C3.2 15.9 7 19 12 19s8.8-3.1 10.5-7C20.8 8.1 17 5 12 5Zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-2.2A1.8 1.8 0 1 0 12 10a1.8 1.8 0 0 0 0 3.6Z" />
+						</svg>
+						<svg viewBox="0 0 24 24" fill="none" aria-hidden="true" data-password-icon="hide" hidden>
+							<path fill="currentColor" d="m3.3 2.3 18.4 18.4-1.4 1.4-3.1-3.1A11.8 11.8 0 0 1 12 20C7 20 3.2 16.9 1.5 13a12.8 12.8 0 0 1 4.1-5.1L1.9 3.7l1.4-1.4ZM7 9.3A10.8 10.8 0 0 0 3.7 13c1.7 2.9 4.7 5 8.3 5 1.1 0 2.1-.2 3-.5l-2.1-2.1A4.5 4.5 0 0 1 7 9.3Zm5-3.3c5 0 8.8 3.1 10.5 7a12.8 12.8 0 0 1-3.7 4.7l-1.5-1.5a10.8 10.8 0 0 0 3.1-3.2c-1.7-2.9-4.7-5-8.3-5-.7 0-1.4.1-2 .2L8.5 6.7c1.1-.4 2.3-.7 3.5-.7Zm0 3a3 3 0 0 1 3 3c0 .4-.1.8-.2 1.1l-3.9-3.9c.3-.1.7-.2 1.1-.2Z" />
+						</svg>
+					</button>
 					@error('password')
 						<div class="invalid-feedback">{{ $message }}</div>
 					@enderror
@@ -448,6 +480,7 @@
 		});
 	})();
 </script>
+<x-password-toggle-script />
 <!-- Terms Modal -->
 <div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
 	<div class="modal-dialog modal-lg modal-dialog-centered">
