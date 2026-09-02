@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>Approve eDonate Sign-in</title>
+    <x-edonate-favicon />
     <style>
         :root {
             color-scheme: light;

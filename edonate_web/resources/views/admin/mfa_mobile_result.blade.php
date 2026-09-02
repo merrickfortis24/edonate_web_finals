@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>{{ $approved ? 'Sign-in Approved' : 'Number Did Not Match' }} | eDonate</title>
+    <x-edonate-favicon />
     <style>
         :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #1d2633; }
         * { box-sizing: border-box; }

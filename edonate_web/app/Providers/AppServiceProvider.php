@@ -3,16 +3,16 @@
 namespace App\Providers;
 
 use App\Models\Appointment;
+use App\Models\DonationRecord;
 use App\Models\Donor;
 use App\Models\DonorAuthentication;
-use App\Models\DonationRecord;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Models\Notification;
 use App\Observers\AppointmentObserver;
+use App\Observers\DonationRecordObserver;
 use App\Observers\DonorAuthenticationObserver;
 use App\Observers\DonorObserver;
-use App\Observers\DonationRecordObserver;
 use App\Observers\EligibilityStatusObserver;
 use App\Observers\LocationObserver;
 use App\Observers\NotificationObserver;
@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Kreait\Firebase\Factory;
+use RuntimeException;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -33,14 +34,17 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(Factory::class, function ($app) {
-            $serviceAccount = (string) config('services.firebase.credentials', '');
+            $serviceAccount = $this->firebaseServiceAccountPath(
+                (string) config('services.firebase.credentials', '')
+            );
             $databaseUrl = (string) config('services.firebase.database_url', '');
 
-            $factory = new Factory();
-            if (!empty($serviceAccount)) {
+            $factory = new Factory;
+            if (! empty($serviceAccount)) {
+                $this->assertFirebaseProjectsMatch($serviceAccount);
                 $factory = $factory->withServiceAccount($serviceAccount);
             }
-            if (!empty($databaseUrl)) {
+            if (! empty($databaseUrl)) {
                 $factory = $factory->withDatabaseUri($databaseUrl);
             }
 
@@ -56,8 +60,54 @@ class AppServiceProvider extends ServiceProvider
             if (empty($databaseUrl)) {
                 return null;
             }
+
             return $app->make(Factory::class)->createDatabase();
         });
+    }
+
+    /**
+     * Resolve relative credential paths from the Laravel project root so the
+     * nested public_html deployment never depends on the PHP process cwd.
+     */
+    private function firebaseServiceAccountPath(string $configuredPath): string
+    {
+        $configuredPath = trim($configuredPath);
+        if ($configuredPath === '') {
+            return '';
+        }
+
+        $isAbsolute = preg_match('~^(?:[A-Za-z]:[\\\\/]|[\\\\/]{2}|/)~', $configuredPath) === 1;
+        $resolvedPath = $isAbsolute
+            ? $configuredPath
+            : base_path(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $configuredPath));
+
+        if (! is_file($resolvedPath)) {
+            throw new RuntimeException('The configured Firebase service-account file does not exist.');
+        }
+
+        return $resolvedPath;
+    }
+
+    /**
+     * Fail closed if browser Auth and Admin SDK credentials target different
+     * Firebase projects. Only non-secret project identifiers are compared.
+     */
+    private function assertFirebaseProjectsMatch(string $serviceAccountPath): void
+    {
+        $contents = file_get_contents($serviceAccountPath);
+        $credentials = is_string($contents) ? json_decode($contents, true) : null;
+        $backendProjectId = is_array($credentials)
+            ? trim((string) ($credentials['project_id'] ?? ''))
+            : '';
+        $frontendProjectId = trim((string) config('services.firebase.web.project_id', ''));
+
+        if ($backendProjectId === '') {
+            throw new RuntimeException('The Firebase service-account file has no project_id.');
+        }
+
+        if ($frontendProjectId !== '' && ! hash_equals($backendProjectId, $frontendProjectId)) {
+            throw new RuntimeException('Firebase frontend and backend project configuration do not match.');
+        }
     }
 
     /**

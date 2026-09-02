@@ -31,6 +31,7 @@ use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -198,9 +199,19 @@ class AdminAuthController extends BaseController
         try {
             $identity = $googleIdentity->verify((string) $validated['id_token']);
         } catch (Throwable $exception) {
-            report($exception);
+            $failureType = FirebaseGoogleIdentityService::classifyVerificationFailure($exception);
+
+            // Do not report the exception object: Kreait verification messages
+            // can include a prefix of the submitted Firebase ID token.
+            Log::warning('Admin Google sign-in token verification failed.', [
+                'failure_type' => $failureType,
+                'exception_class' => $exception::class,
+                'firebase_project' => (string) config('services.firebase.web.project_id', ''),
+                'ip' => $request->ip(),
+            ]);
+
             $this->pushFirebaseSecurityEvent('admin_login_google_failed', [
-                'reason' => 'token_verification_failed',
+                'reason' => $failureType,
                 'ip' => $request->ip(),
             ]);
 
@@ -210,8 +221,17 @@ class AdminAuthController extends BaseController
         }
 
         if (($identity['provider'] ?? '') !== 'google.com' || ! ($identity['email_verified'] ?? false)) {
+            $failureType = ($identity['provider'] ?? '') !== 'google.com'
+                ? 'non_google_firebase_provider'
+                : 'unverified_google_email';
+
+            Log::notice('Admin Google sign-in identity rejected.', [
+                'failure_type' => $failureType,
+                'ip' => $request->ip(),
+            ]);
+
             $this->pushFirebaseSecurityEvent('admin_login_google_failed', [
-                'reason' => 'unverified_google_identity',
+                'reason' => $failureType,
                 'ip' => $request->ip(),
             ]);
 
@@ -226,8 +246,13 @@ class AdminAuthController extends BaseController
             ->first();
 
         if (! $admin) {
+            Log::notice('Admin Google sign-in account rejected.', [
+                'failure_type' => 'unauthorized_admin_email',
+                'ip' => $request->ip(),
+            ]);
+
             $this->pushFirebaseSecurityEvent('admin_login_google_failed', [
-                'reason' => 'admin_account_not_found',
+                'reason' => 'unauthorized_admin_email',
                 'email' => $email,
                 'ip' => $request->ip(),
             ]);
@@ -246,6 +271,12 @@ class AdminAuthController extends BaseController
         );
 
         if (! ($login['ok'] ?? false)) {
+            Log::notice('Admin Google sign-in account rejected.', [
+                'failure_type' => 'unauthorized_admin_role',
+                'admin_id' => (int) ($admin->admin_id ?? 0),
+                'ip' => $request->ip(),
+            ]);
+
             return response()->json([
                 'message' => (string) ($login['message'] ?? 'Your account role is not authorized to access this portal.'),
             ], 403);
@@ -266,6 +297,12 @@ class AdminAuthController extends BaseController
                 'redirect_url' => route('admin.login'),
             ]);
         }
+
+        $this->pushFirebaseSecurityEvent('admin_login_google_success', [
+            'admin_id' => (int) ($admin->admin_id ?? 0),
+            'email' => $email,
+            'ip' => $request->ip(),
+        ]);
 
         return response()->json([
             'message' => 'Google sign-in successful.',
@@ -3772,7 +3809,8 @@ class AdminAuthController extends BaseController
     }
 
     /**
-     * Push security-related admin auth events into Firebase Realtime Database.
+     * Best-effort security-event write. Authentication must never depend on
+     * Realtime Database availability, OAuth token exchange, or database rules.
      */
     private function pushFirebaseSecurityEvent(string $eventType, array $payload = []): void
     {
@@ -3794,9 +3832,10 @@ class AdminAuthController extends BaseController
                 'created_at' => now()->toIso8601String(),
             ]);
         } catch (Throwable $exception) {
-            logger()->warning('Failed to push admin security event to Firebase.', [
+            Log::warning('Firebase admin security event write failed.', [
+                'failure_type' => 'firebase_audit_write_failed',
                 'event_type' => $eventType,
-                'error' => $exception->getMessage(),
+                'exception_class' => $exception::class,
             ]);
         }
     }

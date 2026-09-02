@@ -6,8 +6,11 @@ use App\Services\FirebaseGoogleIdentityService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Kreait\Firebase\Exception\Auth\FailedToVerifyToken;
 use Mockery;
+use RuntimeException;
 use Tests\TestCase;
 
 class AdminGoogleLoginTest extends TestCase
@@ -17,6 +20,7 @@ class AdminGoogleLoginTest extends TestCase
         parent::setUp();
 
         config()->set('services.firebase.admin_google_login_enabled', true);
+        config()->set('services.firebase.database_url', '');
         config()->set('services.webpush.vapid_public_key', '');
         config()->set('services.webpush.vapid_private_key', '');
 
@@ -76,6 +80,9 @@ class AdminGoogleLoginTest extends TestCase
 
         $this->postJson(route('admin.login.google'), [
             'id_token' => 'verified-firebase-token',
+            'email' => 'attacker-controlled@example.test',
+            'uid' => 'attacker-controlled-uid',
+            'name' => 'Attacker Controlled Name',
             'remember' => false,
         ])
             ->assertOk()
@@ -91,6 +98,8 @@ class AdminGoogleLoginTest extends TestCase
         $this->get(route('admin.login'))
             ->assertOk()
             ->assertSee('Continue with Google')
+            ->assertSee('rel="icon" type="image/png"', false)
+            ->assertSee('images/edonate-icon.png?v=', false)
             ->assertSee(str_replace('/', '\\/', route('admin.login.google')), false)
             ->assertSee('Google may ask you to confirm this sign-in on your phone.');
     }
@@ -139,12 +148,78 @@ class AdminGoogleLoginTest extends TestCase
             'provider' => 'google.com',
         ]);
 
-        $this->postJson(route('admin.login.google'), ['id_token' => 'unknown-token'])
+        $this->postJson(route('admin.login.google'), [
+            'id_token' => 'unknown-token',
+            'email' => 'admin@example.test',
+            'uid' => 'google-admin-uid',
+            'name' => 'Test Admin',
+        ])
             ->assertForbidden()
             ->assertJsonPath('message', 'This Google account is not authorized to access the admin portal.');
 
         $this->assertSame(1, DB::table('admins')->count());
         $this->assertNull(session('admin_id'));
+    }
+
+    public function test_google_login_rejects_an_invalid_firebase_token(): void
+    {
+        Log::spy();
+
+        $mock = Mockery::mock(FirebaseGoogleIdentityService::class);
+        $mock->shouldReceive('verify')
+            ->once()
+            ->with('invalid-firebase-token')
+            ->andThrow(new FailedToVerifyToken('The JWT string must have two dots'));
+        $this->app->instance(FirebaseGoogleIdentityService::class, $mock);
+
+        $this->postJson(route('admin.login.google'), [
+            'id_token' => 'invalid-firebase-token',
+            'email' => 'admin@example.test',
+            'uid' => 'google-admin-uid',
+        ])
+            ->assertUnauthorized()
+            ->assertJsonPath('message', 'Google sign-in could not be verified. Please try again.');
+
+        $this->assertNull(session('admin_id'));
+        Log::shouldHaveReceived('warning')
+            ->with('Admin Google sign-in token verification failed.', Mockery::on(
+                fn (array $context): bool => ($context['failure_type'] ?? null) === 'invalid_firebase_token'
+                    && ! array_key_exists('id_token', $context)
+            ));
+    }
+
+    public function test_firebase_audit_failure_does_not_block_authorized_google_login(): void
+    {
+        Log::spy();
+
+        $database = Mockery::mock();
+        $database->shouldReceive('getReference')
+            ->once()
+            ->andThrow(new RuntimeException('simulated audit transport failure'));
+        $this->app->instance('firebase.database', $database);
+
+        $this->mockIdentity([
+            'uid' => 'google-admin-uid',
+            'email' => 'admin@example.test',
+            'name' => 'Test Admin',
+            'email_verified' => true,
+            'provider' => 'google.com',
+        ]);
+
+        $this->postJson(route('admin.login.google'), [
+            'id_token' => 'verified-firebase-token',
+        ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Google sign-in successful.')
+            ->assertJsonPath('redirect_url', route('admin.dashboard'));
+
+        $this->assertSame(1, (int) session('admin_id'));
+        Log::shouldHaveReceived('warning')
+            ->with('Firebase admin security event write failed.', Mockery::on(
+                fn (array $context): bool => ($context['failure_type'] ?? null) === 'firebase_audit_write_failed'
+                    && ($context['event_type'] ?? null) === 'admin_login_google_success'
+                    && ! array_key_exists('error', $context)
+            ));
     }
 
     public function test_google_login_preserves_totp_as_the_second_factor_without_creating_a_web_push_challenge(): void

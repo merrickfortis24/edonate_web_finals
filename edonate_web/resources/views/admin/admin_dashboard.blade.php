@@ -11,14 +11,7 @@
 		<p class="header__date-value" id="todayDate">-</p>
 	</div>
 
-	<div class="header__icon-actions" aria-label="Dashboard quick actions">
-		<a class="header__icon-btn" href="{{ route('admin.notification-center') }}" aria-label="Go to Notification Center">
-			<i class="bi bi-bell-fill" aria-hidden="true"></i>
-			@if ((bool) data_get($dashboardPayload ?? [], 'notification_badge.visible', false))
-				<span class="header__badge" aria-hidden="true">{{ data_get($dashboardPayload ?? [], 'notification_badge.label', '0') }}</span>
-			@endif
-		</a>
-
+	<div class="header__icon-actions" aria-label="Dashboard actions">
 		<a class="header__icon-btn" href="{{ route('admin.settings') }}" aria-label="Go to Settings">
 			<i class="bi bi-gear-fill" aria-hidden="true"></i>
 		</a>
