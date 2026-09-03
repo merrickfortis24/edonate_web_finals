@@ -31,6 +31,7 @@
     <div class="edonate-admin-page {{ $adminPageClass }}">
         @yield('main_content')
     </div>
+    <x-chatbot-widget />
 @stop
 
 @push('css')

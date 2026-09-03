@@ -48,7 +48,7 @@ if ($webRoot === $laravelPublicReal) {
 }
 
 $assetDirs = ['js', 'css', 'images', 'build', 'vendor'];
-$publicFiles = ['index.php', '.htaccess', 'favicon.ico', 'robots.txt', 'sw.js'];
+$publicFiles = ['index.php', '.htaccess', 'favicon.ico', 'robots.txt'];
 $totals = [
     'copied' => 0,
     'unchanged' => 0,

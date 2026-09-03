@@ -21,8 +21,6 @@ class AdminGoogleLoginTest extends TestCase
 
         config()->set('services.firebase.admin_google_login_enabled', true);
         config()->set('services.firebase.database_url', '');
-        config()->set('services.webpush.vapid_public_key', '');
-        config()->set('services.webpush.vapid_private_key', '');
 
         Schema::dropIfExists('admin_security_settings');
         Schema::dropIfExists('admins');
@@ -244,15 +242,19 @@ class AdminGoogleLoginTest extends TestCase
 
         $pending = session('pending_admin_2fa');
         $this->assertIsArray($pending);
-        $this->assertSame('', $pending['challenge_id']);
-        $this->assertFalse($pending['browser_prompt_enabled']);
+        $this->assertArrayNotHasKey('challenge_id', $pending);
+        $this->assertArrayNotHasKey('prompt_number', $pending);
+        $this->assertArrayNotHasKey('browser_prompt_enabled', $pending);
         $this->assertSame('google', $pending['primary_method']);
         $this->assertNull(session('admin_id'));
 
         $this->get(route('admin.login'))
             ->assertOk()
-            ->assertSee('Google sign-in was verified. Enter your Google Authenticator code to complete admin sign-in.')
-            ->assertSee('Authenticator Code');
+            ->assertSee('Enter your Google Authenticator code to continue.')
+            ->assertSee('Authenticator Code')
+            ->assertDontSee('GOOGLE PROMPT-STYLE APPROVAL')
+            ->assertDontSee('Send notification again')
+            ->assertDontSee('Use Google Authenticator code instead');
     }
 
     private function mockIdentity(array $identity): void

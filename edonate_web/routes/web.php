@@ -7,7 +7,6 @@ use App\Http\Controllers\Admin\FacilityController as AdminFacilityController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Admin\ReportController as AdminReportController;
 use App\Http\Controllers\AdminAuthController;
-use App\Http\Controllers\AdminMfaController;
 use App\Http\Controllers\DonorDashboardController;
 use App\Http\Controllers\DonorLoginController;
 use App\Http\Controllers\DonorPortalController;
@@ -120,23 +119,6 @@ Route::post('/admin/2fa/challenge', [AdminAuthController::class, 'verifyTwoFacto
     ->middleware('throttle:admin-2fa')
     ->name('admin.2fa.verify');
 Route::post('/admin/2fa/challenge/cancel', [AdminAuthController::class, 'cancelTwoFactorChallenge'])->name('admin.2fa.cancel');
-Route::post('/admin/2fa/prompt/trigger', [AdminMfaController::class, 'triggerMfaNotification'])
-    ->middleware('throttle:admin-2fa')
-    ->name('admin.2fa.prompt.trigger');
-Route::get('/admin/2fa/prompt/status', [AdminMfaController::class, 'promptStatus'])
-    ->middleware('throttle:admin-2fa-status')
-    ->name('admin.2fa.prompt.status');
-Route::post('/admin/2fa/prompt/complete', [AdminMfaController::class, 'completePromptLogin'])
-    ->middleware('throttle:admin-2fa')
-    ->name('admin.2fa.prompt.complete');
-Route::get('/admin/mfa/verify/{challenge}', [AdminMfaController::class, 'showMobileApproval'])
-    ->where('challenge', '[A-Za-z0-9]+')
-    ->middleware(['signed', 'throttle:public-api'])
-    ->name('admin.mfa.mobile');
-Route::post('/admin/mfa/verify/{challenge}', [AdminMfaController::class, 'approveMobile'])
-    ->where('challenge', '[A-Za-z0-9]+')
-    ->middleware(['signed', 'throttle:admin-mfa-mobile'])
-    ->name('admin.mfa.mobile.approve');
 Route::get('/admin/forgot-password', [AdminAuthController::class, 'forgotPassword'])->name('admin.password.request');
 Route::post('/admin/forgot-password', [AdminAuthController::class, 'sendPasswordResetLink'])
     ->middleware('throttle:password-reset')
@@ -156,14 +138,6 @@ Route::middleware('admin.auth')->group(function () {
     Route::post('/admin/settings/2fa/disable', [AdminAuthController::class, 'disableTwoFactor'])
         ->middleware('throttle:admin-write')
         ->name('admin.2fa.disable');
-    Route::post('/admin/mfa/devices', [AdminMfaController::class, 'registerDevice'])
-        ->middleware('throttle:admin-write')
-        ->name('admin.mfa.devices.store');
-    Route::delete('/admin/mfa/devices/{device}', [AdminMfaController::class, 'removeDevice'])
-        ->whereNumber('device')
-        ->middleware('throttle:admin-write')
-        ->name('admin.mfa.devices.destroy');
-
     Route::middleware('admin.role:admin,staff')->group(function () {
         Route::get('/staff/dashboard', [AdminAuthController::class, 'staffDashboard'])->name('staff.dashboard');
         Route::get('/admin/appointments', [AdminAuthController::class, 'appointments'])->name('admin.appointments');
