@@ -146,6 +146,15 @@ class AppServiceProvider extends ServiceProvider
      */
     private function registerRateLimiters(): void
     {
+        RateLimiter::for('chatbot', function (Request $request): array {
+            return [
+                Limit::perMinute((int) config('chatbot.requests_per_minute', 10))
+                    ->by('chat-minute:'.$this->clientIp($request)),
+                Limit::perHour((int) config('chatbot.requests_per_hour', 100))
+                    ->by('chat-hour:'.$this->clientIp($request)),
+            ];
+        });
+
         RateLimiter::for('donor-api', function (Request $request) {
             return Limit::perMinute($this->rateLimit('donor_api_per_minute', 60))
                 ->by($this->donorKey($request));
@@ -171,22 +180,6 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinutes(10, $this->rateLimit('admin_2fa_per_ten_minutes', 5))
                 ->by('admin-2fa|'.$identity.'|ip:'.$this->clientIp($request));
-        });
-
-        RateLimiter::for('admin-2fa-status', function (Request $request) {
-            $pending = $request->session()->get('pending_admin_2fa', []);
-            $challenge = is_array($pending) ? (string) ($pending['challenge_id'] ?? '') : '';
-            $sessionId = $request->session()->getId();
-
-            return Limit::perMinute($this->rateLimit('admin_2fa_status_per_minute', 120))
-                ->by('admin-2fa-status|challenge:'.$this->keyPart($challenge).'|session:'.$sessionId.'|ip:'.$this->clientIp($request));
-        });
-
-        RateLimiter::for('admin-mfa-mobile', function (Request $request) {
-            $challenge = (string) $request->route('challenge', '');
-
-            return Limit::perMinutes(5, $this->rateLimit('admin_mfa_mobile_per_five_minutes', 5))
-                ->by('admin-mfa-mobile|challenge:'.$this->keyPart($challenge).'|ip:'.$this->clientIp($request));
         });
 
         RateLimiter::for('otp-send', function (Request $request) {

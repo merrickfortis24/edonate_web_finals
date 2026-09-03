@@ -11,7 +11,6 @@ use App\Models\DonorAuthentication;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
-use App\Services\AdminMfaService;
 use App\Services\BloodAvailabilityService;
 use App\Services\DonationProcessingService;
 use App\Services\FacilityBloodInventoryService;
@@ -150,8 +149,7 @@ class AdminAuthController extends BaseController
             $request,
             $admin,
             $request->boolean('remember'),
-            'password',
-            true
+            'password'
         );
 
         if (! ($login['ok'] ?? false)) {
@@ -180,8 +178,7 @@ class AdminAuthController extends BaseController
      *
      * Google sign-in is an additional primary sign-in option. Existing local
      * Google Authenticator 2FA remains required for accounts that have it
-     * enabled, and this path deliberately skips the unreliable custom Web Push
-     * challenge instead of silently treating Google sign-in as a push approval.
+     * enabled.
      */
     public function googleLogin(Request $request, FirebaseGoogleIdentityService $googleIdentity): JsonResponse
     {
@@ -266,8 +263,7 @@ class AdminAuthController extends BaseController
             $request,
             $admin,
             $request->boolean('remember'),
-            'google',
-            false
+            'google'
         );
 
         if (! ($login['ok'] ?? false)) {
@@ -320,8 +316,7 @@ class AdminAuthController extends BaseController
         Request $request,
         object $admin,
         bool $rememberRequested,
-        string $primaryMethod = 'password',
-        bool $sendBrowserPrompt = true
+        string $primaryMethod = 'password'
     ): array {
         $role = $this->normalizeRole((string) ($admin->role ?? ''));
         if (! $this->isSupportedRole($role)) {
@@ -340,8 +335,7 @@ class AdminAuthController extends BaseController
                 $admin,
                 $role,
                 $rememberRequested,
-                $primaryMethod,
-                $sendBrowserPrompt
+                $primaryMethod
             );
 
             $this->pushFirebaseSecurityEvent(
@@ -493,44 +487,6 @@ class AdminAuthController extends BaseController
             $pending,
             $admin,
             $usedRecoveryCode ? 'recovery_code' : 'totp'
-        );
-    }
-
-    /**
-     * Complete the same pending login flow after a registered device approves
-     * the number-matching challenge. AdminMfaController calls this method so
-     * push approval and TOTP share session, remember-me, audit, and role rules.
-     *
-     * @param array<string, mixed> $pending
-     */
-    public function completePromptTwoFactorLogin(Request $request, array $pending): RedirectResponse
-    {
-        $adminId = (int) ($pending['admin_id'] ?? 0);
-        $admin = $adminId > 0
-            ? DB::table('admins')->where('admin_id', $adminId)->first()
-            : null;
-
-        if (! $admin || ! $this->isSupportedRole((string) ($admin->role ?? ''))) {
-            $this->clearPendingTwoFactorLogin($request);
-
-            return redirect()
-                ->route('admin.login')
-                ->with('error', 'Your account is no longer available for this login attempt.');
-        }
-
-        if (! $this->isTwoFactorEnabledForAdmin($admin)) {
-            $this->clearPendingTwoFactorLogin($request);
-
-            return redirect()
-                ->route('admin.login')
-                ->with('error', 'Two-factor authentication is not configured for this account. Please log in again.');
-        }
-
-        return $this->completePendingTwoFactorLogin(
-            $request,
-            $pending,
-            $admin,
-            'web_push_number_match'
         );
     }
 
@@ -2903,12 +2859,6 @@ class AdminAuthController extends BaseController
                 ? Carbon::parse((string) $admin->two_factor_confirmed_at)
                 : null,
             'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
-            'webPushPublicKey' => trim((string) config('services.webpush.vapid_public_key', '')),
-            'webPushRegistrationUrl' => route('admin.mfa.devices.store'),
-            'webPushServiceWorkerUrl' => asset('sw.js'),
-            'registeredDeviceCount' => Schema::hasTable('admin_devices')
-                ? DB::table('admin_devices')->where('user_id', (int) ($admin->admin_id ?? 0))->count()
-                : 0,
         ];
     }
 
@@ -2962,36 +2912,13 @@ class AdminAuthController extends BaseController
                 'show' => false,
                 'maskedEmail' => '',
                 'remainingSeconds' => 0,
-                'promptNumber' => '',
-                'promptAvailable' => false,
-                'challengeId' => '',
-                'primaryMethod' => '',
             ];
         }
-
-        $browserPromptEnabled = (bool) ($pending['browser_prompt_enabled'] ?? true);
-        $challengeId = $browserPromptEnabled
-            ? trim((string) ($pending['challenge_id'] ?? ''))
-            : '';
-        $challenge = $challengeId !== ''
-            ? app(AdminMfaService::class)->getChallenge($challengeId)
-            : null;
-        $promptNumber = is_array($challenge)
-            ? trim((string) ($challenge['number'] ?? ''))
-            : trim((string) ($pending['prompt_number'] ?? ''));
 
         return [
             'show' => true,
             'maskedEmail' => $this->maskEmail((string) ($pending['email'] ?? '')),
             'remainingSeconds' => max(0, (int) ($pending['expires_at'] ?? 0) - now()->timestamp),
-            'promptNumber' => $promptNumber,
-            'promptAvailable' => $browserPromptEnabled && (bool) ($pending['prompt_available'] ?? false),
-            'challengeId' => $challengeId,
-            'statusUrl' => route('admin.2fa.prompt.status'),
-            'triggerUrl' => route('admin.2fa.prompt.trigger'),
-            'completeUrl' => route('admin.2fa.prompt.complete'),
-            'channelName' => $challengeId !== '' ? 'admin-mfa.'.$challengeId : '',
-            'primaryMethod' => trim((string) ($pending['primary_method'] ?? 'password')),
         ];
     }
 
@@ -3521,14 +3448,10 @@ class AdminAuthController extends BaseController
         object $admin,
         string $role,
         bool $rememberRequested,
-        string $primaryMethod = 'password',
-        bool $sendBrowserPrompt = true
+        string $primaryMethod = 'password'
     ): void
     {
         $request->session()->regenerate();
-        $challenge = $sendBrowserPrompt
-            ? app(AdminMfaService::class)->createChallenge((int) ($admin->admin_id ?? 0))
-            : null;
 
         $pending = [
             'admin_id' => (int) ($admin->admin_id ?? 0),
@@ -3537,26 +3460,9 @@ class AdminAuthController extends BaseController
             'remember' => $rememberRequested,
             'attempts' => 0,
             'expires_at' => now()->addMinutes(self::TWO_FACTOR_PENDING_TTL_MINUTES)->timestamp,
-            'challenge_id' => (string) ($challenge['id'] ?? ''),
-            'prompt_number' => (string) ($challenge['number'] ?? ''),
-            'prompt_expires_at' => (int) ($challenge['expires_at'] ?? 0),
-            'prompt_available' => false,
-            'browser_prompt_enabled' => $sendBrowserPrompt,
             'primary_method' => $primaryMethod,
         ];
 
-        $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, $pending);
-
-        if (! $sendBrowserPrompt || ! is_array($challenge)) {
-            return;
-        }
-
-        $delivery = app(AdminMfaService::class)->sendPromptNotification(
-            (int) ($admin->admin_id ?? 0),
-            $challenge['id']
-        );
-
-        $pending['prompt_available'] = (bool) ($delivery['available'] ?? false);
         $request->session()->put(self::TWO_FACTOR_PENDING_SESSION_KEY, $pending);
     }
 
@@ -3588,11 +3494,6 @@ class AdminAuthController extends BaseController
      */
     private function clearPendingTwoFactorLogin(Request $request): void
     {
-        $pending = $request->session()->get(self::TWO_FACTOR_PENDING_SESSION_KEY);
-        if (is_array($pending)) {
-            app(AdminMfaService::class)->forgetChallenge((string) ($pending['challenge_id'] ?? ''));
-        }
-
         $request->session()->forget(self::TWO_FACTOR_PENDING_SESSION_KEY);
     }
 

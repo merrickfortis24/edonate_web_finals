@@ -112,7 +112,6 @@
         </div>
     </div>
 @endif
-
 @if ($showModal)
     @push('admin_scripts')
     <script>

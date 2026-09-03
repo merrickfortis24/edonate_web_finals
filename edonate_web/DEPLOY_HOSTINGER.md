@@ -68,8 +68,8 @@ php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/publ
 ```
 
 The script copies `index.php`, `.htaccess`, `build/`, `css/`, `js/`,
-`images/`, `vendor/`, `favicon.ico`, `robots.txt`, and the admin MFA
-service worker `sw.js` into the served outer `public_html`.
+`images/`, `vendor/`, `favicon.ico`, and `robots.txt` into the served outer
+`public_html`.
 
 Keep the existing production `APP_KEY` unless you intentionally want to
 invalidate encrypted cookies and encrypted application data.

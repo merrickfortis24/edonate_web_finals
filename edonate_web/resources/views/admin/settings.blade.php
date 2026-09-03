@@ -228,19 +228,18 @@
 									<div class="card border bg-body-tertiary mt-3">
 										<div class="card-body p-3 d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
 											<div>
-												<h3 class="h6 mb-1">Google Authenticator &amp; Browser Approval</h3>
-												<p class="small text-body-secondary mb-0">
-													Manage your authenticator enrollment, QR setup, and the phone/browser that receives
-													number-matching sign-in notifications.
+															<h3 class="h6 mb-1">Google Authenticator</h3>
+															<p class="small text-body-secondary mb-0">
+																Manage your Google Authenticator enrollment and QR setup.
 												</p>
 											</div>
 											<a
 												href="{{ route('admin.2fa.setup') }}"
 												class="btn btn-outline-danger text-nowrap"
-												aria-label="Open Google Authenticator and browser approval setup"
+															aria-label="Open Google Authenticator setup"
 											>
 												<i class="bi bi-shield-lock me-1" aria-hidden="true"></i>
-												Manage 2FA &amp; Register Browser
+																Manage Google Authenticator
 											</a>
 										</div>
 									</div>

@@ -12,7 +12,6 @@
         "kreait/firebase-php": "^7.24",
         "laravel/framework": "13.*",
         "laravel/tinker": "3.*",
-        "minishlink/web-push": "^9.0",
         "pragmarx/google2fa-laravel": "^3.0"
     },
     "require-dev": {

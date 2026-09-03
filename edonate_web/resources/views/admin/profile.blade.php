@@ -26,7 +26,6 @@
         Open Settings
     </a>
 @endsection
-
 @section('main_content')
     <div class="container-fluid px-0">
         <div class="row g-4">

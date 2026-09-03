@@ -98,7 +98,7 @@
 			</section>
 
 			@php($operational = data_get($stats, 'operational', []))
-			<section class="dashboard-operations row g-3" aria-label="Operational KPIs">
+			<section class="dashboard-operations row row-cols-1 row-cols-md-2 row-cols-lg-4 g-3" aria-label="Operational KPIs">
 				@foreach ([
 					['key' => 'verified_donors', 'label' => 'Verified donors'],
 					['key' => 'pending_verification', 'label' => 'Pending verification'],
@@ -108,7 +108,7 @@
 					['key' => 'low_stock', 'label' => 'Low stock types'],
 					['key' => 'out_of_stock', 'label' => 'Out of stock'],
 				] as $kpi)
-					<div class="col-6 col-md-3 col-xl-2">
+					<div class="col">
 						<article class="dashboard-kpi-card h-100">
 							<span class="dashboard-kpi-card__label">{{ $kpi['label'] }}</span>
 							<strong class="dashboard-kpi-card__value">{{ number_format((int) data_get($operational, $kpi['key'], 0)) }}</strong>
