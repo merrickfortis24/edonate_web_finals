@@ -76,6 +76,22 @@
     --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
+/*
+ * Bootstrap creates this element whenever a modal opens. Keep the backdrop
+ * translucent even if another stylesheet changes Bootstrap's default
+ * opacity/background variables. The alpha belongs to the color, while the
+ * element opacity stays at 1 so the two values are not multiplied together.
+ */
+.modal-backdrop {
+    --bs-backdrop-bg: rgba(0, 0, 0, 0.5);
+    --bs-backdrop-opacity: 1;
+    background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+.modal-backdrop.show {
+    opacity: 1 !important;
+}
+
 .edonate-adminlte .edonate-sidebar {
     background: linear-gradient(180deg, var(--edonate-red) 0%, var(--edonate-red-dark) 100%);
 }
