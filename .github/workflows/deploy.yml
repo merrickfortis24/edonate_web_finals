@@ -80,7 +80,10 @@ jobs:
             test -f "$DEPLOY_ROOT/public_html/.htaccess"
 
             cd "$APP_ROOT"
-            php scripts/sync-public-assets.php --web-root="$DEPLOY_ROOT"
+            # The workflow clears Laravel caches explicitly below. Skip the
+            # sync script's nested cache-clear subprocess so deployment does
+            # not fail before the explicit Artisan commands run.
+            php scripts/sync-public-assets.php --web-root="$DEPLOY_ROOT" --skip-cache-clear
 
             # Clear cached environment values before any database operation.
             php artisan optimize:clear

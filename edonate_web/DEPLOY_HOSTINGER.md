@@ -53,7 +53,7 @@ Run commands from the private Laravel root:
 ```bash
 cd ~/domains/edonate.online/public_html/edonate_web
 php artisan migrate --force
-php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/public_html"
+php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/public_html" --skip-cache-clear
 php artisan optimize:clear
 php artisan config:cache
 php artisan view:cache
@@ -64,7 +64,7 @@ them with:
 
 ```bash
 cd ~/domains/edonate.online/public_html/edonate_web
-php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/public_html"
+php scripts/sync-public-assets.php --web-root="$HOME/domains/edonate.online/public_html" --skip-cache-clear
 ```
 
 The script copies `index.php`, `.htaccess`, `build/`, `css/`, `js/`,
