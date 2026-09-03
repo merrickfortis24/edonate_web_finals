@@ -104,7 +104,10 @@ jobs:
             test -f "$DEPLOY_ROOT/index.php"
             test -f "$DEPLOY_ROOT/.htaccess"
             test -f "$APP_ROOT/vendor/autoload.php"
-            grep -Fq "edonate_web/vendor/autoload.php" "$DEPLOY_ROOT/index.php"
-            grep -Fq "edonate_web/bootstrap/app.php" "$DEPLOY_ROOT/index.php"
+            # The front controller resolves the application root dynamically,
+            # so do not require a hard-coded "edonate_web/" path in its source.
+            php -l "$DEPLOY_ROOT/index.php" >/dev/null
+            grep -Eq "vendor/autoload\.php" "$DEPLOY_ROOT/index.php"
+            grep -Eq "bootstrap/app\.php" "$DEPLOY_ROOT/index.php"
             grep -Fq "RewriteRule ^ index.php" "$DEPLOY_ROOT/.htaccess"
             php artisan route:list --path=admin/login --no-ansi | grep -Fq "admin/login"
