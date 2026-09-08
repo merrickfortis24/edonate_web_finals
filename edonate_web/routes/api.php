@@ -10,6 +10,9 @@ Route::middleware('web')->group(function (): void {
         ->name('chat.history');
 
     Route::post('/chat', [ChatbotController::class, 'store'])
-        ->middleware('throttle:chatbot')
+        ->middleware(['admin.auth', 'throttle:chatbot'])
         ->name('chat.store');
+    // Allow erasure of this browser's conversation even after optional consent is withdrawn.
+    Route::delete('/chat', [ChatbotController::class, 'destroy'])
+        ->middleware('throttle:public-api')->name('chat.destroy');
 });

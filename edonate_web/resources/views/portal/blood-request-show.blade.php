@@ -21,6 +21,7 @@
         @if(in_array($bloodRequest->status, ['open', 'in_progress'], true))
             <form method="POST" action="{{ route('donor.blood-requests.interested', $bloodRequest) }}">
                 @csrf
+                    <x-privacy-acknowledgment purpose="blood-request" />
                 <button class="btn btn-danger" type="submit">I'm Interested</button>
             </form>
             <form method="POST" action="{{ route('donor.blood-requests.decline', $bloodRequest) }}">

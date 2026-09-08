@@ -79,14 +79,20 @@ class DonationProcessingService
                 ]);
             }
 
+            $donationDate = Carbon::parse((string) ($data['donation_date'] ?? $appointment->appointment_date));
+            if (! $this->donorMeetsMinimumAge($donor, $donationDate)) {
+                throw ValidationException::withMessages([
+                    'birthdate' => 'The donor must have a valid birthdate showing they are at least '.config('privacy.minimum_age', 18).' years old on the donation date.',
+                ]);
+            }
+
             $verifiedBloodType = $this->verifiedBloodType($data, $request);
             $bloodTypeChange = $this->prepareBloodTypeChange($donor, $verifiedBloodType, $data);
 
-            $donationDate = Carbon::parse((string) ($data['donation_date'] ?? $appointment->appointment_date))->toDateString();
             $recordId = DB::table('donation_records')->insertGetId([
                 'donor_id' => $appointment->donor_id,
                 'appointment_id' => $appointment->appointment_id,
-                'donation_date' => $donationDate,
+                'donation_date' => $donationDate->toDateString(),
                 'donation_status' => 'completed',
                 'blood_units' => (int) $data['blood_units'],
                 'verified_blood_type_id' => $verifiedBloodType?->blood_type_id,
@@ -414,6 +420,25 @@ class DonationProcessingService
             throw ValidationException::withMessages([
                 'appointment_date' => 'Only past appointments can be marked as no-show.',
             ]);
+        }
+    }
+
+    private function donorMeetsMinimumAge(Donor $donor, Carbon $donationDate): bool
+    {
+        if (! Schema::hasColumn('donors', 'birthdate')) {
+            return true;
+        }
+
+        $birthdate = $donor->getAttribute('birthdate');
+        if ($birthdate === null || trim((string) $birthdate) === '') {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($birthdate)
+                ->lte($donationDate->copy()->startOfDay()->subYears((int) config('privacy.minimum_age', 18)));
+        } catch (\Throwable) {
+            return false;
         }
     }
 

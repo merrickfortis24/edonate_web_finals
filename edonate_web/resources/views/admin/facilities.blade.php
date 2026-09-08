@@ -24,7 +24,7 @@
             <div><label for="facilityStatusFilter">Status</label><select class="form-select" id="facilityStatusFilter"><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
             <button class="btn btn-outline-secondary" id="facilityClear" type="button">Clear</button>
         </div>
-        <div class="facility-table-wrap">
+        <div class="facility-table-wrap" role="region" aria-label="Facilities table, scroll horizontally if needed" tabindex="0">
             <table class="table table-hover facility-table"><thead><tr><th>Facility</th><th>Type</th><th>Location</th><th>Status</th><th>Available Units</th><th>Low / Out Types</th><th>Map</th><th>Actions</th></tr></thead><tbody id="facilityRows"><tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr></tbody></table>
         </div>
         <div class="admin-pagination admin-pagination--js" aria-label="Table pagination">
@@ -36,16 +36,16 @@
 
 @if($canManage)
 <div class="modal fade" id="facilityModal" tabindex="-1" aria-labelledby="facilityModalTitle" aria-hidden="true"><div class="modal-dialog modal-lg"><form class="modal-content" id="facilityForm"><div class="modal-header"><h2 class="modal-title fs-5" id="facilityModalTitle">Create Facility</h2><button class="btn-close" data-bs-dismiss="modal" type="button" aria-label="Close"></button></div><div class="modal-body"><div class="row g-3">
-    <div class="col-md-8"><label class="form-label">Facility name</label><input class="form-control" name="facility_name" maxlength="150" required></div>
-    <div class="col-md-4"><label class="form-label">Type</label><select class="form-select" name="facility_type" required>@foreach($facilityTypes as $type)<option value="{{ $type }}">{{ \Illuminate\Support\Str::headline($type) }}</option>@endforeach</select></div>
-    <div class="col-12"><label class="form-label">Address</label><textarea class="form-control" name="address" rows="2"></textarea></div>
-    <div class="col-md-4"><label class="form-label">Barangay</label><input class="form-control" name="barangay_name" maxlength="100"></div>
-    <div class="col-md-4"><label class="form-label">City</label><input class="form-control" name="city" maxlength="100" value="Lipa City" required></div>
-    <div class="col-md-4"><label class="form-label">Province</label><input class="form-control" name="province" maxlength="100" value="Batangas" required></div>
-    <div class="col-md-4"><label class="form-label">Latitude</label><input class="form-control" name="latitude" type="number" step="any" min="-90" max="90"></div>
-    <div class="col-md-4"><label class="form-label">Longitude</label><input class="form-control" name="longitude" type="number" step="any" min="-180" max="180"></div>
-    <div class="col-md-4"><label class="form-label">Contact number</label><input class="form-control" name="contact_number" maxlength="30"></div>
-    <div class="col-md-4"><label class="form-label">Status</label><select class="form-select" name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
+    <div class="col-md-8"><label class="form-label" for="facilities-facility_name">Facility name</label><input id="facilities-facility_name" class="form-control" name="facility_name" maxlength="150" required></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-facility_type">Type</label><select id="facilities-facility_type" class="form-select" name="facility_type" required>@foreach($facilityTypes as $type)<option value="{{ $type }}">{{ \Illuminate\Support\Str::headline($type) }}</option>@endforeach</select></div>
+    <div class="col-12"><label class="form-label" for="facilities-address">Address</label><textarea id="facilities-address" class="form-control" name="address" rows="2"></textarea></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-barangay_name">Barangay</label><input id="facilities-barangay_name" class="form-control" name="barangay_name" maxlength="100"></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-city">City</label><input id="facilities-city" class="form-control" name="city" maxlength="100" value="Lipa City" required></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-province">Province</label><input id="facilities-province" class="form-control" name="province" maxlength="100" value="Batangas" required></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-latitude">Latitude</label><input id="facilities-latitude" class="form-control" name="latitude" type="number" step="any" min="-90" max="90"></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-longitude">Longitude</label><input id="facilities-longitude" class="form-control" name="longitude" type="number" step="any" min="-180" max="180"></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-contact_number">Contact number</label><input id="facilities-contact_number" class="form-control" name="contact_number" maxlength="30"></div>
+    <div class="col-md-4"><label class="form-label" for="facilities-status">Status</label><select id="facilities-status" class="form-select" name="status"><option value="active">Active</option><option value="inactive">Inactive</option></select></div>
     <div class="col-12"><div class="alert alert-danger d-none mb-0" id="facilityErrors"></div></div>
 </div></div><div class="modal-footer"><button class="btn btn-outline-secondary" data-bs-dismiss="modal" type="button">Cancel</button><button class="btn btn-danger" type="submit" id="facilitySave">Save Facility</button></div></form></div></div>
 @endif

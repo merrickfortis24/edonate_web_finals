@@ -1,19 +1,12 @@
-<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Terms of Service</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-<div class="container py-5">
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-4 p-md-5">
-            <h1 class="h3 mb-3">Terms of Service</h1>
-            <p class="text-secondary mb-0">Please replace this placeholder with your official Terms of Service.</p>
-        </div>
-    </div>
-</div>
-</body>
-</html>
+@extends('layouts.legal')
+@section('title', 'Terms and Conditions')
+@section('policy')
+<section><h2>The service</h2><p>These terms govern use of the eDonate web application operated by the organization named below. eDonate coordinates registration, screening, verification, appointments, blood requests and donation records. Review the Privacy Policy for data processing and the Cookie Policy for browser choices. These terms do not replace clinical consent, medical information or healthcare-provider policies.</p></section>
+<section><h2>Eligibility and accounts</h2><p>You must be at least {{ config('privacy.minimum_age') }} years old to create an account or donate blood through eDonate. Minor and guardian-managed accounts are not offered. Provide accurate information and update it when it changes. Use your own account and protect passwords, authenticator secrets and recovery codes. Report suspected unauthorized access. Do not share staff accounts or bypass restrictions. An account or an automated screening result does not medically approve a donation.</p></section>
+<section><h2>Appointments, requests and screening</h2><p>Bookings, availability figures and blood-request responses are subject to review and may change. Follow the facility's confirmation, preparation and cancellation instructions. Clinical staff make the final suitability decision. This website is not an emergency service; contact appropriate emergency or healthcare services when urgent assistance is needed.</p><p>Review your submission and its specific processing notice. Ask for assistance or human review using the contact below. Staff must act within their assigned duties and permissions.</p></section>
+<section><h2>Acceptable use</h2><p>Do not impersonate people, create false records, upload malicious files, scrape personal data, probe accounts without authority or interfere with availability. Do not use exports or donor contact details for unrelated marketing. Only upload information needed for the stated purpose and which you are entitled to share.</p></section>
+<section><h2>Optional services and content</h2><p>Google sign-in, maps and AI may be available under provider conditions. Change optional choices in the footer. Maps and AI output may be inaccurate. The assistant provides general navigation help only; it cannot make clinical decisions, inspect donor records or act on your behalf. Never send personal, confidential or health information to it.</p><p>You retain your rights in submitted material. The operator may process it to provide the requested service and for other properly disclosed lawful purposes. These terms do not grant unrestricted rights to sell personal data or waive privacy rights.</p></section>
+<section><h2>Availability, suspension and closure</h2><p>The operator may perform maintenance and take proportionate action to protect people and system integrity. Where appropriate it should explain restrictions and provide a review mechanism. Contact the operator to close an account or discuss retained records. Closure does not automatically erase records subject to lawful retention duties.</p></section>
+<section><h2>Responsibility, territory and disputes</h2><p>The service is offered only in the Philippines. The operator must exercise the care required by Philippine law. Nothing here excludes non-excludable consumer, privacy or other statutory rights, or liability that cannot lawfully be limited. No guarantee of uninterrupted service, donation eligibility or inventory availability is made. Any additional liability limitation, governing-law clause or dispute mechanism requires review for the actual operator and users before publication.</p><p>You may raise a concern with the operator without losing your right to contact a regulator or seek a remedy. Those rights cannot be waived as a condition of using the service.</p></section>
+<section><h2>Updates and assistance</h2><p>Material changes will be versioned and communicated appropriately. Continued use is not consent to a new optional processing purpose. Ask the operator for accessible assistance or another available format of these terms.</p></section>
+@endsection

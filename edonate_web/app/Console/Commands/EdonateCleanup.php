@@ -58,6 +58,14 @@ class EdonateCleanup extends Command
 
         return [
             [
+                'key' => 'chat_messages',
+                'label' => 'expired AI chat messages',
+                'table' => 'chat_messages',
+                'column' => 'created_at',
+                'cutoff' => $now->copy()->subDays(max(1, (int) config('retention.chat_message_days', 30))),
+                'mode' => 'before_datetime',
+            ],
+            [
                 'key' => 'otp_codes',
                 'label' => 'expired OTP codes',
                 'table' => 'otp_codes',

@@ -141,15 +141,20 @@ class DonorDashboardController extends Controller
             return redirect('/login')->with('error', 'Your account could not be found. Please log in again.');
         }
 
+        $minimumAge = (int) config('privacy.minimum_age', 18);
+        $minimumBirthdate = now()->subYears($minimumAge)->toDateString();
+
         $validated = $request->validate([
             'phone' => ['required', 'regex:/^(\+63|0)\d{10}$/'],
-            'birthdate' => ['required', 'date', 'before_or_equal:today'],
+            'birthdate' => ['required', 'date', 'before_or_equal:'.$minimumBirthdate],
             'gender' => ['required', 'string', 'max:20'],
             'blood_type' => ['required', 'string', Rule::in(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']), Rule::exists('blood_types', 'blood_type')],
             'street_address' => ['required', 'string', 'max:150'],
             'barangay' => ['required', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],
             'province' => ['required', 'string', 'max:100'],
+        ], [
+            'birthdate.before_or_equal' => "You must be at least {$minimumAge} years old to create an account and donate blood.",
         ]);
 
         $bloodType = BloodType::query()

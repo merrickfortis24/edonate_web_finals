@@ -1,7 +1,10 @@
 @once
+@if((int) session('admin_id') > 0)
 <div id="edonate-chatbot"
      data-endpoint="{{ route('chat.store', [], false) }}"
      data-history="{{ route('chat.history', [], false) }}"
+     data-delete="{{ route('chat.destroy', [], false) }}"
+     data-enabled="{{ config('privacy.ai_enabled') ? 'true' : 'false' }}"
      data-csrf="{{ csrf_token() }}">
     <button type="button" class="ec-launch" aria-label="Open eDonate assistant"
             aria-controls="ec-window" aria-expanded="false">
@@ -13,7 +16,7 @@
         <header class="ec-header">
             <div>
                 <h2 id="ec-title">eDonate Assistant</h2>
-                <p>Ask about eDonate</p>
+                <p>Staff navigation help only</p>
             </div>
             <button type="button" class="ec-icon ec-new" aria-label="Start a new chat" title="New chat">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
@@ -22,9 +25,13 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>
             </button>
         </header>
+        <div class="ec-notice">Do not enter personal, patient, donor, or medical information.
+            <button type="button" data-privacy-open>Privacy choices</button>
+            <button type="button" class="ec-delete">Delete conversation</button>
+        </div>
 
         <div class="ec-messages" role="log" aria-live="polite"
-             aria-relevant="additions text" aria-label="Chat messages"></div>
+             tabindex="0" aria-relevant="additions text" aria-label="Chat messages"></div>
         <p class="ec-notice" role="status" hidden></p>
 
         <form class="ec-form">
@@ -93,187 +100,6 @@
     #edonate-chatbot .ec-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 </style>
 
-<script>
-(() => {
-    'use strict';
-    const root = document.getElementById('edonate-chatbot');
-    if (!root || root.dataset.ready) return;
-    root.dataset.ready = 'true';
-
-    const launch = root.querySelector('.ec-launch');
-    const panel = root.querySelector('.ec-window');
-    const close = root.querySelector('.ec-close');
-    const newChat = root.querySelector('.ec-new');
-    const log = root.querySelector('.ec-messages');
-    const form = root.querySelector('.ec-form');
-    const input = root.querySelector('#ec-input');
-    const send = root.querySelector('.ec-send');
-    const notice = root.querySelector('.ec-notice');
-    const storageKey = 'edonate.chat.session';
-    let busy = false;
-    let loaded = false;
-
-    function uuid() {
-        if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
-        const bytes = crypto.getRandomValues(new Uint8Array(16));
-        bytes[6] = (bytes[6] & 15) | 64;
-        bytes[8] = (bytes[8] & 63) | 128;
-        const hex = Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
-        return [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join('-');
-    }
-
-    function saveSession(id) {
-        try { sessionStorage.setItem(storageKey, id); } catch (error) { /* Memory-only mode when storage is blocked. */ }
-        return id;
-    }
-
-    let sessionId;
-    try { sessionId = sessionStorage.getItem(storageKey); } catch (error) { sessionId = null; }
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId || '')) {
-        sessionId = saveSession(uuid());
-    }
-
-    function scrollToBottom() { log.scrollTop = log.scrollHeight; }
-    function showNotice(text = '') { notice.textContent = text; notice.hidden = !text; }
-    function setBusy(value) {
-        busy = value;
-        send.disabled = value || !loaded;
-        input.readOnly = value || !loaded;
-        newChat.disabled = value;
-        log.setAttribute('aria-busy', String(value));
-    }
-
-    function appendMessage(role, text) {
-        const row = document.createElement('div');
-        row.className = role === 'user' ? 'ec-message ec-message--user' : 'ec-message';
-        const label = document.createElement('strong');
-        label.textContent = role === 'user' ? 'YOU' : 'EDONATE ASSISTANT';
-        const body = document.createElement('p');
-        body.textContent = text; // Never render visitor or AI content as HTML.
-        row.append(label, body);
-        log.append(row);
-        scrollToBottom();
-        return row;
-    }
-
-    async function request(url, options = {}) {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 45000);
-        try {
-            const response = await fetch(url, {
-                ...options,
-                credentials: 'same-origin',
-                signal: controller.signal,
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': root.dataset.csrf
-                }
-            });
-            const data = await response.json().catch(() => ({}));
-            if (response.status === 419) throw new Error('Your session expired. Refresh this page to continue.');
-            if (!response.ok) throw new Error(data.message || 'Chat is unavailable. Please try again.');
-            return data;
-        } catch (error) {
-            if (error.name === 'AbortError') throw new Error('The request timed out. Please try again.');
-            throw error;
-        } finally {
-            clearTimeout(timer);
-        }
-    }
-
-    async function loadHistory() {
-        setBusy(true);
-        showNotice('Loading conversation…');
-        try {
-            const url = new URL(root.dataset.history, window.location.origin);
-            url.searchParams.set('session_id', sessionId);
-            const data = await request(url);
-            if (!Array.isArray(data.messages)) throw new Error('Chat history could not be loaded.');
-            log.replaceChildren();
-            data.messages.forEach(item => {
-                if (['user', 'model'].includes(item.role) && typeof item.message === 'string') {
-                    appendMessage(item.role, item.message);
-                }
-            });
-            if (!data.messages.length) appendMessage('model', 'Hi! How can I help you with eDonate?');
-            loaded = true;
-            showNotice();
-        } catch (error) {
-            showNotice(error.message + ' Reopen chat to retry, or start a new chat.');
-        } finally {
-            setBusy(false);
-        }
-    }
-
-    launch.addEventListener('click', async () => {
-        panel.hidden = false;
-        launch.hidden = true;
-        launch.setAttribute('aria-expanded', 'true');
-        if (!loaded && !busy) await loadHistory();
-        if (!panel.hidden) input.focus();
-        scrollToBottom();
-    });
-
-    function closeChat() {
-        panel.hidden = true;
-        launch.hidden = false;
-        launch.setAttribute('aria-expanded', 'false');
-        launch.focus();
-    }
-    close.addEventListener('click', closeChat);
-    document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && !panel.hidden) closeChat();
-    });
-
-    newChat.addEventListener('click', () => {
-        if (busy) return;
-        sessionId = saveSession(uuid());
-        loaded = true;
-        log.replaceChildren();
-        appendMessage('model', 'Hi! How can I help you with eDonate?');
-        showNotice();
-        input.value = '';
-        setBusy(false);
-        input.focus();
-    });
-
-    // Form submission handles both the Send button and Enter.
-    input.addEventListener('keydown', event => {
-        if (event.key === 'Enter' && event.isComposing) event.preventDefault();
-    });
-    form.addEventListener('submit', async event => {
-        event.preventDefault();
-        const message = input.value.trim();
-        if (!message || busy || !loaded) return;
-
-        const userRow = appendMessage('user', message);
-        input.value = '';
-        showNotice();
-        const typing = appendMessage('model', 'AI is typing…');
-        setBusy(true);
-
-        try {
-            const data = await request(root.dataset.endpoint, {
-                method: 'POST',
-                body: JSON.stringify({ session_id: sessionId, message })
-            });
-            if (typeof data.reply !== 'string' || !data.reply.trim()) {
-                throw new Error('The assistant returned an empty response.');
-            }
-            typing.remove();
-            appendMessage('model', data.reply);
-        } catch (error) {
-            typing.remove();
-            userRow.remove();
-            input.value = message;
-            showNotice(error.message);
-        } finally {
-            setBusy(false);
-            scrollToBottom();
-            if (!panel.hidden) input.focus();
-        }
-    });
-})();
-</script>
+<script src="{{ asset('js/chatbot-widget.js') }}?v={{ config('privacy.version') }}" defer></script>
+@endif
 @endonce

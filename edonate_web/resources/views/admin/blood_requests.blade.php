@@ -25,7 +25,7 @@
             <div><label for="requestBloodType">Blood type</label><select class="form-select" id="requestBloodType"><option value="">All</option>@foreach($bloodTypes as $bloodType)<option value="{{ $bloodType->blood_type_id }}">{{ $bloodType->blood_type }}</option>@endforeach</select></div>
             <button class="btn btn-outline-secondary" id="requestClear" type="button">Clear</button>
         </div>
-        <div class="request-table-wrap">
+        <div class="request-table-wrap" role="region" aria-label="Blood requests table, scroll horizontally if needed" tabindex="0">
             <table class="table table-hover request-table"><thead><tr><th>Reference</th><th>Facility</th><th>Type</th><th>Blood Type</th><th>Required</th><th>Notified</th><th>Interested</th><th>Urgency</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody id="requestRows"><tr><td colspan="11" class="text-center text-muted py-4">Loading...</td></tr></tbody></table>
         </div>
         <div class="admin-pagination admin-pagination--js" aria-label="Table pagination">
@@ -36,15 +36,15 @@
 </main>
 
 <div class="modal fade" id="requestModal" tabindex="-1" aria-labelledby="requestModalTitle" aria-hidden="true"><div class="modal-dialog modal-lg"><form class="modal-content" id="requestForm"><div class="modal-header"><h2 class="modal-title fs-5" id="requestModalTitle">Create Blood Request</h2><button class="btn-close" data-bs-dismiss="modal" type="button" aria-label="Close"></button></div><div class="modal-body"><div class="row g-3">
-    <div class="col-md-6"><label class="form-label">Facility</label><select class="form-select" name="facility_id" required>@foreach($facilities as $facility)<option value="{{ $facility->facility_id }}">{{ $facility->facility_name }}</option>@endforeach</select></div>
-    <div class="col-md-6"><label class="form-label">Request type</label><select class="form-select" name="request_type" required><option value="replacement_donor">Replacement Donor</option><option value="blood_request">Blood Request</option></select></div>
-    <div class="col-md-4"><label class="form-label">Needed blood type</label><select class="form-select" name="needed_blood_type_id" required>@foreach($bloodTypes as $bloodType)<option value="{{ $bloodType->blood_type_id }}">{{ $bloodType->blood_type }}</option>@endforeach</select></div>
-    <div class="col-md-4"><label class="form-label">Required donors</label><input class="form-control" name="required_donors" type="number" min="1" max="1000" value="1" required></div>
-    <div class="col-md-4"><label class="form-label">Specific match required</label><input class="form-control" name="specific_match_required" type="number" min="0" max="1000" value="1"></div>
-    <div class="col-md-4"><label class="form-label">Allow other blood types</label><select class="form-select" name="allow_other_blood_types"><option value="1">Yes</option><option value="0">No</option></select></div>
-    <div class="col-md-4"><label class="form-label">Urgency</label><select class="form-select" name="urgency"><option value="normal">Normal</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select></div>
-    <div class="col-md-4"><label class="form-label">Expires at</label><input class="form-control" name="expires_at" type="datetime-local"></div>
-    <div class="col-12"><label class="form-label">Notes</label><textarea class="form-control" name="notes" rows="3" maxlength="2000"></textarea></div>
+    <div class="col-md-6"><label class="form-label" for="blood_requests-facility_id">Facility</label><select id="blood_requests-facility_id" class="form-select" name="facility_id" required>@foreach($facilities as $facility)<option value="{{ $facility->facility_id }}">{{ $facility->facility_name }}</option>@endforeach</select></div>
+    <div class="col-md-6"><label class="form-label" for="blood_requests-request_type">Request type</label><select id="blood_requests-request_type" class="form-select" name="request_type" required><option value="replacement_donor">Replacement Donor</option><option value="blood_request">Blood Request</option></select></div>
+    <div class="col-md-4"><label class="form-label" for="blood_requests-needed_blood_type_id">Needed blood type</label><select id="blood_requests-needed_blood_type_id" class="form-select" name="needed_blood_type_id" required>@foreach($bloodTypes as $bloodType)<option value="{{ $bloodType->blood_type_id }}">{{ $bloodType->blood_type }}</option>@endforeach</select></div>
+    <div class="col-md-4"><label class="form-label" for="blood_requests-required_donors">Required donors</label><input id="blood_requests-required_donors" class="form-control" name="required_donors" type="number" min="1" max="1000" value="1" required></div>
+    <div class="col-md-4"><label class="form-label" for="blood_requests-specific_match_required">Specific match required</label><input id="blood_requests-specific_match_required" class="form-control" name="specific_match_required" type="number" min="0" max="1000" value="1"></div>
+    <div class="col-md-4"><label class="form-label" for="blood_requests-allow_other_blood_types">Allow other blood types</label><select id="blood_requests-allow_other_blood_types" class="form-select" name="allow_other_blood_types"><option value="1">Yes</option><option value="0">No</option></select></div>
+    <div class="col-md-4"><label class="form-label" for="blood_requests-urgency">Urgency</label><select id="blood_requests-urgency" class="form-select" name="urgency"><option value="normal">Normal</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select></div>
+    <div class="col-md-4"><label class="form-label" for="blood_requests-expires_at">Expires at</label><input id="blood_requests-expires_at" class="form-control" name="expires_at" type="datetime-local"></div>
+    <div class="col-12"><label class="form-label" for="blood_requests-notes">Notes</label><textarea id="blood_requests-notes" class="form-control" name="notes" rows="3" maxlength="2000"></textarea></div>
     <div class="col-12"><div class="alert alert-danger d-none mb-0" id="requestErrors"></div></div>
 </div></div><div class="modal-footer"><button class="btn btn-outline-secondary" data-bs-dismiss="modal" type="button">Cancel</button><button class="btn btn-danger" type="submit" id="requestSave">Save Request</button></div></form></div></div>
 @endsection

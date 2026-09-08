@@ -123,6 +123,33 @@ class Phase7DonationProcessingTest extends TestCase
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'donation_completed')->count());
     }
 
+    public function test_underage_donor_cannot_have_a_donation_recorded(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        Schema::table('donors', function (Blueprint $table): void {
+            $table->date('birthdate')->nullable();
+        });
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+        DB::table('donors')->where('donor_id', $donorId)->update([
+            'birthdate' => now()->subYears(18)->addDay()->toDateString(),
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('birthdate');
+
+        $this->assertDatabaseMissing('donation_records', ['appointment_id' => $appointmentId]);
+    }
+
     public function test_confirmed_appointment_cannot_skip_check_in_to_complete(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);

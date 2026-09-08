@@ -14,16 +14,14 @@ $app = Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+        $middleware->web(append: [\App\Http\Middleware\RequirePrivacyAcknowledgment::class]);
         $middleware->alias([
             'admin.auth' => \App\Http\Middleware\EnsureAdminAuthenticated::class,
             'admin.role' => \App\Http\Middleware\EnsureAdminRole::class,
             'donor.active' => \App\Http\Middleware\EnsureDonorActive::class,
         ]);
 
-        // Exempt webhook routes from CSRF protection
-        $middleware->validateCsrfTokens(except: [
-            'git-deploy-token-734866278',
-        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // API/fetch callers receive a stable JSON contract while Laravel's

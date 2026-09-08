@@ -99,7 +99,8 @@ class AdminGoogleLoginTest extends TestCase
             ->assertSee('rel="icon" type="image/png"', false)
             ->assertSee('images/edonate-icon.png?v=', false)
             ->assertSee(str_replace('/', '\\/', route('admin.login.google')), false)
-            ->assertSee('Google may ask you to confirm this sign-in on your phone.');
+            ->assertSee('Select once to enable Google')
+            ->assertDontSee('<script src="https://www.gstatic.com', false);
     }
 
     public function test_google_login_rejects_an_identity_that_is_not_a_google_account(): void

@@ -4,7 +4,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Donor Sign Up | Blood Donation Management System</title>
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+	<link rel="stylesheet" href="{{ asset('vendor/bootstrap/bootstrap.min.css') }}">
 	<style>
 		:root {
 			--health-red: #c62f3c;
@@ -229,9 +229,11 @@
 			}
 		}
 	</style>
+    <x-privacy-assets />
 </head>
 <body>
-<main class="signup-wrapper">
+<a class="ed-skip-link" href="#main-content">Skip to main content</a>
+<main id="main-content" tabindex="-1" class="signup-wrapper">
 	<section class="signup-card" aria-labelledby="signup-title">
 		<header class="card-header-custom">
 			<h1 id="signup-title" class="fw-bold">Donor Sign-Up</h1>
@@ -274,7 +276,7 @@
 								required
 								maxlength="100"
 								autocomplete="given-name"
-								aria-invalid="@error('first_name') true @else false @enderror"
+								aria-invalid="{{ $errors->has('first_name') ? 'true' : 'false' }}"
 								aria-describedby="first_name_error"
 							>
 							@error('first_name')
@@ -295,7 +297,7 @@
 								required
 								maxlength="100"
 								autocomplete="family-name"
-								aria-invalid="@error('last_name') true @else false @enderror"
+								aria-invalid="{{ $errors->has('last_name') ? 'true' : 'false' }}"
 								aria-describedby="last_name_error"
 							>
 							@error('last_name')
@@ -316,7 +318,7 @@
 								required
 								maxlength="150"
 								autocomplete="email"
-								aria-invalid="@error('email') true @else false @enderror"
+								aria-invalid="{{ $errors->has('email') ? 'true' : 'false' }}"
 								aria-describedby="email_error"
 							>
 							@error('email')
@@ -341,7 +343,7 @@
 								maxlength="13"
 								autocomplete="tel"
 								placeholder="09171234567 or +639171234567"
-								aria-invalid="@error('phone') true @else false @enderror"
+								aria-invalid="{{ $errors->has('phone') ? 'true' : 'false' }}"
 								aria-describedby="phone_help phone_error"
 							>
 							<div class="helper-text mt-1" id="phone_help">Use 11-digit local format (09...) or +63 format.</div>
@@ -371,15 +373,15 @@
 								name="birthdate"
 								value="{{ old('birthdate') }}"
 								required
-								max="{{ now()->format('Y-m-d') }}"
+								max="{{ now()->subYears((int) config('privacy.minimum_age', 18))->format('Y-m-d') }}"
 								autocomplete="bday"
-								aria-invalid="@error('birthdate') true @else false @enderror"
+								aria-invalid="{{ $errors->has('birthdate') ? 'true' : 'false' }}"
 								aria-describedby="birthdate_error"
 							>
 							@error('birthdate')
 							<div class="invalid-feedback" id="birthdate_error">{{ $message }}</div>
 							@else
-							<div class="invalid-feedback" id="birthdate_error">Please provide a valid date of birth.</div>
+							<div class="invalid-feedback" id="birthdate_error">You must be at least {{ config('privacy.minimum_age') }} years old.</div>
 							@enderror
 						</div>
 
@@ -390,7 +392,7 @@
 								id="gender"
 								name="gender"
 								required
-								aria-invalid="@error('gender') true @else false @enderror"
+								aria-invalid="{{ $errors->has('gender') ? 'true' : 'false' }}"
 								aria-describedby="gender_error"
 							>
 								<option value="" disabled {{ old('gender') ? '' : 'selected' }}>Select gender</option>
@@ -413,7 +415,7 @@
 								id="blood_type"
 								name="blood_type"
 								required
-								aria-invalid="@error('blood_type') true @else false @enderror"
+								aria-invalid="{{ $errors->has('blood_type') ? 'true' : 'false' }}"
 								aria-describedby="blood_type_error"
 							>
 								<option value="" disabled {{ old('blood_type') ? '' : 'selected' }}>Select blood type</option>
@@ -441,7 +443,7 @@
 								required
 								maxlength="150"
 								autocomplete="street-address"
-								aria-invalid="@error('street_address') true @else false @enderror"
+								aria-invalid="{{ $errors->has('street_address') ? 'true' : 'false' }}"
 								aria-describedby="street_address_error"
 							>
 							@error('street_address')
@@ -462,7 +464,7 @@
 								required
 								maxlength="100"
 								autocomplete="address-level3"
-								aria-invalid="@error('barangay') true @else false @enderror"
+								aria-invalid="{{ $errors->has('barangay') ? 'true' : 'false' }}"
 								aria-describedby="barangay_error"
 							>
 							@error('barangay')
@@ -483,7 +485,7 @@
 								required
 								maxlength="100"
 								autocomplete="address-level2"
-								aria-invalid="@error('city') true @else false @enderror"
+								aria-invalid="{{ $errors->has('city') ? 'true' : 'false' }}"
 								aria-describedby="city_error"
 							>
 							@error('city')
@@ -504,7 +506,7 @@
 								required
 								maxlength="100"
 								autocomplete="address-level1"
-								aria-invalid="@error('province') true @else false @enderror"
+								aria-invalid="{{ $errors->has('province') ? 'true' : 'false' }}"
 								aria-describedby="province_error"
 							>
 							@error('province')
@@ -535,7 +537,7 @@
 									required
 									minlength="8"
 									autocomplete="new-password"
-									aria-invalid="@error('password') true @else false @enderror"
+									aria-invalid="{{ $errors->has('password') ? 'true' : 'false' }}"
 									aria-describedby="password_help password_error"
 								>
 								<button class="btn btn-outline-secondary" type="button" id="togglePassword" aria-label="Show password" aria-controls="password">
@@ -572,32 +574,7 @@
 						</div>
 					</div>
 
-					<div class="agreement-box mb-4">
-						<div class="form-check">
-							<input
-								class="form-check-input @error('terms') is-invalid @enderror"
-								type="checkbox"
-								value="1"
-								id="terms"
-								name="terms"
-								{{ old('terms') ? 'checked' : '' }}
-								required
-								aria-invalid="@error('terms') true @else false @enderror"
-								aria-describedby="terms_error"
-							>
-							<label class="form-check-label" for="terms">
-								I agree to the
-								<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#termsModal">Terms of Service</a>
-								and
-								<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#privacyModal">Privacy Policy</a>.
-							</label>
-							@error('terms')
-							<div class="invalid-feedback d-block" id="terms_error">{{ $message }}</div>
-							@else
-							<div class="invalid-feedback" id="terms_error">You must agree before continuing.</div>
-							@enderror
-						</div>
-					</div>
+					<x-privacy-acknowledgment purpose="registration" />
 
 					<div class="step-actions">
 						<button type="button" class="btn btn-outline-secondary" data-prev-step="2">Back</button>
@@ -616,7 +593,7 @@
 	</section>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="{{ asset('vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 <script>
 	document.addEventListener('DOMContentLoaded', function () {
 		'use strict';
@@ -658,7 +635,7 @@
 				return ['birthdate', 'gender', 'blood_type', 'street_address', 'barangay', 'city', 'province'];
 			}
 
-			return ['password', 'password_confirmation', 'terms'];
+			return ['password', 'password_confirmation', 'privacy_acknowledged', 'purpose_accepted'];
 		}
 
 		function getFieldElement(name) {
@@ -1153,7 +1130,7 @@
 				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 			</div>
 			<div class="modal-body">
-				<p class="text-secondary">Please replace this placeholder with your official Terms of Service.</p>
+				<p class="text-secondary">Read the current <a href="{{ route('terms') }}">Terms and Conditions</a>.</p>
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -1171,7 +1148,7 @@
 				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 			</div>
 			<div class="modal-body">
-				<p class="text-secondary">Please replace this placeholder with your official Privacy Policy.</p>
+				<p class="text-secondary">Read the current <a href="{{ route('privacy') }}">Privacy Policy</a>.</p>
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -1179,5 +1156,6 @@
 		</div>
 	</div>
 </div>
+    <x-privacy-controls />
 </body>
 </html>

@@ -7,12 +7,7 @@
 	<meta name="csrf-token" content="{{ csrf_token() }}">
 	<title>Admin Login Page | eDonate</title>
 	<x-edonate-favicon />
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
-		rel="stylesheet">
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
-		integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+	<link rel="stylesheet" href="{{ asset('vendor/bootstrap/bootstrap.min.css') }}">
 	<style>
 		:root {
 			--color-bg-from: #750000;
@@ -532,10 +527,12 @@
 			}
 		}
 	</style>
+    <x-privacy-assets />
 </head>
 
 <body>
-	<main class="page" role="main">
+<a class="ed-skip-link" href="#main-content">Skip to main content</a>
+	<main id="main-content" tabindex="-1" class="page" role="main">
 		<div class="login-card">
 			<section class="card__left" aria-label="eDonate branding">
 				<div class="card__left__logo">
@@ -639,7 +636,7 @@
 						</svg>
 						<span id="adminGoogleSignInLabel">Continue with Google</span>
 					</button>
-					<p class="form__google-help">Google may ask you to confirm this sign-in on your phone.</p>
+					<p class="form__google-help">Select once to enable Google, then again to choose your account. Google receives connection information and provides your verified identity. Password sign-in remains available.</p>
 					<p class="form__google-status" id="adminGoogleSignInStatus" role="status" aria-live="polite"></p>
 				@endif
 			</section>
@@ -650,14 +647,11 @@
 	@include('admin._two_factor_challenge_modal')
 	<x-password-toggle-script />
 
-	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
-		integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
-		crossorigin="anonymous"></script>
+	<script src="{{ asset('vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 	@stack('admin_scripts')
 
 	@if (config('services.firebase.admin_google_login_enabled', true))
-		<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-		<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+		<script src="{{ asset('js/google-signin-loader.js') }}"></script>
 		<script>
 			(function () {
 				const button = document.getElementById('adminGoogleSignInBtn');
@@ -684,21 +678,13 @@
 					}
 				}
 
-				if (!hasConfig || typeof firebase === 'undefined') {
+				if (!hasConfig) {
 					button.disabled = true;
 					setStatus('Google sign-in is not configured for this environment.');
 					return;
 				}
 
-				try {
-					if (!firebase.apps.length) {
-						firebase.initializeApp(firebaseConfig);
-					}
-				} catch (error) {
-					button.disabled = true;
-					setStatus('Google sign-in could not be initialized.');
-					return;
-				}
+				let googleReady = false;
 
 				button.addEventListener('click', async function () {
 					button.disabled = true;
@@ -707,6 +693,12 @@
 					setStatus('');
 
 					try {
+						if (!googleReady) {
+							await window.eDonateGoogle.prepare(firebaseConfig);
+							googleReady = true;
+							setStatus('Google is ready. Select Continue with Google again to choose your account.');
+							return;
+						}
 						const provider = new firebase.auth.GoogleAuthProvider();
 						provider.setCustomParameters({ prompt: 'select_account' });
 						const result = await firebase.auth().signInWithPopup(provider);
@@ -738,7 +730,7 @@
 						window.location.assign(data.redirect_url || @json(route('admin.login')));
 					} catch (error) {
 						setStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
-						if (firebase.auth && firebase.auth().currentUser) {
+						if (window.firebase?.auth && firebase.auth().currentUser) {
 							await firebase.auth().signOut().catch(function () {});
 						}
 					} finally {
@@ -749,6 +741,7 @@
 			})();
 		</script>
 	@endif
+    <x-privacy-controls />
 </body>
 
 </html>

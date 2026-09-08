@@ -17,7 +17,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-VyQkHHV8.css",
+    "file": "assets/app-CCOC-LTE.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",
@@ -32,7 +32,7 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-BuG9aa18.js",
+    "file": "assets/app-DMsN-rLE.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true

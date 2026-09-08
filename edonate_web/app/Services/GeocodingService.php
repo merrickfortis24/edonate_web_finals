@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Location;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -11,12 +12,23 @@ class GeocodingService
 {
     public function geocodeAddress(string $address): ?array
     {
+        if (! config('privacy.geocoding_enabled') || ! app(PrivacyConsent::class)->readyForCollection()) {
+            return null;
+        }
         $address = trim($address);
         if ($address === '') {
             return null;
         }
 
         try {
+            $cacheKey = 'geocoding:area:'.hash('sha256', $address);
+            if (Cache::has($cacheKey)) {
+                return Cache::get($cacheKey);
+            }
+            // One provider request per second across this application's workers.
+            if (! Cache::add('geocoding:provider-request', true, 2)) {
+                return null;
+            }
             $response = Http::withHeaders([
                 'User-Agent' => $this->userAgent(),
             ])
@@ -52,14 +64,17 @@ class GeocodingService
                 return null;
             }
 
-            return [
+            $coordinates = [
                 'latitude' => (float) $lat,
                 'longitude' => (float) $lng,
             ];
+            Cache::put($cacheKey, $coordinates, now()->addDays(30));
+
+            return $coordinates;
         } catch (Throwable $exception) {
             Log::warning('Geocoding request failed.', [
                 'provider' => 'nominatim',
-                'error' => $exception->getMessage(),
+                'type' => $exception::class,
             ]);
 
             return null;
@@ -68,11 +83,7 @@ class GeocodingService
 
     public function geocodeLocation(Location $location): ?array
     {
-        $primary = $this->geocodeAddress($this->fullAddress($location));
-        if ($primary !== null) {
-            return $primary;
-        }
-
+        // Never send a donor's street address to the public geocoding provider.
         return $this->geocodeAddress($this->areaAddress($location));
     }
 

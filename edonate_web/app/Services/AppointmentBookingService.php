@@ -30,6 +30,10 @@ class AppointmentBookingService
             $messages[] = 'Your donor login account must be verified before booking an appointment.';
         }
 
+        if (! $this->donorMeetsMinimumAge($donor)) {
+            $messages[] = 'Add a valid birthdate showing that you are at least '.config('privacy.minimum_age', 18).' years old before booking an appointment.';
+        }
+
         if (! $this->donorIdentityVerified($donor)) {
             $messages[] = 'Please complete identity verification before booking a donation appointment.';
         }
@@ -309,6 +313,25 @@ class AppointmentBookingService
             ->first(['is_verified']);
 
         return ! $row || (int) ($row->is_verified ?? 0) === 1;
+    }
+
+    private function donorMeetsMinimumAge(Donor $donor): bool
+    {
+        if (! Schema::hasColumn('donors', 'birthdate')) {
+            return true;
+        }
+
+        $birthdate = $donor->getAttribute('birthdate');
+        if ($birthdate === null || trim((string) $birthdate) === '') {
+            return false;
+        }
+
+        try {
+            return Carbon::parse($birthdate)
+                ->lte(Carbon::today()->subYears((int) config('privacy.minimum_age', 18)));
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     private function donorIdentityVerified(Donor $donor): bool

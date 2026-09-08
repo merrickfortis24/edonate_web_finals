@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureAdminAuthenticated;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Models\Donor;
+use App\Services\AppointmentBookingService;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +19,8 @@ class Phase6EventAppointmentTest extends TestCase
         parent::setUp();
 
         $this->buildSchema();
+        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
+        (require database_path('migrations/2026_09_08_000000_create_privacy_receipts_table.php'))->up();
     }
 
     public function test_admin_can_create_valid_donation_event(): void
@@ -91,7 +95,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->createEligibility($donorId, ['status' => 'eligible']);
         $eventId = $this->createEvent();
 
-        $response = $this->withSession($this->donorSession($donorId))->post('/appointments/book', [
+        $response = $this->withSession($this->donorSession($donorId))->post('/appointments/book', [...$this->privacyAcknowledgment(),
             'event_id' => $eventId,
             'appointment_time' => '09:30',
             'appointment_date' => '2099-01-01',
@@ -107,6 +111,22 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertSame('confirmed', (string) $appointment->status);
     }
 
+    public function test_underage_donor_is_not_ready_to_book_an_appointment(): void
+    {
+        $donorId = $this->createDonor([
+            'birthdate' => now()->subYears(18)->addDay()->toDateString(),
+            'verification_status' => 'verified',
+        ]);
+        $this->createDonorAuthentication($donorId);
+        $this->createEligibility($donorId, ['status' => 'eligible']);
+
+        $readiness = app(AppointmentBookingService::class)
+            ->bookingReadiness(Donor::query()->findOrFail($donorId));
+
+        $this->assertFalse($readiness['allowed']);
+        $this->assertStringContainsString('at least 18 years old', implode(' ', $readiness['messages']));
+    }
+
     public function test_unverified_or_ineligible_donor_cannot_book(): void
     {
         $eventId = $this->createEvent();
@@ -115,7 +135,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->createEligibility($unverifiedDonorId, ['status' => 'eligible']);
 
         $this->withSession($this->donorSession($unverifiedDonorId))
-            ->post('/appointments/book', ['event_id' => $eventId, 'appointment_time' => '09:00'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
             ->assertSessionHasErrors('event_id');
 
         $ineligibleDonorId = $this->createDonor(['verification_status' => 'verified']);
@@ -123,7 +143,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->createEligibility($ineligibleDonorId, ['status' => 'not_eligible']);
 
         $this->withSession($this->donorSession($ineligibleDonorId))
-            ->post('/appointments/book', ['event_id' => $eventId, 'appointment_time' => '09:00'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
             ->assertSessionHasErrors('event_id');
     }
 
@@ -138,7 +158,7 @@ class Phase6EventAppointmentTest extends TestCase
         $eventId = $this->createEvent(['event_date' => Carbon::today()->addDay()->toDateString()]);
 
         $this->withSession($this->donorSession($donorId))
-            ->post('/appointments/book', ['event_id' => $eventId, 'appointment_time' => '09:00'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
             ->assertSessionHasErrors('event_id');
     }
 
@@ -149,27 +169,27 @@ class Phase6EventAppointmentTest extends TestCase
         foreach (['closed', 'cancelled'] as $status) {
             $eventId = $this->createEvent(['status' => $status]);
             $this->withSession($this->donorSession($donorId))
-                ->post('/appointments/book', ['event_id' => $eventId, 'appointment_time' => '09:00'])
+                ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
                 ->assertSessionHasErrors('event_id');
         }
 
         $pastEventId = $this->createEvent(['event_date' => Carbon::yesterday()->toDateString()]);
         $this->withSession($this->donorSession($donorId))
-            ->post('/appointments/book', ['event_id' => $pastEventId, 'appointment_time' => '09:00'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $pastEventId, 'appointment_time' => '09:00'])
             ->assertSessionHasErrors('event_id');
 
         $fullEventId = $this->createEvent(['max_capacity' => 1]);
         $this->createAppointment($this->createBookableDonor(), $fullEventId, ['status' => 'confirmed']);
         $this->withSession($this->donorSession($donorId))
-            ->post('/appointments/book', ['event_id' => $fullEventId, 'appointment_time' => '09:00'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $fullEventId, 'appointment_time' => '09:00'])
             ->assertSessionHasErrors('event_id');
 
         $duplicateEventId = $this->createEvent();
         $this->withSession($this->donorSession($donorId))
-            ->post('/appointments/book', ['event_id' => $duplicateEventId, 'appointment_time' => '09:00'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $duplicateEventId, 'appointment_time' => '09:00'])
             ->assertRedirect();
         $this->withSession($this->donorSession($donorId))
-            ->post('/appointments/book', ['event_id' => $duplicateEventId, 'appointment_time' => '09:30'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $duplicateEventId, 'appointment_time' => '09:30'])
             ->assertSessionHasErrors('event_id');
     }
 
@@ -180,7 +200,7 @@ class Phase6EventAppointmentTest extends TestCase
         $secondDonorId = $this->createBookableDonor();
 
         $this->withSession($this->donorSession($firstDonorId))
-            ->post('/appointments/book', ['event_id' => $eventId, 'appointment_time' => '09:00'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
             ->assertRedirect();
 
         $appointmentId = (int) DB::table('appointments')->where('donor_id', $firstDonorId)->value('appointment_id');
@@ -189,7 +209,7 @@ class Phase6EventAppointmentTest extends TestCase
             ->assertRedirect();
 
         $this->withSession($this->donorSession($secondDonorId))
-            ->post('/appointments/book', ['event_id' => $eventId, 'appointment_time' => '09:30'])
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:30'])
             ->assertRedirect();
 
         $this->assertSame(1, DB::table('appointments')->where('event_id', $eventId)->where('status', 'confirmed')->count());
@@ -374,6 +394,7 @@ class Phase6EventAppointmentTest extends TestCase
         return (int) DB::table('donors')->insertGetId(array_merge([
             'first_name' => 'Test',
             'last_name' => 'Donor',
+            'birthdate' => now()->subYears(25)->toDateString(),
             'verification_status' => 'unverified',
             'date_registered' => now(),
         ], $overrides), 'donor_id');

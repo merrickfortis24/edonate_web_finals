@@ -15,6 +15,13 @@ self.addEventListener('activate', function (event) {
     event.waitUntil(self.clients.claim());
 });
 
+function localUrl(value, fallback) {
+    try {
+        var url = new URL(value || fallback, self.location.origin);
+        return url.origin === self.location.origin && /^https?:$/.test(url.protocol) ? url.href : fallback;
+    } catch (error) { return fallback; }
+}
+
 self.addEventListener('push', function (event) {
     var payload = {};
 
@@ -30,13 +37,13 @@ self.addEventListener('push', function (event) {
     var title = payload.title || 'eDonate Security Alert';
     var options = {
         body: payload.body || 'Open this notification to approve your eDonate sign-in.',
-        icon: payload.icon || '/images/edonate-icon.png',
-        badge: payload.badge || '/images/edonate-icon.png',
+        icon: '/images/edonate-icon.png',
+        badge: '/images/edonate-icon.png',
         tag: payload.tag || 'edonate-admin-mfa',
         renotify: true,
         requireInteraction: true,
         data: {
-            url: data.url || payload.url || '/',
+            url: localUrl(data.url || payload.url, '/'),
             type: data.type || payload.type || 'admin_mfa_number_match'
         }
     };
@@ -48,7 +55,7 @@ self.addEventListener('notificationclick', function (event) {
     event.notification.close();
 
     var notificationData = event.notification.data || {};
-    var targetUrl = notificationData.url;
+    var targetUrl = localUrl(notificationData.url, '/');
     if (!targetUrl) {
         return;
     }

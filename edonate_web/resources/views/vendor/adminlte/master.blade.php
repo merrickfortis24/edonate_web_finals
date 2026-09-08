@@ -88,8 +88,10 @@
     @stack('css')
     @yield('css')
     @pluginStyles
+    <x-privacy-assets />
 </head>
 <body class="{{ $bodyClasses }}">
+<a class="ed-skip-link" href="#main-content">Skip to main content</a>
     @include('adminlte::partials.preloader')
 
     @include('adminlte::partials.impersonation-banner')
@@ -98,7 +100,7 @@
         @include('adminlte::partials.navbar')
         @include('adminlte::partials.sidebar')
 
-        <main class="app-main">
+        <main id="main-content" tabindex="-1" class="app-main">
             @hasSection('content_header')
                 <div class="app-content-header {{ config('adminlte.classes_content_header') }}">
                     <div class="container-fluid">
@@ -164,5 +166,6 @@
             });
         });
     </script>
+    <x-privacy-controls />
 </body>
 </html>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ChatMessage;
+use App\Services\PrivacyConsent;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
@@ -35,13 +36,19 @@ class ChatbotController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if (! config('privacy.ai_enabled')) {
+            return $this->respond(['message' => 'The assistant is disabled pending the operator’s privacy review.'], 503);
+        }
+        if (! app(PrivacyConsent::class)->choices($request)['ai']) {
+            return $this->respond(['message' => 'Enable the optional AI assistant in Privacy choices before sending a message.'], 403);
+        }
         $validated = $request->validate([
             'session_id' => ['required', 'uuid'],
             'message' => ['required', 'string', 'max:'.config('chatbot.max_message_length')],
         ]);
 
         // Keep the key server-side and support Laravel's cached configuration.
-        $apiKey = trim((string) config('chatbot.api_key', env('GEMINI_API_KEY', '')));
+        $apiKey = trim((string) config('chatbot.api_key', ''));
         $model = (string) config('chatbot.model');
         if ($apiKey === '' || ! preg_match('/\Agemini-[a-z0-9.-]+\z/', $model)) {
             return $this->respond(['message' => 'The assistant is not available yet. Please try again later.'], 503);
@@ -63,58 +70,50 @@ class ChatbotController extends Controller
                         ], 422);
                     }
 
-                    // Commit a complete exchange, or roll back this new user message on failure.
-                    return DB::transaction(function () use ($sessionId, $message, $apiKey, $model): JsonResponse {
-                        ChatMessage::create([
-                            'session_id' => $sessionId,
-                            'role' => 'user',
-                            'message' => $message,
-                        ]);
+                    // Keep network latency outside SQL transactions. The cache lock
+                    // still serializes sends/deletion for this conversation.
+                    $contents = $history
+                        ->map(fn (ChatMessage $row): array => [
+                            'role' => $row->role,
+                            'parts' => [['text' => $row->message]],
+                        ])->all();
+                    $contents[] = ['role' => 'user', 'parts' => [['text' => $message]]];
 
-                        // Include every stored turn, including the user message just saved.
-                        $contents = $this->historyQuery($sessionId)->get()
-                            ->map(fn (ChatMessage $row): array => [
-                                'role' => $row->role,
-                                'parts' => [['text' => $row->message]],
-                            ])->all();
+                    $response = Http::acceptJson()
+                        ->withHeaders(['x-goog-api-key' => $apiKey])
+                        ->connectTimeout(5)
+                        ->timeout((int) config('chatbot.timeout_seconds'))
+                        ->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent", [
+                            'contents' => $contents,
+                            // The Gemini REST endpoint expects snake_case here.
+                            'system_instruction' => [
+                                'parts' => [['text' => config('chatbot.system_instruction')]],
+                            ],
+                            'generationConfig' => [
+                                'maxOutputTokens' => (int) config('chatbot.max_output_tokens'),
+                            ],
+                        ])->throw();
 
-                        $response = Http::acceptJson()
-                            ->withHeaders(['x-goog-api-key' => $apiKey])
-                            ->connectTimeout(5)
-                            ->timeout((int) config('chatbot.timeout_seconds'))
-                            ->post("https://generativelanguage.googleapis.com/v1beta/models/{$model}:generateContent", [
-                                'contents' => $contents,
-                                // The Gemini REST endpoint expects snake_case here.
-                                'system_instruction' => [
-                                    'parts' => [['text' => config('chatbot.system_instruction')]],
-                                ],
-                                'generationConfig' => [
-                                    'maxOutputTokens' => (int) config('chatbot.max_output_tokens'),
-                                ],
-                            ])->throw();
+                    $reply = trim(collect($response->json('candidates.0.content.parts', []))
+                        ->filter(fn ($part): bool => is_array($part)
+                            && is_string($part['text'] ?? null)
+                            && ! ($part['thought'] ?? false))
+                        ->pluck('text')->implode("\n"));
 
-                        $reply = trim(collect($response->json('candidates.0.content.parts', []))
-                            ->filter(fn ($part): bool => is_array($part)
-                                && is_string($part['text'] ?? null)
-                                && ! ($part['thought'] ?? false))
-                            ->pluck('text')->implode("\n"));
+                    if ($reply === '' || ! in_array(
+                        $response->json('candidates.0.finishReason'),
+                        ['STOP', 'MAX_TOKENS'],
+                        true
+                    )) {
+                        throw new UnexpectedValueException('No usable assistant response.');
+                    }
 
-                        if ($reply === '' || ! in_array(
-                            $response->json('candidates.0.finishReason'),
-                            ['STOP', 'MAX_TOKENS'],
-                            true
-                        )) {
-                            throw new UnexpectedValueException('No usable assistant response.');
-                        }
-
-                        ChatMessage::create([
-                            'session_id' => $sessionId,
-                            'role' => 'model',
-                            'message' => $reply,
-                        ]);
-
-                        return $this->respond(['reply' => $reply]);
+                    DB::transaction(function () use ($sessionId, $message, $reply): void {
+                        ChatMessage::create(['session_id' => $sessionId, 'role' => 'user', 'message' => $message]);
+                        ChatMessage::create(['session_id' => $sessionId, 'role' => 'model', 'message' => $reply]);
                     });
+
+                    return $this->respond(['reply' => $reply]);
                 });
 
             return $result ?: $this->respond([
@@ -134,9 +133,6 @@ class ChatbotController extends Controller
             ]);
 
             $message = match ($status) {
-                400 => 'Gemini rejected the request. Check the selected model and try again.',
-                401, 403 => 'The Gemini API key was rejected. Check GEMINI_API_KEY and try again.',
-                404 => 'The configured Gemini model was not found. Check GEMINI_MODEL and try again.',
                 429 => 'The Gemini usage limit has been reached. Please try again later.',
                 default => 'The assistant is temporarily unavailable. Please try again later.',
             };
@@ -155,6 +151,20 @@ class ChatbotController extends Controller
     {
         // A client UUID alone is not authorization. Bind it to the browser's Laravel session.
         return hash('sha256', $request->session()->getId().'|'.strtolower($clientSessionId));
+    }
+
+    public function destroy(Request $request): JsonResponse
+    {
+        $data = $request->validate(['session_id' => ['required', 'uuid']]);
+        $key = $this->conversationKey($request, $data['session_id']);
+        $result = Cache::lock('chatbot:'.$key, (int) config('chatbot.timeout_seconds') + 30)
+            ->get(function () use ($key): JsonResponse {
+                ChatMessage::where('session_id', $key)->delete();
+
+                return $this->respond(['message' => 'This conversation has been deleted from eDonate. Provider retention may still apply.']);
+            });
+
+        return $result ?: $this->respond(['message' => 'Wait for the current reply before deleting this conversation.'], 409);
     }
 
     private function historyQuery(string $sessionId): Builder

@@ -10,6 +10,7 @@ use App\Models\DonorAuthentication;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
 use App\Services\GeocodingService;
+use App\Services\PrivacyConsent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -131,6 +132,9 @@ class DonorSignupController extends Controller
      */
     public function confirmOtp(Request $request): JsonResponse
     {
+        if (! app(PrivacyConsent::class)->readyForCollection()) {
+            return response()->json(['message' => 'Registration is temporarily disabled pending the operator’s privacy review.'], 503);
+        }
         $request->validate([
             'otp' => ['required', 'digits:6'],
         ]);
@@ -171,6 +175,12 @@ class DonorSignupController extends Controller
         }
 
         $payload = $pending['payload'];
+        if (($payload['privacy_version'] ?? null) !== config('privacy.version')
+            || ! in_array($payload['privacy_acknowledged'] ?? null, [true, 1, '1', 'yes', 'on', 'true'], true)
+            || ! in_array($payload['purpose_accepted'] ?? null, [true, 1, '1', 'yes', 'on', 'true'], true)) {
+            session()->forget('pending_donor_signup');
+            return response()->json(['message' => 'Review the current privacy notice and resubmit the registration form.'], 422);
+        }
 
         try {
             $payload['password'] = Crypt::decryptString((string) $payload['password']);
@@ -192,7 +202,13 @@ class DonorSignupController extends Controller
         }
 
         try {
-            $donor = $this->persistDonorRegistration($payload);
+            $donor = DB::transaction(function () use ($payload, $request) {
+                $donor = $this->persistDonorRegistration($payload);
+                app(PrivacyConsent::class)->record($request, 'registration', [
+                    'terms' => true, 'privacy_notice' => true, 'purpose' => true, 'email_verified' => true,
+                ], 'donor:'.$donor->donor_id);
+                return $donor;
+            });
 
             // Mark the authentication record as verified since OTP was confirmed.
             DonorAuthentication::query()

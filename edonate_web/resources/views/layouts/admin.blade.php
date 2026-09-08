@@ -8,6 +8,8 @@
     $headerSubtitle = trim($__env->yieldContent('header_subtitle'));
     $headerActions = trim($__env->yieldContent('header_actions'));
     $adminPageData = trim($__env->yieldContent('admin_page_data'));
+    // JSON script blocks still terminate on an HTML closing script tag.
+    $adminPageData = str_replace(['<', '>', '&'], ['\\u003C', '\\u003E', '\\u0026'], $adminPageData);
 @endphp
 
 @section('content_header')
@@ -52,6 +54,6 @@
             }
         })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="{{ asset('vendor/sweetalert2/sweetalert2.all.min.js') }}"></script>
     @stack('admin_scripts')
 @endpush

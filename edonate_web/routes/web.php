@@ -16,7 +16,6 @@ use App\Http\Controllers\EligibilityController;
 use App\Http\Controllers\QuestionController;
 use App\Http\Controllers\SocialAuthController;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -107,6 +106,9 @@ Route::post('/logout', [DonorLoginController::class, 'destroy'])->name('donor.lo
 
 Route::view('/terms-of-service', 'donor.terms')->name('terms');
 Route::view('/privacy-policy', 'donor.privacy')->name('privacy');
+Route::view('/cookie-policy', 'legal.cookies')->name('cookies');
+Route::post('/privacy/preferences', [\App\Http\Controllers\PrivacyController::class, 'update'])
+    ->middleware('throttle:public-api')->name('privacy.preferences');
 
 Route::get('/admin/login', [AdminAuthController::class, 'create'])->name('admin.login');
 Route::post('/admin/login', [AdminAuthController::class, 'store'])
@@ -449,46 +451,4 @@ Route::middleware('admin.auth')->group(function () {
     });
 });
 
-// Webhook for Auto-Deployment
-
-Route::post('/git-deploy-token-734866278', function (Request $request) {
-    $secret = (string) config('services.deployment.webhook_secret', '');
-    $signature = (string) $request->header('X-Hub-Signature-256', '');
-    $expected = $secret !== ''
-        ? 'sha256='.hash_hmac('sha256', $request->getContent(), $secret)
-        : '';
-
-    if ($secret === '' || $signature === '' || ! hash_equals($expected, $signature)) {
-        Log::warning('Rejected unsigned or invalid deployment webhook.', [
-            'ip' => $request->ip(),
-        ]);
-
-        return response()->json(['message' => 'Unauthorized.'], 401);
-    }
-
-    Log::info('GitHub Webhook received. Starting deployment.');
-
-    // Ito ang mga command na tatakbo sa server mo
-    // Gagamit tayo ng full path para iwas error
-    $commands = [
-        'git pull origin main',
-        'composer install --no-dev --optimize-autoloader',
-        'php artisan migrate --force',
-        'php artisan optimize',
-    ];
-
-    $output = [];
-    foreach ($commands as $command) {
-        $result = shell_exec('cd '.base_path()." && $command 2>&1");
-        $output[] = [
-            'command' => $command,
-            'successful' => is_string($result) && ! str_contains(strtolower($result), 'error'),
-        ];
-    }
-
-    Log::info('Deployment finished.', $output);
-
-    return response()->json([
-        'message' => 'Deployment completed.',
-    ]);
-});
+// Deploy through the authenticated SSH workflow, never shell commands in a web request.

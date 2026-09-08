@@ -24,13 +24,17 @@ class ChatbotTest extends TestCase
         (require database_path('migrations/2026_09_03_000000_create_chat_messages_table.php'))->up();
 
         config([
+            'privacy.ai_enabled' => true,
             'chatbot.api_key' => 'test-gemini-key',
             'chatbot.model' => 'gemini-3.6-flash',
             'chatbot.requests_per_minute' => 10,
             'chatbot.requests_per_hour' => 100,
         ]);
         Http::preventStrayRequests();
-        $this->withSession(['chat_test_browser' => 'first']);
+        $this->withSession(['chat_test_browser' => 'first', 'admin_id' => 1, 'admin_role' => 'admin']);
+        $this->withCookie(config('privacy.cookie'), json_encode([
+            'version' => config('privacy.version'), 'expires_at' => now()->addHour()->timestamp, 'ai' => true,
+        ]));
         $this->withCredentials()->withCookie(
             config('session.cookie'),
             $this->app['session']->getId()
@@ -76,7 +80,7 @@ class ChatbotTest extends TestCase
             ->assertOk();
 
         $this->app['session']->invalidate();
-        $this->withSession(['chat_test_browser' => 'second']);
+        $this->withSession(['chat_test_browser' => 'second', 'admin_id' => 1, 'admin_role' => 'admin']);
         $this->withCookie(config('session.cookie'), $this->app['session']->getId());
         $this->getJson(route('chat.history', ['session_id' => $sessionId]))
             ->assertOk()->assertExactJson(['messages' => []]);
@@ -211,8 +215,50 @@ class ChatbotTest extends TestCase
         $this->assertSame(1, substr_count($html, 'id="edonate-chatbot"'));
         $this->assertStringContainsString('data-endpoint="/api/chat"', $html);
         $this->assertStringContainsString('aria-label="Send message"', $html);
-        $this->assertStringContainsString('body.textContent = text;', $html);
+        $this->assertStringContainsString('js/chatbot-widget.js', $html);
+        $this->assertStringContainsString('body.textContent = text;', file_get_contents(public_path('js/chatbot-widget.js')));
         $this->assertStringNotContainsString('test-gemini-key', $html);
+    }
+
+    public function test_no_consent_or_disabled_feature_never_sends_a_provider_request(): void
+    {
+        Http::fake();
+        $this->withCookie(config('privacy.cookie'), '');
+        $this->postJson(route('chat.store'), ['session_id' => (string) Str::uuid(), 'message' => 'Hello.'])->assertForbidden();
+        config(['privacy.ai_enabled' => false]);
+        $this->postJson(route('chat.store'), ['session_id' => (string) Str::uuid(), 'message' => 'Hello.'])->assertStatus(503);
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('chat_messages', 0);
+    }
+
+    public function test_chat_cannot_be_used_by_an_unauthenticated_visitor(): void
+    {
+        Http::fake();
+        $this->withSession(['admin_id' => null, 'admin_role' => null]);
+        $this->postJson(route('chat.store'), ['session_id' => (string) Str::uuid(), 'message' => 'Hello.'])
+            ->assertRedirect(route('admin.login'));
+        Http::assertNothingSent();
+    }
+
+    public function test_forged_unencrypted_consent_cookie_cannot_authorize_ai(): void
+    {
+        Http::fake();
+        $this->withUnencryptedCookie(config('privacy.cookie'), json_encode([
+            'version' => config('privacy.version'), 'expires_at' => now()->addHour()->timestamp, 'ai' => true,
+        ]));
+        $this->postJson(route('chat.store'), ['session_id' => (string) Str::uuid(), 'message' => 'Hello.'])->assertForbidden();
+        Http::assertNothingSent();
+    }
+
+    public function test_own_conversation_can_be_erased_after_consent_withdrawal(): void
+    {
+        $sessionId = (string) Str::uuid();
+        Http::fake([self::ENDPOINT => Http::response($this->answer('Hello.'))]);
+        $this->postJson(route('chat.store'), ['session_id' => $sessionId, 'message' => 'Hello.'])->assertOk();
+        $this->withCookie(config('privacy.cookie'), '');
+        $this->deleteJson(route('chat.destroy'), ['session_id' => $sessionId])->assertOk();
+        $this->assertDatabaseCount('chat_messages', 0);
+        Http::assertSentCount(1);
     }
 
     private function answer(string $text): array

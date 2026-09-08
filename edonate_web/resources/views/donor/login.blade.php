@@ -5,7 +5,7 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="csrf-token" content="{{ csrf_token() }}">
 	<title>Donor Login | Blood Donation Management System</title>
-	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+	<link rel="stylesheet" href="{{ asset('vendor/bootstrap/bootstrap.min.css') }}">
 	<style>
 		:root {
 			--health-red: #c62f3c;
@@ -250,8 +250,10 @@
 			background: var(--line-soft);
 		}
 	</style>
+    <x-privacy-assets />
 </head>
 <body>
+<a class="ed-skip-link" href="#main-content">Skip to main content</a>
 <header class="hero-header">
 	<div class="hero-logo">
 		<span class="hero-logo__image">
@@ -261,7 +263,7 @@
 	</div>
 </header>
 
-<main class="login-wrapper">
+<main id="main-content" tabindex="-1" class="login-wrapper">
 	<section class="card-overlay" aria-labelledby="login-title">
 		<div class="text-center mb-2">
 			<h1 class="welcome-title" id="login-title">Welcome Back</h1>
@@ -338,7 +340,7 @@
 					<button type="submit" class="btn btn-signin">Sign In</button>
 				</div>
 
-				<div class="terms-box mb-3">
+                <div class="terms-box mb-3">
 					<div class="form-check">
 						<input
 							class="form-check-input @error('terms') is-invalid @enderror"
@@ -351,9 +353,9 @@
 						>
 						<label class="form-check-label" for="terms">
 							I agree to the
-							<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#termsModal">Terms of Service</a>
+							<a href="{{ route('terms') }}" target="_blank" rel="noopener noreferrer">Terms and Conditions (opens a new tab)</a>
 							and
-							<a href="#" role="button" class="btn btn-link p-0 align-baseline link-danger" data-bs-toggle="modal" data-bs-target="#privacyModal">Privacy Policy</a>.
+							<a href="{{ route('privacy') }}" target="_blank" rel="noopener noreferrer">Privacy Policy (opens a new tab)</a>.
 						</label>
 						@error('terms')
 							<div class="invalid-feedback d-block">{{ $message }}</div>
@@ -361,12 +363,20 @@
 							<div class="invalid-feedback">You must agree before continuing.</div>
 						@enderror
 					</div>
+					<div class="form-check mt-2">
+						<input class="form-check-input" type="checkbox" value="1" id="googleAgeConfirmed" name="google_age_confirmed">
+						<label class="form-check-label" for="googleAgeConfirmed">
+							If Google creates a new eDonate account, I confirm that I am at least {{ config('privacy.minimum_age') }} years old.
+						</label>
+					</div>
 				</div>
 
 				<div class="separator mb-3">or</div>
 
 				<div class="d-grid mb-3">
-					<button type="button" id="googleSignInBtn" class="btn btn-google">Sign in with Google</button>
+					<p>Using Google shares connection information with Google and returns your verified account identity to eDonate. Password sign-in remains available.</p>
+<button type="button" id="googleSignInBtn" class="btn btn-google" aria-describedby="googlePrivacyStatus">Sign in with Google</button>
+<p id="googlePrivacyStatus" role="status">First select this button to enable Google, then select it again to choose your account.</p>
 				</div>
 
 			<div class="d-flex align-items-center justify-content-between mb-2">
@@ -399,9 +409,8 @@
 		</div>
 	</section>
 </main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="{{ asset('vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+<script src="{{ asset('js/google-signin-loader.js') }}"></script>
 <script>
 	(function () {
 		const config = {
@@ -414,6 +423,7 @@
 		const hasConfig = config.apiKey && config.authDomain && config.projectId && config.appId;
 		const button = document.getElementById('googleSignInBtn');
 		const termsCheckbox = document.getElementById('terms');
+		const ageCheckbox = document.getElementById('googleAgeConfirmed');
 		if (!button) {
 			return;
 		}
@@ -424,9 +434,7 @@
 			return;
 		}
 
-		if (!firebase.apps.length) {
-			firebase.initializeApp(config);
-		}
+		let googleReady = false;
 
 		button.addEventListener('click', async function () {
 			if (!termsCheckbox || !termsCheckbox.checked) {
@@ -439,6 +447,12 @@
 			button.textContent = 'Signing in...';
 
 			try {
+				if (!googleReady) {
+					await window.eDonateGoogle.prepare(config);
+					googleReady = true;
+					document.getElementById('googlePrivacyStatus').textContent = 'Google is ready. Select Sign in with Google again to choose your account.';
+					return;
+				}
 				const provider = new firebase.auth.GoogleAuthProvider();
 				const result = await firebase.auth().signInWithPopup(provider);
 				const user = result.user;
@@ -462,6 +476,8 @@
 						email: user.email,
 						full_name: user.displayName,
 						terms_accepted: true,
+						age_confirmed: Boolean(ageCheckbox && ageCheckbox.checked),
+                        privacy_version: @json(config('privacy.version')),
 					}),
 				});
 
@@ -490,7 +506,7 @@
 				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 			</div>
 			<div class="modal-body">
-				<p class="text-secondary">Please replace this placeholder with your official Terms of Service.</p>
+				<p class="text-secondary">Read the current <a href="{{ route('terms') }}">Terms and Conditions</a>.</p>
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -508,7 +524,7 @@
 				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
 			</div>
 			<div class="modal-body">
-				<p class="text-secondary">Please replace this placeholder with your official Privacy Policy.</p>
+				<p class="text-secondary">Read the current <a href="{{ route('privacy') }}">Privacy Policy</a>.</p>
 			</div>
 			<div class="modal-footer">
 				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -516,5 +532,6 @@
 		</div>
 	</div>
 </div>
+    <x-privacy-controls />
 </body>
 </html>

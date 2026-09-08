@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Donor;
 use App\Models\DonorAuthentication;
 use App\Services\FirebaseGoogleIdentityService;
+use App\Services\PrivacyConsent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Throwable;
 
 class SocialAuthController extends Controller
@@ -30,6 +32,8 @@ class SocialAuthController extends Controller
             'email' => ['required', 'string', 'email', 'max:150'],
             'full_name' => ['nullable', 'string', 'max:200'],
             'terms_accepted' => ['accepted'],
+            'age_confirmed' => ['nullable', 'boolean'],
+            'privacy_version' => ['required', Rule::in([config('privacy.version')])],
         ]);
 
         try {
@@ -64,7 +68,8 @@ class SocialAuthController extends Controller
                 ], 401);
             }
 
-            $displayName = trim($validated['full_name'] ?: $tokenName);
+            // Profile names also come from the verified identity, not client assertions.
+            $displayName = trim($tokenName);
             [$firstName, $lastName] = $this->splitName($displayName);
 
             $auth = DonorAuthentication::query()
@@ -81,9 +86,27 @@ class SocialAuthController extends Controller
             }
 
             if (!$auth) {
+                if (! $request->boolean('age_confirmed')) {
+                    return response()->json([
+                        'message' => 'You must confirm that you are at least '.config('privacy.minimum_age', 18).' years old to create an account.',
+                        'errors' => [
+                            'age_confirmed' => ['Age confirmation is required for a new Google account.'],
+                        ],
+                    ], 422);
+                }
+
+                if (! app(PrivacyConsent::class)->readyForCollection()) {
+                    return response()->json(['message' => 'New account creation is disabled pending the operator’s privacy review. Existing accounts can still sign in.'], 503);
+                }
                 DB::beginTransaction();
 
                 try {
+                    app(PrivacyConsent::class)->record($request, 'google-account', [
+                        'terms' => true,
+                        'privacy_notice' => true,
+                        'requested_google_signin' => true,
+                        'minimum_age_confirmed' => (int) config('privacy.minimum_age', 18),
+                    ], 'google:'.$tokenUid);
                     $donor = Donor::query()->create([
                         'first_name' => $firstName,
                         'last_name' => $lastName,

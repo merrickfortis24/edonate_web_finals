@@ -61,6 +61,7 @@
 
                 <form method="POST" action="{{ route('donor.verification.store') }}" enctype="multipart/form-data" class="grid gap-4">
                     @csrf
+                    <x-privacy-acknowledgment purpose="identity-verification" />
 
                     <div>
                         <label for="document_type" class="mb-1 block text-sm font-semibold text-slate-700">Document Type</label>

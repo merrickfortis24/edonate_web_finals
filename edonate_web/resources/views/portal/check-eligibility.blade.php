@@ -42,7 +42,7 @@
         <x-dashboard.card title="Current Eligibility" subtitle="Based on your latest screening record.">
             <div class="grid gap-4">
                 <div class="rounded-xl p-4 ring-1 {{ $statusClass }}">
-                    <p class="text-xs font-semibold uppercase tracking-[0.12em] opacity-80">Status</p>
+                    <p class="text-xs font-semibold uppercase tracking-[0.12em]">Status</p>
                     <p class="mt-1 text-xl font-bold">{{ $statusLabel }}</p>
                 </div>
 
@@ -88,6 +88,7 @@
             @else
                 <form method="POST" action="{{ route('donor.check-eligibility.submit') }}" class="space-y-5">
                     @csrf
+                    <x-privacy-acknowledgment purpose="health-screening" />
 
                     @foreach ($screeningQuestions as $question)
                         @php
@@ -103,11 +104,11 @@
 
                             <div class="mt-3 flex flex-wrap gap-3">
                                 <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-red-300">
-                                    <input type="radio" name="answers[{{ $questionId }}]" value="yes" class="h-4 w-4 border-slate-300 text-red-700 focus:ring-red-700" @checked($oldAnswer === 'yes')>
+                                    <input type="radio" name="answers[{{ $questionId }}]" value="yes" required class="h-4 w-4 border-slate-300 text-red-700 focus:ring-red-700" @checked($oldAnswer === 'yes')>
                                     Yes
                                 </label>
                                 <label class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-red-300">
-                                    <input type="radio" name="answers[{{ $questionId }}]" value="no" class="h-4 w-4 border-slate-300 text-red-700 focus:ring-red-700" @checked($oldAnswer === 'no')>
+                                    <input type="radio" name="answers[{{ $questionId }}]" value="no" required class="h-4 w-4 border-slate-300 text-red-700 focus:ring-red-700" @checked($oldAnswer === 'no')>
                                     No
                                 </label>
                             </div>

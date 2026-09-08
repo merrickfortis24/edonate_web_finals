@@ -56,6 +56,9 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton('firebase.database', function ($app) {
+            if (! config('privacy.firebase_sync_enabled') || ! $app->make(\App\Services\PrivacyConsent::class)->readyForCollection()) {
+                return null;
+            }
             $databaseUrl = (string) config('services.firebase.database_url', '');
             if (empty($databaseUrl)) {
                 return null;

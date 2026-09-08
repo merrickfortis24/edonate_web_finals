@@ -23,6 +23,7 @@
 
     <form method="POST" action="{{ route('donor.book-appointment.store') }}" class="space-y-6 p-4 sm:p-6 lg:p-8">
         @csrf
+        <x-privacy-acknowledgment purpose="appointment" />
 
         @if (! $bookingAllowed)
             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -65,6 +66,7 @@
                                 <input
                                     type="radio"
                                     name="event_id"
+                                    required
                                     value="{{ $eventId }}"
                                     class="mt-1 h-4 w-4 border-slate-300 text-red-700 focus:ring-red-500"
                                     data-start-time="{{ substr((string) ($event['start_time'] ?? ''), 0, 5) }}"
@@ -99,7 +101,7 @@
 
             <div>
                 <label for="appointment_time" class="mb-1.5 block text-sm font-semibold text-slate-700">Appointment Time</label>
-                <select id="appointment_time" name="appointment_time" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ $bookingAllowed ? '' : 'disabled' }}></select>
+                <select id="appointment_time" name="appointment_time" required class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" {{ $bookingAllowed ? '' : 'disabled' }}></select>
             </div>
 
             <div class="pt-1">
@@ -115,7 +117,7 @@
     @if ($appointments->isEmpty())
         <p class="text-sm text-slate-600">No appointments found. Your future schedules will appear here.</p>
     @else
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto" role="region" aria-label="Upcoming appointments" tabindex="0">
             <table class="min-w-full text-left text-sm">
                 <thead>
                 <tr class="border-b border-slate-200 text-slate-500">
@@ -123,7 +125,7 @@
                     <th class="px-3 py-2 font-semibold">Date</th>
                     <th class="px-3 py-2 font-semibold">Time</th>
                     <th class="px-3 py-2 font-semibold">Status</th>
-                    <th class="px-3 py-2 font-semibold"></th>
+                    <th class="px-3 py-2 font-semibold">Actions</th>
                 </tr>
                 </thead>
                 <tbody>

@@ -43,6 +43,17 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringNotContainsString('card__left__icon', $adminLogin);
     }
 
+    public function test_embedded_admin_json_cannot_close_its_script_element(): void
+    {
+        $this->renderPageForRole('admin.unauthorized', 'admin', '/admin/users');
+        $attack = '</script><script>alert("test-only")</script>';
+        $html = view('admin.user_management', ['userManagementPayload' => ['test' => $attack]])->render();
+        $this->assertStringNotContainsString($attack, $html);
+        preg_match('/<script type="application\/json" id="adminPageData">(.*?)<\/script>/s', $html, $matches);
+        $payload = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame($attack, $payload['userManagement']['test']);
+    }
+
     public function test_staff_shell_hides_admin_only_navigation(): void
     {
         $html = $this->renderPageForRole('admin.unauthorized', 'staff', '/staff/dashboard');

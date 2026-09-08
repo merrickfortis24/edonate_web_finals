@@ -143,6 +143,15 @@ class DonorMatchingService
             $query->where('d.is_active', true);
         }
 
+        if (Schema::hasColumn('donors', 'birthdate')) {
+            $query->whereNotNull('d.birthdate')
+                ->whereDate(
+                    'd.birthdate',
+                    '<=',
+                    Carbon::today()->subYears((int) config('privacy.minimum_age', 18))->toDateString()
+                );
+        }
+
         return $query;
     }
 

@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'chat_message_days' => (int) env('EDONATE_CHAT_RETENTION_DAYS', 30),
     // Expired one-time codes can be removed because they cannot authenticate a user.
     'otp_expired' => true,
     'donor_reset_expired' => true,

@@ -1,0 +1,53 @@
+/* Shared first-party privacy controls and keyboard accessibility. */
+[hidden] { display: none !important; }
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid #111 !important;
+    outline-offset: 3px !important;
+    box-shadow: 0 0 0 3px #fff !important;
+}
+:where(input, select, textarea):not([type="hidden"]):not([type="checkbox"]):not([type="radio"]) { scroll-margin-block: 6rem; }
+.ed-skip-link { position: fixed; top: 8px; left: 8px; z-index: 10000; padding: 12px 18px; background: #fff; color: #111; border: 2px solid #111; transform: translateY(-200%); }
+.ed-skip-link:focus { transform: translateY(0); }
+.ed-legal-footer { margin: 1rem; padding: 1rem; background: #fff; color: #252525; font: 16px/1.5 system-ui, sans-serif; }
+.ed-legal-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 24px; align-items: center; }
+.ed-legal-footer a, .ed-data-consent a, .ed-privacy-panel a, .legal-page a { color: #8b1111; text-decoration: underline; text-underline-offset: .15em; }
+.ed-legal-footer button, .ed-privacy-actions button { font: inherit; cursor: pointer; min-height: 44px; padding: 8px 12px; background: #fff; color: #252525; border: 2px solid #666; border-radius: 6px; }
+.ed-privacy-panel { position: fixed; z-index: 1090; inset: auto 16px 16px auto; width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain; padding: 24px; border: 2px solid #666; border-radius: 12px; box-shadow: 0 6px 24px #0004; background: #fff; color: #252525; font: 16px/1.5 system-ui, sans-serif; }
+.ed-privacy-panel h2 { font: 700 22px/1.3 system-ui, sans-serif; margin: 0 0 12px; color: #252525; }
+.ed-privacy-panel p { margin: 12px 0; }
+.ed-privacy-panel fieldset { border: 1px solid #767676; padding: 12px; margin: 12px 0; }
+.ed-privacy-panel legend, .ed-data-consent legend { float: none; width: auto; padding: 0 5px; font: 700 16px/1.5 system-ui, sans-serif; }
+.ed-privacy-panel label, .ed-data-consent label { display: block; margin: 12px 0; }
+.ed-privacy-panel input, .ed-data-consent input[type="checkbox"] { appearance: auto; width: 18px; height: 18px; accent-color: #8b1111; vertical-align: middle; margin-right: 8px; }
+.ed-privacy-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.ed-privacy-actions button { flex: 1 1 180px; }
+.ed-privacy-actions button:hover, .ed-legal-footer button:hover { background: #eee; }
+.ed-data-consent { min-width: 0; margin: 16px 0; padding: 16px; border: 1px solid #767676; border-radius: 8px; background: #fff; color: #252525; font: 16px/1.5 system-ui, sans-serif; grid-column: 1 / -1; }
+.ed-data-consent p { font-size: 14px; margin: 8px 0 0; }
+.ed-consent-error, #ed-privacy-status { color: #9b1414; }
+.ed-consent-error:empty { display: none; }
+.legal-page { margin: 0; background: #f5f5f5; color: #252525; font: 17px/1.65 system-ui, sans-serif; }
+.legal-shell { max-width: 900px; margin: auto; padding: 24px; }
+.legal-page main { background: #fff; }
+.legal-page h1 { line-height: 1.2; }
+.legal-page section { margin-top: 32px; }
+.legal-page table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.legal-page th, .legal-page td { text-align: left; padding: 12px; border: 1px solid #767676; overflow-wrap: anywhere; }
+.legal-draft { background: #fff3cd; color: #5c4200; padding: 16px; border-left: 4px solid #805b00; }
+/* Explicit contrast tokens; do not lower the opacity of small helper text. */
+:where(.app-main, .legal-page, .edonate-admin-page, .login-form, .signup-card) :is(.text-muted, .text-secondary, .text-body-secondary, .form-text, .helper-text) { color: #595959 !important; opacity: 1; }
+.app-sidebar .nav-header { color: #ffdddd !important; opacity: 1; }
+.form-control::placeholder { color: #595959; opacity: 1; }
+.form-control, .form-select { border-color: #767676; }
+.terms-box a { color: #0645ad; text-decoration: underline; }
+.form__social-divider span, .form__google-help { color: #595959 !important; }
+.stat-card__change--green, .panel__footer-btn--green { color: #146b12 !important; }
+.stat-card__change--gold { color: #705d00 !important; }
+.ed-form-error-summary { padding: 12px; margin: 12px 0; border: 2px solid #9b1414; background: #fff; color: #9b1414; }
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+@media (forced-colors: active) {
+    :focus-visible { outline: 3px solid Highlight !important; }
+    .ed-privacy-panel, .ed-data-consent { border: 2px solid CanvasText; }
+}

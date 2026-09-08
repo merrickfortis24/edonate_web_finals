@@ -16,6 +16,8 @@ class Phase11BloodRequestTest extends TestCase
     {
         parent::setUp();
         $this->buildSchema();
+        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
+        (require database_path('migrations/2026_09_08_000000_create_privacy_receipts_table.php'))->up();
     }
 
     public function test_authorized_admin_can_create_blood_request_and_inventory_is_not_deducted(): void
@@ -158,7 +160,7 @@ class Phase11BloodRequestTest extends TestCase
         $this->assertSame(1, DB::table('blood_request_donors')->where('request_id', $requestId)->where('donor_id', $donorId)->count());
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'blood_request_invitation')->count());
 
-        $this->withSession($this->donorSession($donorId))->post("/blood-requests/{$requestId}/interested")
+        $this->withSession($this->donorSession($donorId))->post("/blood-requests/{$requestId}/interested", $this->privacyAcknowledgment())
             ->assertRedirect(route('donor.blood-requests.show', $requestId));
 
         $this->assertDatabaseHas('blood_request_donors', [
@@ -186,11 +188,11 @@ class Phase11BloodRequestTest extends TestCase
         ]);
 
         $this->withSession($this->donorSession($other))->get("/blood-requests/{$requestId}")->assertNotFound();
-        $this->withSession($this->donorSession($other))->post("/blood-requests/{$requestId}/interested")->assertSessionHasErrors('request');
+        $this->withSession($this->donorSession($other))->post("/blood-requests/{$requestId}/interested", $this->privacyAcknowledgment())->assertSessionHasErrors('request');
 
         $this->withSession($this->adminSession())->patchJson("/admin/blood-requests/{$requestId}/cancel", ['reason' => 'Facility cancelled'])
             ->assertOk();
-        $this->withSession($this->donorSession($notified))->post("/blood-requests/{$requestId}/interested")->assertSessionHasErrors('request');
+        $this->withSession($this->donorSession($notified))->post("/blood-requests/{$requestId}/interested", $this->privacyAcknowledgment())->assertSessionHasErrors('request');
 
         $this->assertDatabaseHas('blood_request_donors', [
             'request_id' => $requestId,

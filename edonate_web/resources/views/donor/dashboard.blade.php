@@ -6,12 +6,14 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Donor Dashboard | eDonate</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <x-privacy-assets />
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-800 antialiased">
+<a class="ed-skip-link" href="#main-content">Skip to main content</a>
 <div class="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(220,38,38,0.16),_transparent_44%),radial-gradient(circle_at_top_right,_rgba(248,113,113,0.10),_transparent_34%)]">
     <x-dashboard.nav :links="$navLinks" :current="$activeNav" :userName="$user->first_name" />
 
-    <main class="mx-auto w-full max-w-7xl px-4 pb-8 pt-5 sm:px-6 lg:pl-72 lg:pr-8 lg:pt-8">
+    <main id="main-content" tabindex="-1" class="mx-auto w-full max-w-7xl px-4 pb-8 pt-5 sm:px-6 lg:pl-72 lg:pr-8 lg:pt-8">
         <section class="rounded-2xl bg-gradient-to-r from-red-950 via-red-800 to-red-600 p-5 text-white shadow-xl sm:p-6">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div class="max-w-2xl">
@@ -159,13 +161,15 @@
 
                         <form method="POST" action="{{ route('donor.profile.complete') }}" class="grid gap-4 sm:grid-cols-2">
                             @csrf
+                    <x-privacy-acknowledgment purpose="donor-profile" />
                             <div>
                                 <label for="phone" class="mb-1 block text-sm font-semibold text-slate-700">Phone Number</label>
                                 <input type="tel" id="phone" name="phone" value="{{ old('phone', $donor->contact_number) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
                             </div>
                             <div>
                                 <label for="birthdate" class="mb-1 block text-sm font-semibold text-slate-700">Birthdate</label>
-                                <input type="date" id="birthdate" name="birthdate" value="{{ old('birthdate', $donor->birthdate) }}" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                                <input type="date" id="birthdate" name="birthdate" value="{{ old('birthdate', $donor->birthdate) }}" max="{{ now()->subYears((int) config('privacy.minimum_age', 18))->format('Y-m-d') }}" aria-describedby="birthdate_help" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
+                                <p id="birthdate_help" class="mt-1 text-xs text-slate-600">You must be at least {{ config('privacy.minimum_age') }} years old.</p>
                             </div>
                             <div>
                                 <label for="gender" class="mb-1 block text-sm font-semibold text-slate-700">Gender</label>
@@ -265,5 +269,6 @@
 
 </div>
 <x-chatbot-widget />
+    <x-privacy-controls />
 </body>
 </html>
