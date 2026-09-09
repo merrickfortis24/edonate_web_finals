@@ -16,6 +16,7 @@ use App\Services\DonationProcessingService;
 use App\Services\FacilityBloodInventoryService;
 use App\Services\FirebaseGoogleIdentityService;
 use App\Services\GeocodingService;
+use App\Services\PrivacyLegalSettings;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
@@ -2529,7 +2530,7 @@ class AdminAuthController extends BaseController
     /**
      * Display settings page.
      */
-    public function settings(Request $request)
+    public function settings(Request $request, PrivacyLegalSettings $privacyLegalSettings)
     {
         $adminId = (int) $request->session()->get('admin_id', 0);
         $columns = ['admin_id'];
@@ -2554,8 +2555,10 @@ class AdminAuthController extends BaseController
         $currentAccountTwoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
         $globalSecuritySettings = $this->getGlobalSecuritySettings();
         $adminNotificationPreference = $this->getAdminNotificationPreference($adminId);
+        $privacyLegalValues = $privacyLegalSettings->values();
 
         return view('admin.settings', [
+            'privacyLegalSettings' => $privacyLegalValues,
             'settingsPayload' => [
                 'page' => 'settings',
                 'settings' => [
@@ -2575,6 +2578,9 @@ class AdminAuthController extends BaseController
                         'updateSecurityUrl' => route('admin.settings.security.update'),
                         'currentAccountTwoFactorEnabled' => $currentAccountTwoFactorEnabled,
                     ],
+                    'privacyLegal' => array_merge($privacyLegalValues, [
+                        'updateUrl' => route('admin.settings.privacy-legal.update'),
+                    ]),
                 ],
             ],
         ]);
@@ -2629,6 +2635,61 @@ class AdminAuthController extends BaseController
             'general' => array_merge($this->getSystemSettingsValues(), [
                 'updateUrl' => route('admin.settings.general.update'),
             ]),
+        ]);
+    }
+
+    /**
+     * Persist public policy overrides and cookie-banner presentation settings.
+     */
+    public function updatePrivacyLegalSettings(
+        Request $request,
+        PrivacyLegalSettings $privacyLegalSettings
+    ): JsonResponse|RedirectResponse
+    {
+        $validated = $request->validate([
+            'privacy_policy' => ['nullable', 'string', 'min:50', 'max:' . PrivacyLegalSettings::POLICY_MAX_LENGTH],
+            'terms_and_conditions' => ['nullable', 'string', 'min:50', 'max:' . PrivacyLegalSettings::POLICY_MAX_LENGTH],
+            'cookie_policy' => ['nullable', 'string', 'min:50', 'max:' . PrivacyLegalSettings::POLICY_MAX_LENGTH],
+            'enforce_cookie_consent_banner' => ['required', 'boolean'],
+        ]);
+
+        if (! $privacyLegalSettings->storageAvailable()) {
+            $message = 'Privacy and legal settings storage is not available. Please run migrations first.';
+
+            return $request->expectsJson()
+                ? response()->json(['message' => $message], 409)
+                : redirect()->route('admin.settings')->with('error', $message);
+        }
+
+        $saved = $privacyLegalSettings->save($validated);
+
+        $this->logAdminSettingsAudit(
+            $request,
+            'update',
+            'Updated privacy and legal settings.',
+            [
+                'custom_privacy_policy' => $saved['privacyPolicy'] !== null,
+                'custom_terms_and_conditions' => $saved['termsAndConditions'] !== null,
+                'custom_cookie_policy' => $saved['cookiePolicy'] !== null,
+                'enforce_cookie_consent_banner' => $saved['enforceCookieConsentBanner'],
+            ]
+        );
+
+        $message = 'Privacy and legal settings saved successfully.';
+        $responsePayload = array_merge($saved, [
+            'updateUrl' => route('admin.settings.privacy-legal.update'),
+        ]);
+
+        if (! $request->expectsJson()) {
+            return redirect()
+                ->route('admin.settings')
+                ->with('success', $message)
+                ->with('settings_tab', 'privacy-legal');
+        }
+
+        return response()->json([
+            'message' => $message,
+            'privacyLegal' => $responsePayload,
         ]);
     }
 

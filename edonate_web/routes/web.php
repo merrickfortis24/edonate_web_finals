@@ -413,6 +413,9 @@ Route::middleware('admin.auth')->group(function () {
         Route::post('/admin/settings/security', [AdminAuthController::class, 'updateSecuritySettings'])
             ->middleware('throttle:admin-write')
             ->name('admin.settings.security.update');
+        Route::post('/admin/settings/privacy-legal', [AdminAuthController::class, 'updatePrivacyLegalSettings'])
+            ->middleware('throttle:admin-write')
+            ->name('admin.settings.privacy-legal.update');
 
         // Eligibility Management Routes
         Route::prefix('admin/eligibility')->group(function () {

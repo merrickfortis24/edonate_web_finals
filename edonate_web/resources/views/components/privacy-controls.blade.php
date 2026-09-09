@@ -1,4 +1,5 @@
 @once
+@php($enforceCookieConsentBanner = app(\App\Services\PrivacyLegalSettings::class)->enforceCookieConsentBanner())
 <footer class="ed-legal-footer">
     <nav aria-label="Legal information">
         <a href="{{ route('privacy') }}">Privacy Policy</a>
@@ -8,7 +9,9 @@
     </nav>
 </footer>
 <section id="ed-privacy-panel" class="ed-privacy-panel" aria-labelledby="ed-privacy-title" hidden
-         data-endpoint="{{ route('privacy.preferences', [], false) }}" data-version="{{ config('privacy.version') }}">
+         data-endpoint="{{ route('privacy.preferences', [], false) }}"
+         data-version="{{ config('privacy.version') }}"
+         data-enforce-banner="{{ $enforceCookieConsentBanner ? 'true' : 'false' }}">
     <h2 id="ed-privacy-title" tabindex="-1">Your privacy choices</h2>
     <p>Essential cookies keep sign-in and security working. Optional services stay off until you choose them. Rejecting them does not prevent you from using your account.</p>
     <form id="ed-privacy-form">

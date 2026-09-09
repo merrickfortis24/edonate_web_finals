@@ -11,6 +11,7 @@
     const form = panel?.querySelector('form');
     const status = document.getElementById('ed-privacy-status');
     const categories = ['analytics', 'maps', 'ai'];
+    const enforceBanner = panel?.dataset.enforceBanner !== 'false';
 
     function allowed(category) {
         return categories.includes(category) && choices[category] === true && choices.expires_at * 1000 > Date.now();
@@ -111,7 +112,7 @@
         setTimeout(() => location.reload(), Math.min(Math.max(0, choices.expires_at * 1000 - Date.now()), 2147483647));
     }
     announce();
-    if (!choices.decided && panel) {
+    if (!choices.decided && panel && enforceBanner) {
         // Show without moving focus away from the page's initial reading position.
         panel.hidden = false;
         document.querySelectorAll('[data-privacy-open]').forEach(el => el.setAttribute('aria-expanded', 'true'));

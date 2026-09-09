@@ -1,6 +1,15 @@
 @extends('layouts.legal')
 @section('title', 'Terms and Conditions')
 @section('policy')
+@php($customTerms = app(\App\Services\PrivacyLegalSettings::class)->policy('terms'))
+@if ($customTerms !== null)
+<section aria-labelledby="published-terms-heading">
+<h2 id="published-terms-heading">Published Terms and Conditions</h2>
+@foreach (preg_split('/\n{2,}/u', $customTerms, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $paragraph)
+<p>{!! nl2br(e(trim($paragraph))) !!}</p>
+@endforeach
+</section>
+@else
 <section><h2>The service</h2><p>These terms govern use of the eDonate web application operated by the organization named below. eDonate coordinates registration, screening, verification, appointments, blood requests and donation records. Review the Privacy Policy for data processing and the Cookie Policy for browser choices. These terms do not replace clinical consent, medical information or healthcare-provider policies.</p></section>
 <section><h2>Eligibility and accounts</h2><p>You must be at least {{ config('privacy.minimum_age') }} years old to create an account or donate blood through eDonate. Minor and guardian-managed accounts are not offered. Provide accurate information and update it when it changes. Use your own account and protect passwords, authenticator secrets and recovery codes. Report suspected unauthorized access. Do not share staff accounts or bypass restrictions. An account or an automated screening result does not medically approve a donation.</p></section>
 <section><h2>Appointments, requests and screening</h2><p>Bookings, availability figures and blood-request responses are subject to review and may change. Follow the facility's confirmation, preparation and cancellation instructions. Clinical staff make the final suitability decision. This website is not an emergency service; contact appropriate emergency or healthcare services when urgent assistance is needed.</p><p>Review your submission and its specific processing notice. Ask for assistance or human review using the contact below. Staff must act within their assigned duties and permissions.</p></section>
@@ -9,4 +18,5 @@
 <section><h2>Availability, suspension and closure</h2><p>The operator may perform maintenance and take proportionate action to protect people and system integrity. Where appropriate it should explain restrictions and provide a review mechanism. Contact the operator to close an account or discuss retained records. Closure does not automatically erase records subject to lawful retention duties.</p></section>
 <section><h2>Responsibility, territory and disputes</h2><p>The service is offered only in the Philippines. The operator must exercise the care required by Philippine law. Nothing here excludes non-excludable consumer, privacy or other statutory rights, or liability that cannot lawfully be limited. No guarantee of uninterrupted service, donation eligibility or inventory availability is made. Any additional liability limitation, governing-law clause or dispute mechanism requires review for the actual operator and users before publication.</p><p>You may raise a concern with the operator without losing your right to contact a regulator or seek a remedy. Those rights cannot be waived as a condition of using the service.</p></section>
 <section><h2>Updates and assistance</h2><p>Material changes will be versioned and communicated appropriately. Continued use is not consent to a new optional processing purpose. Ask the operator for accessible assistance or another available format of these terms.</p></section>
+@endif
 @endsection

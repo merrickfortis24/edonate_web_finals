@@ -1,6 +1,15 @@
 @extends('layouts.legal')
 @section('title', 'Privacy Policy')
 @section('policy')
+@php($customPrivacyPolicy = app(\App\Services\PrivacyLegalSettings::class)->policy('privacy'))
+@if ($customPrivacyPolicy !== null)
+<section aria-labelledby="published-privacy-policy-heading">
+<h2 id="published-privacy-policy-heading">Published Privacy Policy</h2>
+@foreach (preg_split('/\n{2,}/u', $customPrivacyPolicy, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $paragraph)
+<p>{!! nl2br(e(trim($paragraph))) !!}</p>
+@endforeach
+</section>
+@else
 <section><h2>Scope and information we collect</h2>
 <p>eDonate is offered only in the Philippines and supports donor registration, screening, identity verification, appointments, blood requests and donation records. This notice covers the web application. The organization identified below determines the purposes of processing. Health facilities may have separate responsibilities and notices.</p>
 <p>Depending on the service you request, we collect names, email addresses, phone numbers, birthdate, gender, address, blood type, screening answers, identity documents, appointment details, donation history and blood-request responses. Health information, age and government-issued identifiers can be sensitive personal information under Philippine law. Staff accounts contain identity, role and authentication information.</p>
@@ -23,4 +32,5 @@
 <p>Automated screening assists staff and is not a diagnosis or a guarantee of donation eligibility. Request human review if you disagree with the result. Account creation and blood donation are limited to people who are at least {{ config('privacy.minimum_age') }} years old. eDonate does not offer minor or guardian-managed accounts. If the operator learns that a minor created an account, the account and associated information must be reviewed and handled under the approved deletion and legal-retention procedure. Gemini has separate age restrictions, and this integration is not offered in the donor portal.</p>
 <p>The service is offered only in the Philippines. The operator must reassess applicable law before actively offering or monitoring the service elsewhere. If the GDPR later applies through establishment, offering services or monitoring within its territorial scope, the operator must document Article 6 and, for health data, Article 9 grounds, transfer safeguards, applicable response deadlines, supervisory authority contacts and any required representative or DPO. Worldwide access alone does not determine GDPR applicability.</p></section>
 <section><h2>Changes and accessible assistance</h2><p>Material changes receive a new version and require fresh consent when processing purposes change in a way that requires it. Contact the operator for an accessible format, help exercising rights or an alternative to an inaccessible online step.</p></section>
+@endif
 @endsection

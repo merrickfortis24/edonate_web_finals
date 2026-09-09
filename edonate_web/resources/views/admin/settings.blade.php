@@ -37,19 +37,43 @@
 			'updateSecurityUrl' => route('admin.settings.security.update'),
 			'currentAccountTwoFactorEnabled' => false,
 		],
+		'privacyLegal' => [
+			'privacyPolicy' => null,
+			'termsAndConditions' => null,
+			'cookiePolicy' => null,
+			'enforceCookieConsentBanner' => true,
+			'updateUrl' => route('admin.settings.privacy-legal.update'),
+		],
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
+	@php
+		$errors = $errors ?? new \Illuminate\Support\ViewErrorBag();
+		$privacyLegalHasValidationErrors = $errors->hasAny([
+				'privacy_policy',
+				'terms_and_conditions',
+				'cookie_policy',
+				'enforce_cookie_consent_banner',
+			]);
+		$privacyLegalTabActive = session('settings_tab') === 'privacy-legal'
+			|| $privacyLegalHasValidationErrors;
+	@endphp
 	<div class="container-fluid px-0">
-		<div id="settingsAlertHost" class="mb-3" aria-live="polite"></div>
+		<div id="settingsAlertHost" class="mb-3" aria-live="polite">
+			@if (session('success'))
+				<div class="alert alert-success" role="status">{{ session('success') }}</div>
+			@elseif (session('error'))
+				<div class="alert alert-danger" role="alert">{{ session('error') }}</div>
+			@endif
+		</div>
 
 		<section class="card settings-shell border-0 shadow-sm" aria-label="Admin settings sections">
 			<div class="card-header bg-transparent border-bottom p-0">
 				<ul class="nav nav-tabs card-header-tabs settings-tabs flex-nowrap overflow-auto px-3 pt-3" id="settingsTabs" role="tablist">
 					<li class="nav-item" role="presentation">
-						<button class="nav-link active" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" type="button" role="tab" aria-controls="settings-general-pane" aria-selected="true">General</button>
+						<button class="nav-link{{ $privacyLegalTabActive ? '' : ' active' }}" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" type="button" role="tab" aria-controls="settings-general-pane" aria-selected="{{ $privacyLegalTabActive ? 'false' : 'true' }}">General</button>
 					</li>
 					<li class="nav-item" role="presentation">
 						<button class="nav-link" id="settings-account-tab" data-bs-toggle="tab" data-bs-target="#settings-account-pane" type="button" role="tab" aria-controls="settings-account-pane" aria-selected="false">Account</button>
@@ -60,12 +84,15 @@
 					<li class="nav-item" role="presentation">
 						<button class="nav-link" id="settings-security-tab" data-bs-toggle="tab" data-bs-target="#settings-security-pane" type="button" role="tab" aria-controls="settings-security-pane" aria-selected="false">Security</button>
 					</li>
+					<li class="nav-item" role="presentation">
+						<button class="nav-link{{ $privacyLegalTabActive ? ' active' : '' }}" id="settings-privacy-legal-tab" data-bs-toggle="tab" data-bs-target="#settings-privacy-legal-pane" type="button" role="tab" aria-controls="settings-privacy-legal-pane" aria-selected="{{ $privacyLegalTabActive ? 'true' : 'false' }}">Privacy &amp; Legal</button>
+					</li>
 				</ul>
 			</div>
 
 			<div class="card-body p-3 p-lg-4">
 				<div class="tab-content settings-tab-content" id="settingsTabsContent">
-					<div class="tab-pane fade show active" id="settings-general-pane" role="tabpanel" aria-labelledby="settings-general-tab" tabindex="0">
+					<div class="tab-pane fade{{ $privacyLegalTabActive ? '' : ' show active' }}" id="settings-general-pane" role="tabpanel" aria-labelledby="settings-general-tab" tabindex="0">
 						<article class="card settings-card border-0 shadow-none">
 							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
 								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
@@ -266,6 +293,121 @@
 							</div>
 						</article>
 					</div>
+
+					<div class="tab-pane fade{{ $privacyLegalTabActive ? ' show active' : '' }}" id="settings-privacy-legal-pane" role="tabpanel" aria-labelledby="settings-privacy-legal-tab" tabindex="0">
+						<article class="card settings-card border-0 shadow-none">
+							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
+								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
+									<i class="bi bi-file-earmark-lock fs-5"></i>
+								</span>
+								<div>
+									<h2 class="h5 mb-1 settings-card__title">Privacy &amp; Legal</h2>
+									<p class="small text-body-secondary mb-0 settings-card__subtitle">Manage the public compliance documents and cookie-consent prompt.</p>
+								</div>
+							</header>
+
+							<div class="card-body px-0 pb-0">
+								<div class="alert alert-info" role="note">
+									Policy overrides are published as plain text. Leave a policy blank to keep the reviewed built-in version.
+								</div>
+
+								<form
+									id="privacyLegalSettingsForm"
+									class="settings-form needs-validation"
+									action="{{ route('admin.settings.privacy-legal.update') }}"
+									method="POST"
+									novalidate
+								>
+									@csrf
+
+									<div class="mb-4">
+										<label class="form-label fw-semibold" for="settingsPrivacyPolicyInput">Privacy Policy</label>
+										<textarea
+											class="form-control @error('privacy_policy') is-invalid @enderror"
+											id="settingsPrivacyPolicyInput"
+											name="privacy_policy"
+											rows="10"
+											minlength="50"
+											maxlength="{{ \App\Services\PrivacyLegalSettings::POLICY_MAX_LENGTH }}"
+											aria-describedby="settingsPrivacyPolicyHelp settingsPrivacyPolicyError"
+											aria-invalid="{{ $errors->has('privacy_policy') ? 'true' : 'false' }}"
+										>{{ old('privacy_policy', $privacyLegalSettings['privacyPolicy'] ?? '') }}</textarea>
+										<div class="form-text" id="settingsPrivacyPolicyHelp">Enter at least 50 characters to publish an override, or leave this blank to use the built-in Privacy Policy.</div>
+										<div class="invalid-feedback" id="settingsPrivacyPolicyError">
+											@error('privacy_policy') {{ $message }} @else A policy override must contain at least 50 characters. @enderror
+										</div>
+									</div>
+
+									<div class="mb-4">
+										<label class="form-label fw-semibold" for="settingsTermsConditionsInput">Terms and Conditions</label>
+										<textarea
+											class="form-control @error('terms_and_conditions') is-invalid @enderror"
+											id="settingsTermsConditionsInput"
+											name="terms_and_conditions"
+											rows="10"
+											minlength="50"
+											maxlength="{{ \App\Services\PrivacyLegalSettings::POLICY_MAX_LENGTH }}"
+											aria-describedby="settingsTermsConditionsHelp settingsTermsConditionsError"
+											aria-invalid="{{ $errors->has('terms_and_conditions') ? 'true' : 'false' }}"
+										>{{ old('terms_and_conditions', $privacyLegalSettings['termsAndConditions'] ?? '') }}</textarea>
+										<div class="form-text" id="settingsTermsConditionsHelp">Enter at least 50 characters to publish an override, or leave this blank to use the built-in Terms and Conditions.</div>
+										<div class="invalid-feedback" id="settingsTermsConditionsError">
+											@error('terms_and_conditions') {{ $message }} @else A terms override must contain at least 50 characters. @enderror
+										</div>
+									</div>
+
+									<div class="mb-4">
+										<label class="form-label fw-semibold" for="settingsCookiePolicyInput">Cookie Policy</label>
+										<textarea
+											class="form-control @error('cookie_policy') is-invalid @enderror"
+											id="settingsCookiePolicyInput"
+											name="cookie_policy"
+											rows="10"
+											minlength="50"
+											maxlength="{{ \App\Services\PrivacyLegalSettings::POLICY_MAX_LENGTH }}"
+											aria-describedby="settingsCookiePolicyHelp settingsCookiePolicyError"
+											aria-invalid="{{ $errors->has('cookie_policy') ? 'true' : 'false' }}"
+										>{{ old('cookie_policy', $privacyLegalSettings['cookiePolicy'] ?? '') }}</textarea>
+										<div class="form-text" id="settingsCookiePolicyHelp">Enter at least 50 characters to publish an override, or leave this blank to use the built-in Cookie Policy.</div>
+										<div class="invalid-feedback" id="settingsCookiePolicyError">
+											@error('cookie_policy') {{ $message }} @else A cookie policy override must contain at least 50 characters. @enderror
+										</div>
+									</div>
+
+									<div class="settings-switch-item card border bg-body-tertiary p-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+										<div class="settings-switch-item__copy">
+											<label class="form-label fw-semibold mb-1" for="settingsCookieConsentBannerToggle">Enforce Explicit Cookie Consent Banner</label>
+											<p class="small text-body-secondary mb-0" id="settingsCookieConsentBannerHelp">Show the choices panel until a visitor makes an explicit choice. Optional services always remain blocked until consent is recorded.</p>
+										</div>
+										<div class="form-check form-switch flex-shrink-0">
+											<input type="hidden" name="enforce_cookie_consent_banner" value="0">
+											<input
+												class="form-check-input @error('enforce_cookie_consent_banner') is-invalid @enderror"
+												type="checkbox"
+												role="switch"
+												id="settingsCookieConsentBannerToggle"
+												name="enforce_cookie_consent_banner"
+												value="1"
+												aria-describedby="settingsCookieConsentBannerHelp{{ $errors->has('enforce_cookie_consent_banner') ? ' settingsCookieConsentBannerError' : '' }}"
+												aria-invalid="{{ $errors->has('enforce_cookie_consent_banner') ? 'true' : 'false' }}"
+												@checked((bool) old('enforce_cookie_consent_banner', $privacyLegalSettings['enforceCookieConsentBanner'] ?? true))
+											>
+										</div>
+									</div>
+
+									@error('enforce_cookie_consent_banner')
+										<div class="text-danger small mt-2" id="settingsCookieConsentBannerError" role="alert">{{ $message }}</div>
+									@enderror
+
+									<div class="settings-actions d-flex justify-content-end mt-4 pt-3 border-top">
+										<button class="btn settings-btn settings-btn--primary" id="savePrivacyLegalSettingsBtn" type="submit">
+											Save Privacy &amp; Legal Settings
+										</button>
+									</div>
+								</form>
+							</div>
+						</article>
+					</div>
 				</div>
 			</div>
 		</section>
@@ -317,7 +459,15 @@
 				updateSecurityUrl: '{{ route('admin.settings.security.update') }}',
 				currentAccountTwoFactorEnabled: false,
 			}, payload.security || {}),
+			privacyLegal: Object.assign({
+				privacyPolicy: '',
+				termsAndConditions: '',
+				cookiePolicy: '',
+				enforceCookieConsentBanner: true,
+				updateUrl: '{{ route('admin.settings.privacy-legal.update') }}',
+			}, payload.privacyLegal || {}),
 		};
+		var hasPrivacyLegalValidationErrors = {{ $privacyLegalHasValidationErrors ? 'true' : 'false' }};
 
 		var confirmModalElement = document.getElementById('settingsConfirmModal');
 		var confirmBody = document.getElementById('settingsConfirmModalBody');
@@ -330,11 +480,13 @@
 		var accountForm = document.getElementById('accountSettingsForm');
 		var notificationForm = document.getElementById('notificationSettingsForm');
 		var securityForm = document.getElementById('securitySettingsForm');
+		var privacyLegalForm = document.getElementById('privacyLegalSettingsForm');
 
 		var saveGeneralButton = document.getElementById('saveGeneralSettingsBtn');
 		var saveAccountButton = document.getElementById('saveAccountSettingsBtn');
 		var saveNotificationButton = document.getElementById('saveNotificationSettingsBtn');
 		var saveSecurityButton = document.getElementById('saveSecuritySettingsBtn');
+		var savePrivacyLegalButton = document.getElementById('savePrivacyLegalSettingsBtn');
 
 		var systemNameInput = document.getElementById('settingsSystemNameInput');
 		var systemEmailInput = document.getElementById('settingsSystemEmailInput');
@@ -351,10 +503,15 @@
 		var twoFactorToggle = document.getElementById('settingsTwoFactorToggle');
 		var sessionTimeoutSelect = document.getElementById('settingsSessionTimeoutSelect');
 		var twoFactorEnrollmentHint = document.getElementById('settingsTwoFactorEnrollmentHint');
+		var privacyPolicyInput = document.getElementById('settingsPrivacyPolicyInput');
+		var termsConditionsInput = document.getElementById('settingsTermsConditionsInput');
+		var cookiePolicyInput = document.getElementById('settingsCookiePolicyInput');
+		var cookieConsentBannerToggle = document.getElementById('settingsCookieConsentBannerToggle');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
 		var updateNotificationUrl = String(settingsData.notifications.updateUrl || '');
 		var updateGeneralUrl = String(settingsData.general.updateUrl || '');
 		var updateAccountUrl = String(settingsData.account.updateUrl || '');
+		var updatePrivacyLegalUrl = String(settingsData.privacyLegal.updateUrl || '');
 		var confirmModal = null;
 
 		function getConfirmModal() {
@@ -527,6 +684,21 @@
 			}
 			if (sessionTimeoutSelect) {
 				sessionTimeoutSelect.value = String(settingsData.security.sessionTimeout || '10');
+			}
+
+			if (!hasPrivacyLegalValidationErrors) {
+				if (privacyPolicyInput) {
+					privacyPolicyInput.value = String(settingsData.privacyLegal.privacyPolicy || '');
+				}
+				if (termsConditionsInput) {
+					termsConditionsInput.value = String(settingsData.privacyLegal.termsAndConditions || '');
+				}
+				if (cookiePolicyInput) {
+					cookiePolicyInput.value = String(settingsData.privacyLegal.cookiePolicy || '');
+				}
+				if (cookieConsentBannerToggle) {
+					cookieConsentBannerToggle.checked = !!settingsData.privacyLegal.enforceCookieConsentBanner;
+				}
 			}
 
 			renderTwoFactorEnrollmentHint();
@@ -779,6 +951,80 @@
 							setButtonLoading(saveSecurityButton, false);
 							showAlert('danger', error.message || 'Unable to save security settings.');
 						});
+				});
+			});
+		}
+
+		if (privacyLegalForm) {
+			privacyLegalForm.addEventListener('submit', function (event) {
+				event.preventDefault();
+				event.stopPropagation();
+
+				privacyLegalForm.classList.add('was-validated');
+				[privacyPolicyInput, termsConditionsInput, cookiePolicyInput].forEach(function (input) {
+					if (input) {
+						input.setAttribute('aria-invalid', String(!input.checkValidity()));
+					}
+				});
+				if (!privacyLegalForm.checkValidity()) {
+					var firstInvalidInput = privacyLegalForm.querySelector(':invalid');
+					if (firstInvalidInput) {
+						firstInvalidInput.focus();
+					}
+					return;
+				}
+
+				openConfirmModal('Privacy & Legal Settings', function () {
+					setButtonLoading(savePrivacyLegalButton, true);
+
+					if (!updatePrivacyLegalUrl) {
+						setButtonLoading(savePrivacyLegalButton, false);
+						showAlert('danger', 'Privacy and legal settings endpoint is not configured.');
+						return;
+					}
+
+					fetch(updatePrivacyLegalUrl, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-CSRF-TOKEN': csrfToken,
+							'X-Requested-With': 'XMLHttpRequest',
+						},
+						credentials: 'same-origin',
+						body: JSON.stringify({
+							privacy_policy: privacyPolicyInput.value.trim() || null,
+							terms_and_conditions: termsConditionsInput.value.trim() || null,
+							cookie_policy: cookiePolicyInput.value.trim() || null,
+							enforce_cookie_consent_banner: !!cookieConsentBannerToggle.checked,
+						}),
+					})
+						.then(parseApiResponse)
+						.then(function (responsePayload) {
+							if (responsePayload && responsePayload.privacyLegal) {
+								settingsData.privacyLegal = Object.assign(settingsData.privacyLegal, responsePayload.privacyLegal);
+								hasPrivacyLegalValidationErrors = false;
+								hydrateFromPayload();
+							}
+							privacyLegalForm.classList.remove('was-validated');
+							showAlert('success', String((responsePayload && responsePayload.message) || 'Privacy and legal settings saved successfully.'));
+						})
+						.catch(function (error) {
+							showAlert('danger', error.message || 'Unable to save privacy and legal settings.');
+						})
+						.finally(function () {
+							setButtonLoading(savePrivacyLegalButton, false);
+						});
+				});
+			});
+
+			[privacyPolicyInput, termsConditionsInput, cookiePolicyInput].forEach(function (input) {
+				if (!input) {
+					return;
+				}
+
+				input.addEventListener('input', function () {
+					input.setAttribute('aria-invalid', String(!input.checkValidity()));
 				});
 			});
 		}
