@@ -78,7 +78,14 @@ class DonationEventController extends Controller
 
         return response()->json([
             'data' => $paginator->getCollection()
-                ->map(fn (DonationEvent $event): array => $this->eventResponse($event))
+                ->map(function (DonationEvent $event): array {
+                    $payload = $this->eventResponse($event);
+                    $payload['actions_html'] = view('admin.partials.donation-event-actions', [
+                        'event' => $event,
+                    ])->render();
+
+                    return $payload;
+                })
                 ->values()
                 ->all(),
             'meta' => [

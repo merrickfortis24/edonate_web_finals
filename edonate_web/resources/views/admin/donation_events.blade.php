@@ -209,8 +209,24 @@
             document.getElementById('eventStatFull').textContent = formatNumber(stats.full || 0);
         }
 
+        function disposeActionTooltips() {
+            if (!window.bootstrap || !window.bootstrap.Tooltip) return;
+            tableBody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+                var tooltip = window.bootstrap.Tooltip.getInstance(element);
+                if (tooltip) tooltip.dispose();
+            });
+        }
+
+        function initializeActionTooltips() {
+            if (!window.bootstrap || !window.bootstrap.Tooltip) return;
+            tableBody.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (element) {
+                window.bootstrap.Tooltip.getOrCreateInstance(element);
+            });
+        }
+
         function renderRows(rows) {
             rowsById = {};
+            disposeActionTooltips();
             if (!Array.isArray(rows) || rows.length === 0) {
                 tableBody.innerHTML = '<tr><td colspan="7" class="text-muted">No donation events found.</td></tr>';
                 return;
@@ -230,16 +246,11 @@
                     + '<td><div class="fw-semibold">' + capacityLabel + '</div><div class="event-meta">' + escapeHtml(remainingLabel) + '</div></td>'
                     + '<td><span class="event-badge event-badge--' + escapeHtml(statusClass) + '">' + escapeHtml(statusClass === 'full' ? 'Full' : statusLabel(event.status)) + '</span></td>'
                     + '<td>' + escapeHtml(event.created_by || '-') + '</td>'
-                    + '<td><div class="event-actions">'
-                    + '<a class="event-action-btn text-decoration-none" href="' + escapeHtml(storeUrl.replace(/\/$/, '') + '/' + event.event_id) + '">Donors</a>'
-                    + '<button type="button" class="event-action-btn" data-action="edit">Edit</button>'
-                    + '<button type="button" class="event-action-btn" data-action="open">Open</button>'
-                    + '<button type="button" class="event-action-btn" data-action="close">Close</button>'
-                    + '<button type="button" class="event-action-btn" data-action="complete">Complete</button>'
-                    + '<button type="button" class="event-action-btn event-action-btn--danger" data-action="cancel">Cancel</button>'
-                    + '</div></td>'
+                    + '<td>' + String(event.actions_html || '') + '</td>'
                     + '</tr>';
             }).join('');
+
+            initializeActionTooltips();
         }
 
         function renderPagination(meta) {
@@ -262,6 +273,7 @@
 
         function loadEvents() {
             if (!listUrl) return;
+            disposeActionTooltips();
             tableBody.innerHTML = '<tr><td colspan="7" class="text-muted">Loading events...</td></tr>';
             fetch(requestUrl(), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (response) {

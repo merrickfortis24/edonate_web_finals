@@ -232,6 +232,50 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertDatabaseHas('appointments', ['appointment_id' => $completedAppointmentId, 'status' => 'completed']);
     }
 
+    public function test_event_data_uses_compact_status_appropriate_action_menus(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $this->createEvent(['title' => 'Open event', 'status' => 'open']);
+        $this->createEvent(['title' => 'Closed event', 'status' => 'closed']);
+        $this->createEvent(['title' => 'Cancelled event', 'status' => 'cancelled']);
+        $this->createEvent(['title' => 'Completed event', 'status' => 'completed']);
+
+        $rows = collect($this->withSession($this->adminSession())
+            ->getJson('/admin/donation-events/data?per_page=100')
+            ->assertOk()
+            ->json('data'))
+            ->keyBy('status');
+
+        foreach (['open', 'closed', 'cancelled', 'completed'] as $status) {
+            $actions = (string) $rows[$status]['actions_html'];
+            $this->assertStringContainsString('event-action-btn--donors', $actions);
+            $this->assertStringContainsString('event-action-btn--edit', $actions);
+            $this->assertStringContainsString('data-bs-toggle="tooltip"', $actions);
+        }
+
+        $openActions = (string) $rows['open']['actions_html'];
+        $this->assertStringContainsString('data-action="close"', $openActions);
+        $this->assertStringContainsString('data-action="complete"', $openActions);
+        $this->assertStringContainsString('data-action="cancel"', $openActions);
+        $this->assertStringNotContainsString('data-action="open"', $openActions);
+
+        $closedActions = (string) $rows['closed']['actions_html'];
+        $this->assertStringContainsString('data-action="open"', $closedActions);
+        $this->assertStringContainsString('data-action="complete"', $closedActions);
+        $this->assertStringContainsString('data-action="cancel"', $closedActions);
+        $this->assertStringNotContainsString('data-action="close"', $closedActions);
+
+        foreach (['cancelled', 'completed'] as $status) {
+            $actions = (string) $rows[$status]['actions_html'];
+            $this->assertStringNotContainsString('event-action-dropdown', $actions);
+            $this->assertStringNotContainsString('data-action="complete"', $actions);
+            $this->assertStringNotContainsString('data-action="cancel"', $actions);
+        }
+
+        $this->assertStringContainsString('dropdown-item--danger', $openActions);
+    }
+
     public function test_unauthorized_user_cannot_access_admin_event_management(): void
     {
         $this->get('/admin/donation-events')->assertRedirect(route('admin.login'));
