@@ -58,6 +58,10 @@ return [
         'timeout' => env('GEOCODING_TIMEOUT', 10),
     ],
 
+    'carto' => [
+        'basemap_key' => env('CARTO_BASEMAP_KEY'),
+    ],
+
     'deployment' => [
         'webhook_secret' => env('EDONATE_DEPLOY_WEBHOOK_SECRET'),
     ],

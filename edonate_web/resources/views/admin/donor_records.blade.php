@@ -117,31 +117,38 @@
       </div>
     </div>
 
-    <section class="records-section" aria-label="Donation processing table">
-      <div class="records-table-wrap table-responsive">
-        <table class="records-table table align-middle mb-0">
-          <thead>
-            <tr>
-              <th scope="col">Appointment</th>
-              <th scope="col">Donor</th>
-              <th scope="col">Event / Center</th>
-              <th scope="col">Schedule</th>
-              <th scope="col">Eligibility</th>
-              <th scope="col">Donation Record</th>
-              <th scope="col">Status</th>
-              <th scope="col">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="processingTableBody">
-            <tr><td colspan="8">Loading...</td></tr>
-          </tbody>
-        </table>
+    <div class="card donation-processing-card border-0 shadow-sm" aria-label="Donation processing table">
+      <div class="card-header bg-transparent d-flex align-items-center">
+        <h2 class="h5 mb-0">Donation Records</h2>
       </div>
-      <div class="admin-pagination admin-pagination--js records-footer" aria-label="Table pagination">
-        <p class="admin-pagination__info records-footer__info" id="processingPaginationInfo">Showing 0 to 0 of 0 entries</p>
-        <nav class="admin-pagination__links" id="processingPaginationPages" aria-label="Pagination links"></nav>
+      <div class="card-body p-0">
+        <div class="table-responsive donation-processing-table-wrap">
+          <table class="admin-standard-table admin-standard-table--donations table table-bordered table-hover table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th scope="col">Appointment</th>
+                <th scope="col">Donor</th>
+                <th scope="col">Event / Center</th>
+                <th scope="col">Schedule</th>
+                <th scope="col">Eligibility</th>
+                <th scope="col">Donation Record</th>
+                <th scope="col">Status</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="processingTableBody">
+              <tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </section>
+      <div class="card-footer bg-transparent p-0 border-0">
+        <div class="admin-pagination admin-pagination--js records-footer" aria-label="Table pagination">
+          <p class="admin-pagination__info records-footer__info" id="processingPaginationInfo">Showing 0 to 0 of 0 entries</p>
+          <nav class="admin-pagination__links" id="processingPaginationPages" aria-label="Pagination links"></nav>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -297,7 +304,7 @@
     function renderRows(rows) {
       state.rows = {};
       if (!rows.length) {
-        tableBody.innerHTML = '<tr><td colspan="8">No matching appointments.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No matching appointments.</td></tr>';
         return;
       }
       tableBody.innerHTML = rows.map(function (row) {
@@ -336,7 +343,7 @@
           setStats(payload.stats || {});
         })
         .catch(function () {
-          tableBody.innerHTML = '<tr><td colspan="8">Unable to load donation processing records.</td></tr>';
+          tableBody.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Unable to load donation processing records.</td></tr>';
         });
     }
     function sendPatch(url, payload) {

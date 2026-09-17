@@ -111,38 +111,45 @@
             </div>
         </div>
 
-        <section class="appointment-table" aria-label="Appointment list">
-            <div class="appointment-table-scroll appointment-table-wrapper table-responsive"
-                 tabindex="0"
-                 aria-label="Scrollable appointment records table">
-                <div class="appointment-table-inner">
-                    <div class="appointment-table__head" role="rowgroup">
-                        <div class="appointment-table__head-cell">Appointment ID</div>
-                        <div class="appointment-table__head-cell">Donor</div>
-                        <div class="appointment-table__head-cell">Date &amp; Time</div>
-                        <div class="appointment-table__head-cell">Center</div>
-                        <div class="appointment-table__head-cell">Status</div>
-                        <div class="appointment-table__head-cell">Actions</div>
-                    </div>
-
-                    <div class="appointment-table__body" role="rowgroup" id="appointmentTableBody">
-                        <div class="appointment-row" role="row">
-                            <div class="appointment-cell"><span class="appointment-id">Loading...</span></div>
-                            <div class="appointment-cell"><span class="appointment-donor__name">Fetching appointments</span><span class="appointment-donor__meta">Please wait...</span></div>
-                            <div class="appointment-cell">-</div>
-                            <div class="appointment-cell appointment-center">-</div>
-                            <div class="appointment-cell">-</div>
-                            <div class="appointment-cell appointment-actions">-</div>
-                        </div>
-                    </div>
+        <div class="card appointment-table-card border-0 shadow-sm" aria-label="Appointment list">
+            <div class="card-header bg-transparent d-flex align-items-center">
+                <h2 class="h5 mb-0">Appointment Records</h2>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive appointment-table-wrapper"
+                     tabindex="0"
+                     aria-label="Scrollable appointment records table">
+                    <table class="admin-standard-table admin-standard-table--appointments table table-bordered table-hover table-striped align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Appointment ID</th>
+                                <th scope="col">Donor</th>
+                                <th scope="col">Date &amp; Time</th>
+                                <th scope="col">Center</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="appointmentTableBody">
+                            <tr class="appointment-data-row">
+                                <td><span class="appointment-id">Loading...</span></td>
+                                <td><span class="appointment-donor__name">Fetching appointments</span><span class="appointment-donor__meta">Please wait...</span></td>
+                                <td>-</td>
+                                <td class="appointment-center">-</td>
+                                <td>-</td>
+                                <td class="appointment-actions">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
-
-            <div class="appointment-pagination admin-pagination admin-pagination--js" aria-label="Table pagination">
-                <span class="admin-pagination__info appointment-pagination__info" id="appointmentPaginationInfo">Showing 0 to 0 of 0 entries</span>
-                <nav class="admin-pagination__links appointment-pagination__pages" id="appointmentPaginationPages" aria-label="Pagination links"></nav>
+            <div class="card-footer bg-transparent p-0 border-0">
+                <div class="appointment-pagination admin-pagination admin-pagination--js" aria-label="Table pagination">
+                    <span class="admin-pagination__info appointment-pagination__info" id="appointmentPaginationInfo">Showing 0 to 0 of 0 entries</span>
+                    <nav class="admin-pagination__links appointment-pagination__pages" id="appointmentPaginationPages" aria-label="Pagination links"></nav>
+                </div>
             </div>
-        </section>
+        </div>
     </section>
 </main>
 
@@ -522,14 +529,14 @@
 
             if (!Array.isArray(rows) || rows.length === 0) {
                 tableBody.innerHTML = ''
-                    + '<div class="appointment-row" role="row">'
-                    + '<div class="appointment-cell"><span class="appointment-id">No records</span></div>'
-                    + '<div class="appointment-cell"><span class="appointment-donor__name">No appointments found</span><span class="appointment-donor__meta">Try changing your filters.</span></div>'
-                    + '<div class="appointment-cell">-</div>'
-                    + '<div class="appointment-cell appointment-center">-</div>'
-                    + '<div class="appointment-cell">-</div>'
-                    + '<div class="appointment-cell appointment-actions"></div>'
-                    + '</div>';
+                    + '<tr class="appointment-data-row">'
+                    + '<td><span class="appointment-id">No records</span></td>'
+                    + '<td><span class="appointment-donor__name">No appointments found</span><span class="appointment-donor__meta">Try changing your filters.</span></td>'
+                    + '<td>-</td>'
+                    + '<td>-</td>'
+                    + '<td>-</td>'
+                    + '<td></td>'
+                    + '</tr>';
                 return;
             }
 
@@ -547,17 +554,17 @@
                 var actions = renderActionButtons(item.status, item.appointment_date, item.appointment_time, item.appointment_id);
 
                 return ''
-                    + '<div class="appointment-row" role="row" data-appointment-id="' + escapeHtml(item.appointment_id || '') + '" data-appointment-date="' + escapeHtml(item.appointment_date || '') + '" data-appointment-time="' + escapeHtml(item.appointment_time || '') + '">'
-                    + '<div class="appointment-cell"><span class="appointment-id">' + appointmentCode + '</span></div>'
-                    + '<div class="appointment-cell"><span class="appointment-donor__name">' + donorName + '</span><span class="appointment-donor__meta">' + donorMeta + '</span></div>'
-                    + '<div class="appointment-cell">'
+                    + '<tr class="appointment-data-row" data-appointment-id="' + escapeHtml(item.appointment_id || '') + '" data-appointment-date="' + escapeHtml(item.appointment_date || '') + '" data-appointment-time="' + escapeHtml(item.appointment_time || '') + '">'
+                    + '<td><span class="appointment-id">' + appointmentCode + '</span></td>'
+                    + '<td><span class="appointment-donor__name">' + donorName + '</span><span class="appointment-donor__meta">' + donorMeta + '</span></td>'
+                    + '<td>'
                     + '<span class="appointment-datetime__date"><span class="appointment-icon-sm" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none"><rect x="1" y="2" width="10" height="9" rx="1" stroke="#555" stroke-width="1"></rect><line x1="1" y1="4.5" x2="11" y2="4.5" stroke="#555" stroke-width="1"></line><line x1="4" y1="1" x2="4" y2="3" stroke="#555" stroke-width="1"></line><line x1="8" y1="1" x2="8" y2="3" stroke="#555" stroke-width="1"></line></svg></span>' + dateLabel + '</span>'
                     + '<span class="appointment-datetime__time"><span class="appointment-icon-sm" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#555" stroke-width="1"></circle><line x1="6" y1="3" x2="6" y2="6" stroke="#555" stroke-width="1"></line><line x1="6" y1="6" x2="8.5" y2="8" stroke="#555" stroke-width="1"></line></svg></span>' + timeLabel + '</span>'
-                    + '</div>'
-                    + '<div class="appointment-cell appointment-center"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1C4.79086 1 3 2.79086 3 5C3 7.5 7 12.5 7 12.5C7 12.5 11 7.5 11 5C11 2.79086 9.20914 1 7 1Z" stroke="#333" stroke-width="1.2"></path><circle cx="7" cy="5" r="1.5" stroke="#333" stroke-width="1.2"></circle></svg>' + centerLabel + '</div>'
-                    + '<div class="appointment-cell"><span class="appointment-badge ' + badgeClass + '">' + badgeLabel + '</span></div>'
-                    + '<div class="appointment-cell appointment-actions">' + actions + '</div>'
-                    + '</div>';
+                    + '</td>'
+                    + '<td class="appointment-center"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1C4.79086 1 3 2.79086 3 5C3 7.5 7 12.5 7 12.5C7 12.5 11 7.5 11 5C11 2.79086 9.20914 1 7 1Z" stroke="#333" stroke-width="1.2"></path><circle cx="7" cy="5" r="1.5" stroke="#333" stroke-width="1.2"></circle></svg>' + centerLabel + '</td>'
+                    + '<td><span class="appointment-badge ' + badgeClass + '">' + badgeLabel + '</span></td>'
+                    + '<td class="appointment-actions">' + actions + '</td>'
+                    + '</tr>';
             }).join('');
         }
 
@@ -594,14 +601,14 @@
             }
 
             tableBody.innerHTML = ''
-                + '<div class="appointment-row" role="row">'
-                + '<div class="appointment-cell"><span class="appointment-id">Loading...</span></div>'
-                + '<div class="appointment-cell"><span class="appointment-donor__name">Fetching appointments</span><span class="appointment-donor__meta">Please wait...</span></div>'
-                + '<div class="appointment-cell">-</div>'
-                + '<div class="appointment-cell appointment-center">-</div>'
-                + '<div class="appointment-cell">-</div>'
-                + '<div class="appointment-cell appointment-actions">-</div>'
-                + '</div>';
+                + '<tr class="appointment-data-row">'
+                + '<td><span class="appointment-id">Loading...</span></td>'
+                + '<td><span class="appointment-donor__name">Fetching appointments</span><span class="appointment-donor__meta">Please wait...</span></td>'
+                + '<td>-</td>'
+                + '<td>-</td>'
+                + '<td>-</td>'
+                + '<td>-</td>'
+                + '</tr>';
         }
 
         function buildRequestUrl() {
@@ -798,7 +805,7 @@
 
                 event.preventDefault();
 
-                var row = actionButton.closest('.appointment-row');
+                var row = actionButton.closest('.appointment-data-row');
                 var appointmentId = row ? Number(row.getAttribute('data-appointment-id') || '0') : 0;
                 if (!appointmentId) {
                     return;

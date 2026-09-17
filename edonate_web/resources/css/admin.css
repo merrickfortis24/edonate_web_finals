@@ -249,6 +249,41 @@
     vertical-align: middle;
 }
 
+/* Shared AdminLTE data-table presentation used by operational modules. */
+.edonate-admin-page .admin-standard-table {
+    min-width: 1040px;
+}
+
+.edonate-admin-page .admin-standard-table--appointments {
+    min-width: 980px;
+}
+
+.edonate-admin-page .admin-standard-table--donations {
+    min-width: 1120px;
+}
+
+.edonate-admin-page .admin-standard-table > :not(caption) > * > * {
+    padding: 0.85rem 0.75rem;
+}
+
+.edonate-admin-page .admin-standard-table thead th {
+    color: var(--bs-secondary-color);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.edonate-admin-page .admin-standard-table tbody td {
+    font-size: 0.875rem;
+}
+
+.edonate-admin-page .appointment-table-card,
+.edonate-admin-page .donation-processing-card {
+    overflow: hidden;
+}
+
 /* These legacy selectors are more specific than the shared table rule. */
 .edonate-admin-page.admin-donor-records-page .records-table thead th,
 .edonate-admin-page.admin-donor-records-page .records-table tbody td,

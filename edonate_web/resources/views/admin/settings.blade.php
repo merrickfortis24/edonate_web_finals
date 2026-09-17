@@ -6,22 +6,18 @@
 @section('header_subtitle', 'Manage system configuration, security, and preferences')
 
 @section('header_actions')
-	<span class="badge rounded-pill bg-danger-subtle text-danger-emphasis">
-		<i class="bi bi-sliders me-1" aria-hidden="true"></i>
-		Admin Control Panel
-	</span>
+	<div class="mt-2 mt-md-0">
+		<span class="d-inline-flex align-items-center gap-2 px-3 py-1 rounded-pill bg-danger-subtle text-danger-emphasis fw-semibold text-nowrap">
+			<i class="bi bi-sliders" aria-hidden="true"></i>
+			<span>Admin Control Panel</span>
+		</span>
+	</div>
 @endsection
 
 @section('admin_page_data')
 {!! json_encode($settingsPayload ?? [
 	'page' => 'settings',
 	'settings' => [
-		'general' => [
-			'systemName' => 'eDonate',
-			'systemEmail' => 'admin@edonate.local',
-			'contactNumber' => '+63 917 123 4567',
-			'updateUrl' => route('admin.settings.general.update'),
-		],
 		'account' => [
 			'updateUrl' => route('admin.settings.account.update'),
 		],
@@ -73,10 +69,7 @@
 			<div class="card-header bg-transparent border-bottom p-0">
 				<ul class="nav nav-tabs card-header-tabs settings-tabs flex-nowrap overflow-auto px-3 pt-3" id="settingsTabs" role="tablist">
 					<li class="nav-item" role="presentation">
-						<button class="nav-link{{ $privacyLegalTabActive ? '' : ' active' }}" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" type="button" role="tab" aria-controls="settings-general-pane" aria-selected="{{ $privacyLegalTabActive ? 'false' : 'true' }}">General</button>
-					</li>
-					<li class="nav-item" role="presentation">
-						<button class="nav-link" id="settings-account-tab" data-bs-toggle="tab" data-bs-target="#settings-account-pane" type="button" role="tab" aria-controls="settings-account-pane" aria-selected="false">Account</button>
+						<button class="nav-link{{ $privacyLegalTabActive ? '' : ' active' }}" id="settings-account-tab" data-bs-toggle="tab" data-bs-target="#settings-account-pane" type="button" role="tab" aria-controls="settings-account-pane" aria-selected="{{ $privacyLegalTabActive ? 'false' : 'true' }}">Account</button>
 					</li>
 					<li class="nav-item" role="presentation">
 						<button class="nav-link" id="settings-notifications-tab" data-bs-toggle="tab" data-bs-target="#settings-notifications-pane" type="button" role="tab" aria-controls="settings-notifications-pane" aria-selected="false">Notifications</button>
@@ -92,51 +85,7 @@
 
 			<div class="card-body p-3 p-lg-4">
 				<div class="tab-content settings-tab-content" id="settingsTabsContent">
-					<div class="tab-pane fade{{ $privacyLegalTabActive ? '' : ' show active' }}" id="settings-general-pane" role="tabpanel" aria-labelledby="settings-general-tab" tabindex="0">
-						<article class="card settings-card border-0 shadow-none">
-							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
-								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
-									<i class="bi bi-sliders2 fs-5"></i>
-								</span>
-								<div>
-									<h2 class="h5 mb-1 settings-card__title">General Settings</h2>
-									<p class="small text-body-secondary mb-0 settings-card__subtitle">Basic platform information shown across your admin system.</p>
-								</div>
-							</header>
-
-							<div class="card-body px-0 pb-0">
-							<form id="generalSettingsForm" class="settings-form needs-validation" novalidate>
-								<div class="row g-3">
-									<div class="col-12 col-lg-6">
-										<label class="form-label" for="settingsSystemNameInput">System Name</label>
-										<input type="text" class="form-control" id="settingsSystemNameInput" placeholder="Enter system name" required>
-										<div class="invalid-feedback">Please enter a system name.</div>
-									</div>
-
-									<div class="col-12 col-lg-6">
-										<label class="form-label" for="settingsSystemEmailInput">System Email</label>
-										<input type="email" class="form-control" id="settingsSystemEmailInput" placeholder="name@example.com" required>
-										<div class="invalid-feedback">Please enter a valid system email.</div>
-									</div>
-
-									<div class="col-12 col-lg-6">
-										<label class="form-label" for="settingsContactNumberInput">Contact Number</label>
-										<input type="text" class="form-control" id="settingsContactNumberInput" placeholder="+63 9XX XXX XXXX" required pattern="^[+0-9][0-9\s-]{6,}$">
-										<div class="invalid-feedback">Please enter a valid contact number.</div>
-									</div>
-								</div>
-
-								<div class="settings-actions d-flex justify-content-end mt-4 pt-3 border-top">
-									<button class="btn settings-btn settings-btn--primary" id="saveGeneralSettingsBtn" type="submit">
-										Save General Settings
-									</button>
-								</div>
-							</form>
-							</div>
-						</article>
-					</div>
-
-					<div class="tab-pane fade" id="settings-account-pane" role="tabpanel" aria-labelledby="settings-account-tab" tabindex="0">
+					<div class="tab-pane fade{{ $privacyLegalTabActive ? '' : ' show active' }}" id="settings-account-pane" role="tabpanel" aria-labelledby="settings-account-tab" tabindex="0">
 						<article class="card settings-card border-0 shadow-none">
 							<header class="card-header settings-card__header bg-transparent border-0 px-0 d-flex align-items-start gap-3">
 								<span class="settings-card__icon d-inline-flex align-items-center justify-content-center flex-shrink-0 rounded-circle bg-danger-subtle text-danger-emphasis" style="width: 2.5rem; height: 2.5rem;" aria-hidden="true">
@@ -438,12 +387,6 @@
 		var payload = (window.AdminPageData && window.AdminPageData.settings) ? window.AdminPageData.settings : {};
 		var csrfToken = '{{ csrf_token() }}';
 		var settingsData = {
-		general: Object.assign({
-				systemName: '',
-				systemEmail: '',
-				contactNumber: '',
-				updateUrl: '{{ route('admin.settings.general.update') }}',
-			}, payload.general || {}),
 			account: Object.assign({
 				updateUrl: '{{ route('admin.settings.account.update') }}',
 			}, payload.account || {}),
@@ -476,21 +419,15 @@
 		var alertHost = document.getElementById('settingsAlertHost');
 		var pendingAction = null;
 
-		var generalForm = document.getElementById('generalSettingsForm');
 		var accountForm = document.getElementById('accountSettingsForm');
 		var notificationForm = document.getElementById('notificationSettingsForm');
 		var securityForm = document.getElementById('securitySettingsForm');
 		var privacyLegalForm = document.getElementById('privacyLegalSettingsForm');
 
-		var saveGeneralButton = document.getElementById('saveGeneralSettingsBtn');
 		var saveAccountButton = document.getElementById('saveAccountSettingsBtn');
 		var saveNotificationButton = document.getElementById('saveNotificationSettingsBtn');
 		var saveSecurityButton = document.getElementById('saveSecuritySettingsBtn');
 		var savePrivacyLegalButton = document.getElementById('savePrivacyLegalSettingsBtn');
-
-		var systemNameInput = document.getElementById('settingsSystemNameInput');
-		var systemEmailInput = document.getElementById('settingsSystemEmailInput');
-		var contactNumberInput = document.getElementById('settingsContactNumberInput');
 
 		var currentPasswordInput = document.getElementById('settingsCurrentPasswordInput');
 		var newPasswordInput = document.getElementById('settingsNewPasswordInput');
@@ -509,7 +446,6 @@
 		var cookieConsentBannerToggle = document.getElementById('settingsCookieConsentBannerToggle');
 		var updateSecurityUrl = String(settingsData.security.updateSecurityUrl || '');
 		var updateNotificationUrl = String(settingsData.notifications.updateUrl || '');
-		var updateGeneralUrl = String(settingsData.general.updateUrl || '');
 		var updateAccountUrl = String(settingsData.account.updateUrl || '');
 		var updatePrivacyLegalUrl = String(settingsData.privacyLegal.updateUrl || '');
 		var confirmModal = null;
@@ -662,16 +598,6 @@
 		}
 
 		function hydrateFromPayload() {
-			if (systemNameInput) {
-				systemNameInput.value = settingsData.general.systemName;
-			}
-			if (systemEmailInput) {
-				systemEmailInput.value = settingsData.general.systemEmail;
-			}
-			if (contactNumberInput) {
-				contactNumberInput.value = settingsData.general.contactNumber;
-			}
-
 			if (emailNotificationsToggle) {
 				emailNotificationsToggle.checked = !!settingsData.notifications.email;
 			}
@@ -731,58 +657,6 @@
 				button.textContent = isPassword ? 'Hide' : 'Show';
 			});
 		});
-
-		if (generalForm) {
-			generalForm.addEventListener('submit', function (event) {
-				event.preventDefault();
-				event.stopPropagation();
-
-				generalForm.classList.add('was-validated');
-				if (!generalForm.checkValidity()) {
-					return;
-				}
-
-				openConfirmModal('General Settings', function () {
-					setButtonLoading(saveGeneralButton, true);
-
-					if (!updateGeneralUrl) {
-						setButtonLoading(saveGeneralButton, false);
-						showAlert('danger', 'General settings endpoint is not configured.');
-						return;
-					}
-
-					fetch(updateGeneralUrl, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-							'Accept': 'application/json',
-							'X-CSRF-TOKEN': csrfToken,
-							'X-Requested-With': 'XMLHttpRequest',
-						},
-						credentials: 'same-origin',
-						body: JSON.stringify({
-							system_name: systemNameInput.value.trim(),
-							system_email: systemEmailInput.value.trim(),
-							contact_number: contactNumberInput.value.trim(),
-						}),
-					})
-						.then(parseApiResponse)
-						.then(function (responsePayload) {
-							if (responsePayload && responsePayload.general) {
-								settingsData.general = Object.assign(settingsData.general, responsePayload.general);
-								hydrateFromPayload();
-							}
-							showAlert('success', String((responsePayload && responsePayload.message) || 'General settings saved successfully.'));
-						})
-						.catch(function (error) {
-							showAlert('danger', error.message || 'Unable to save general settings.');
-						})
-						.finally(function () {
-							setButtonLoading(saveGeneralButton, false);
-						});
-				});
-			});
-		}
 
 		if (accountForm) {
 			accountForm.addEventListener('submit', function (event) {

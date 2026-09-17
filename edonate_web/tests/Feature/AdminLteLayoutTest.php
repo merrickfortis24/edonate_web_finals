@@ -117,16 +117,19 @@ class AdminLteLayoutTest extends TestCase
         $this->assertGreaterThan($wrapperPosition, $paginationPosition);
     }
 
-    public function test_appointment_management_keeps_pagination_outside_the_scrollable_appointment_grid(): void
+    public function test_appointment_management_uses_an_adminlte_table_and_keeps_pagination_outside_it(): void
     {
         $html = $this->renderPageForRole('admin.appointment_management', 'admin', '/admin/appointments');
-        $wrapperPosition = strpos($html, 'class="appointment-table-scroll appointment-table-wrapper table-responsive"');
+        $wrapperPosition = strpos($html, 'class="table-responsive appointment-table-wrapper"');
         $paginationPosition = strpos($html, 'class="appointment-pagination admin-pagination');
 
         $this->assertIsInt($wrapperPosition);
         $this->assertIsInt($paginationPosition);
+        $this->assertStringContainsString('class="card appointment-table-card border-0 shadow-sm"', $html);
+        $this->assertStringContainsString('class="admin-standard-table admin-standard-table--appointments table table-bordered table-hover table-striped align-middle mb-0"', $html);
         $this->assertStringContainsString('aria-label="Scrollable appointment records table"', $html);
-        $this->assertStringContainsString('class="appointment-table-inner"', $html);
+        $this->assertStringNotContainsString('appointment-table-inner', $html);
+        $this->assertStringNotContainsString('appointment-table__head', $html);
         $this->assertGreaterThan($wrapperPosition, $paginationPosition);
     }
 
@@ -201,11 +204,19 @@ class AdminLteLayoutTest extends TestCase
         $this->assertFalse(Route::has('admin.appointments.reschedule'));
     }
 
-    public function test_admin_settings_expose_persisted_action_endpoints(): void
+    public function test_admin_settings_defaults_to_account_without_the_removed_general_tab(): void
     {
         $html = $this->renderPageForRole('admin.settings', 'admin', '/admin/settings');
 
-        $this->assertStringContainsString('admin/settings/general', $html);
+        $this->assertStringNotContainsString('id="settings-general-tab"', $html);
+        $this->assertStringNotContainsString('id="settings-general-pane"', $html);
+        $this->assertStringNotContainsString('General Settings', $html);
+        $this->assertStringNotContainsString('settingsSystemNameInput', $html);
+        $this->assertStringNotContainsString('settingsSystemEmailInput', $html);
+        $this->assertStringNotContainsString('settingsContactNumberInput', $html);
+        $this->assertStringContainsString('id="settings-account-tab"', $html);
+        $this->assertStringContainsString('aria-selected="true">Account</button>', $html);
+        $this->assertStringContainsString('id="settings-account-pane"', $html);
         $this->assertStringContainsString('admin/settings/account', $html);
         $this->assertTrue(Route::has('admin.settings.general.update'));
         $this->assertTrue(Route::has('admin.settings.account.update'));

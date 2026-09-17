@@ -50,7 +50,14 @@
         if(!window.L){status.textContent='Map visualization is unavailable. The table remains available.';return;}
         if(map)return;
         map=L.map('availabilityMap',{zoomControl:true}).setView([13.9419,121.1644],12);
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,referrerPolicy:'no-referrer',attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer" target="_blank">OpenStreetMap contributors</a>'}).addTo(map).on('tileerror',()=>status.textContent='Map tiles could not be loaded. The table remains available.');
+        L.tileLayer(
+            'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key={{ urlencode(config("services.carto.basemap_key")) }}',
+            {
+                subdomains: 'abcd',
+                maxZoom: 20,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+            }
+        ).addTo(map).on('tileerror',()=>status.textContent='Map tiles could not be loaded. The table remains available.');
         markers.addTo(map);refresh();
     }
     document.addEventListener('edonate:privacy-changed',syncMapConsent);
