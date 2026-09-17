@@ -224,6 +224,20 @@ jobs:
             # identities, and refuses to mutate data without --confirm.
             php artisan privacy:anonymize-underage-donors --confirm
             php artisan config:cache
+            # Fail the deployment when the persistent production environment
+            # does not provide the Carto key used by the rendered map URL.
+            # Only the presence and length are reported; never print the key.
+            php -r '
+              require "vendor/autoload.php";
+              $app = require "bootstrap/app.php";
+              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              $key = trim((string) config("services.carto.basemap_key"));
+              if ($key === "" || $key === "YOUR_KEY") {
+                  fwrite(STDERR, "Production CARTO_BASEMAP_KEY is missing from the application .env/configuration.\n");
+                  exit(1);
+              }
+              echo "CARTO_BASEMAP_KEY loaded into cached Laravel configuration (" . strlen($key) . " characters).\n";
+            '
             # Blocks release when legal identity/contact details, secure production
             # settings, or the consent-receipt migration are missing. This is a
             # technical preflight, not a substitute for counsel or a WCAG audit.
