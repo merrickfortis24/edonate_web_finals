@@ -55,7 +55,7 @@ test('map waits for explicit consent; table is still available', async ({ page }
     await expect(page.locator('.availability-table')).toBeVisible();
     await page.locator('#ed-privacy-form input[name="maps"]').check();
     await page.getByRole('button', {name:'Save selected choices'}).click();
-    await expect.poll(() => external.some(origin => origin === 'https://tile.openstreetmap.org')).toBe(true);
+    await expect.poll(() => external.some(origin => origin.endsWith('.basemaps.cartocdn.com'))).toBe(true);
 });
 test('chat creates no conversation identifier before consent and starts only after opt-in', async ({ page }) => {
     await mount(page, 'admin-dashboard');
