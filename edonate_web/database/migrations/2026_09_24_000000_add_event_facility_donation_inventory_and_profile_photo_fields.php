@@ -8,15 +8,21 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('donation_events') && ! Schema::hasColumn('donation_events', 'facility_id')) {
-            Schema::table('donation_events', function (Blueprint $table): void {
-                $table->unsignedInteger('facility_id')->nullable()->after('location_name');
-                $table->index(['facility_id', 'event_date'], 'idx_event_facility_date');
-                if (Schema::hasTable('facilities')) {
-                    $table->foreign('facility_id', 'fk_donation_events_facility')
-                        ->references('facility_id')->on('facilities')->nullOnDelete();
-                }
-            });
+        if (Schema::hasTable('donation_events')) {
+            if (! Schema::hasColumn('donation_events', 'facility_id')) {
+                Schema::table('donation_events', function (Blueprint $table): void {
+                    $table->unsignedInteger('facility_id')->nullable()->after('location_name');
+                });
+            }
+
+            // Existing Hostinger facilities tables predate this migration and
+            // may use an incompatible key type/engine. Keep the relationship
+            // at the application layer until those legacy keys are normalized.
+            if (! Schema::hasIndex('donation_events', 'idx_event_facility_date')) {
+                Schema::table('donation_events', function (Blueprint $table): void {
+                    $table->index(['facility_id', 'event_date'], 'idx_event_facility_date');
+                });
+            }
         }
 
         if (Schema::hasTable('donation_records') && ! Schema::hasColumn('donation_records', 'inventory_received_at')) {
