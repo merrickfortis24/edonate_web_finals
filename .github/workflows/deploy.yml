@@ -8,6 +8,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      anonymize_underage_donors:
+        description: 'Destructively anonymize underage donor data during deployment'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -220,9 +226,14 @@ jobs:
             # Clear cached environment values before any database operation.
             php artisan optimize:clear
             php artisan migrate --force
-            # The command is production-only, prints counts rather than donor
-            # identities, and refuses to mutate data without --confirm.
-            php artisan privacy:anonymize-underage-donors --confirm
+            # Every deployment performs a non-mutating dry run. Destructive
+            # anonymization is only enabled by explicitly selecting the
+            # workflow_dispatch input; normal pushes never change donor data.
+            if [ "${{ github.event.inputs.anonymize_underage_donors }}" = "true" ]; then
+              php artisan privacy:anonymize-underage-donors --confirm
+            else
+              php artisan privacy:anonymize-underage-donors
+            fi
             php artisan config:cache
             # Fail the deployment when the persistent production environment
             # does not provide the Carto key used by the rendered map URL.
