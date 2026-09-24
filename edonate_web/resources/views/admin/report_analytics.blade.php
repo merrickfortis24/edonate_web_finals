@@ -93,7 +93,7 @@
             <section class="report-stats row g-3 mt-1" aria-label="Report summary metrics">
                 @foreach ([
                     ['key' => 'total_donations', 'label' => 'Donation Records', 'class' => 'red'],
-                    ['key' => 'active_donors', 'label' => 'Verified Donors', 'class' => 'green'],
+                    ['key' => 'verified_donors', 'label' => 'Verified Donors', 'class' => 'green'],
                     ['key' => 'completed_donations', 'label' => 'Completed Donations', 'class' => 'blue'],
                     ['key' => 'success_rate', 'label' => 'Success Rate', 'class' => 'gold', 'suffix' => '%'],
                     ['key' => 'upcoming_appointments', 'label' => 'Upcoming Appointments', 'class' => 'red'],
@@ -101,11 +101,12 @@
                     ['key' => 'low_stock_blood_types', 'label' => 'Low Stock Types', 'class' => 'blue'],
                     ['key' => 'out_of_stock_blood_types', 'label' => 'Out of Stock', 'class' => 'gold'],
                 ] as $metric)
+                    @php($metricAvailable = (bool) data_get($reportPayload ?? [], 'availability.summary.'.$metric['key'], true))
                     <div class="col-6 col-xl-3">
                         <article class="report-stat-card report-stat-card--{{ $metric['class'] }} h-100">
                             <span class="report-stat-card__label">{{ $metric['label'] }}</span>
-                            <span class="report-stat-card__value" data-report-metric="{{ $metric['key'] }}">{{ number_format((float) data_get($summary, $metric['key'], 0), $metric['key'] === 'success_rate' ? 1 : 0) }}{{ $metric['suffix'] ?? '' }}</span>
-                            <span class="report-stat-card__note report-stat-card__note--blue">Selected period</span>
+                            <span class="report-stat-card__value" data-report-metric="{{ $metric['key'] }}">{{ $metricAvailable ? number_format((float) data_get($summary, $metric['key'], 0), $metric['key'] === 'success_rate' ? 1 : 0).($metric['suffix'] ?? '') : 'N/A' }}</span>
+                            <span class="report-stat-card__note report-stat-card__note--blue" data-report-note="{{ $metric['key'] }}">{{ in_array($metric['key'], ['low_stock_blood_types', 'out_of_stock_blood_types'], true) ? 'Current snapshot' : 'Selected period' }}</span>
                         </article>
                     </div>
                 @endforeach
@@ -139,7 +140,7 @@
             <section class="report-inventory-card" aria-label="Blood type inventory and demand">
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <h2 class="report-inventory-card__title mb-0">Blood Type Inventory &amp; Demand</h2>
-                    <span class="small text-muted">Aggregated across selected facilities</span>
+                    <span class="small text-muted" id="reportInventorySnapshotNote">Current inventory snapshot. Open request demand is donor count, not blood units.</span>
                 </div>
                 <div class="table-responsive mt-3">
                     <table class="table report-inventory-table align-middle mb-0">
@@ -148,7 +149,7 @@
                                 <th scope="col">Blood type</th>
                                 <th scope="col">Available units</th>
                                 <th scope="col">Reserved</th>
-                                <th scope="col">Open request demand</th>
+                                <th scope="col">Open request donor count</th>
                                 <th scope="col">Status</th>
                             </tr>
                         </thead>
@@ -301,6 +302,10 @@
 
         function renderInventory() {
             if (!inventoryBody) return;
+            if (reportPayload.error) {
+                inventoryBody.innerHTML = '<tr><td colspan="5" class="text-center text-warning py-4">Inventory data is temporarily unavailable.</td></tr>';
+                return;
+            }
             var rows = Array.isArray(reportPayload.inventory) ? reportPayload.inventory : [];
             if (!rows.length) { inventoryBody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No inventory data available.</td></tr>'; return; }
             inventoryBody.innerHTML = rows.map(function (row) {
@@ -314,10 +319,32 @@
             var summary = reportPayload.summary || {};
             document.querySelectorAll('[data-report-metric]').forEach(function (element) {
                 var key = element.getAttribute('data-report-metric');
-                element.textContent = number(summary[key], key === 'success_rate' ? 1 : 0) + (key === 'success_rate' ? '%' : '');
+                var metricAvailability = reportPayload.availability && reportPayload.availability.summary;
+                element.textContent = metricAvailability && metricAvailability[key] === false
+                    ? 'N/A'
+                    : number(summary[key], key === 'success_rate' ? 1 : 0) + (key === 'success_rate' ? '%' : '');
+            });
+            document.querySelectorAll('[data-report-note]').forEach(function (element) {
+                var key = element.getAttribute('data-report-note');
+                element.textContent = (key === 'low_stock_blood_types' || key === 'out_of_stock_blood_types')
+                    ? 'Current snapshot'
+                    : 'Selected period';
             });
             var period = reportPayload.period || {};
-            if (periodNote) periodNote.textContent = 'Showing aggregate data for ' + (period.label || 'the selected period') + '.';
+            if (periodNote) periodNote.textContent = reportPayload.error
+                ? (reportPayload.error_message || 'Report data is temporarily unavailable.')
+                : 'Showing aggregate data for ' + (period.label || 'the selected period') + '.';
+            if (reportPayload.error) {
+                if (distributionCaption) distributionCaption.textContent = 'Distribution data is temporarily unavailable.';
+                renderInventory();
+                updateExportLink();
+                return;
+            }
+            var snapshotNote = document.getElementById('reportInventorySnapshotNote');
+            if (snapshotNote && reportPayload.inventory_snapshot_at) {
+                var snapshotTime = new Date(reportPayload.inventory_snapshot_at);
+                snapshotNote.textContent = 'Current inventory snapshot as of ' + (Number.isNaN(snapshotTime.getTime()) ? reportPayload.inventory_snapshot_at : snapshotTime.toLocaleString()) + '. Open request demand is donor count, not blood units.';
+            }
             var distribution = reportPayload.distribution || {};
             if (distributionCaption) distributionCaption.textContent = 'Verified records: ' + number(distribution.verified_total) + '. Self-reported: ' + number(distribution.self_reported_total) + '. Unknown: ' + number(distribution.unknown_total) + '.';
             renderInventory(); drawTrend(); drawDistribution(); updateExportLink();
@@ -330,7 +357,12 @@
             fetch(dataUrl + (query ? '?' + query : ''), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
                 .then(function (response) { return response.json().then(function (body) { if (!response.ok) throw new Error(body.message || 'Unable to load report data.'); return body; }); })
                 .then(function (body) { reportPayload = body; render(); })
-                .catch(function (error) { if (periodNote) periodNote.textContent = error.message || 'Unable to load report data.'; })
+                .catch(function () {
+                    document.querySelectorAll('[data-report-metric]').forEach(function (element) { element.textContent = 'N/A'; });
+                    document.querySelectorAll('[data-report-note]').forEach(function (element) { element.textContent = 'Unable to load'; });
+                    if (periodNote) periodNote.textContent = 'Report data is temporarily unavailable. Please try again later.';
+                    if (inventoryBody) inventoryBody.innerHTML = '<tr><td colspan="5" class="text-center text-warning py-4">Inventory data is temporarily unavailable.</td></tr>';
+                })
                 .finally(function () { document.body.classList.remove('report-loading'); });
         }
 

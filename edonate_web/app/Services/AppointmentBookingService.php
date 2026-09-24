@@ -7,6 +7,7 @@ use App\Models\DonationEvent;
 use App\Models\Donor;
 use App\Models\EligibilityStatus;
 use App\Models\Notification;
+use App\Support\EligibilityStatus as EligibilityStatusValue;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -143,7 +144,7 @@ class AppointmentBookingService
 
             $normalizedStatus = $this->normalizeAppointmentStatus((string) $appointment->status);
 
-            if (in_array($normalizedStatus, ['cancelled', 'completed', 'no_show'], true)) {
+            if (! app(AppointmentStatusService::class)->canTransition((string) $appointment->status, AppointmentStatusService::CANCELLED)) {
                 $this->fail('appointment_id', 'This appointment can no longer be cancelled.');
             }
 
@@ -183,6 +184,107 @@ class AppointmentBookingService
             ]);
 
             return $appointment->fresh(['event']) ?? $appointment;
+        });
+    }
+
+    /**
+     * Move a pending/confirmed appointment to another open event without
+     * creating a second appointment or changing a terminal/processed record.
+     *
+     * @return array{appointment: Appointment, already: bool}
+     */
+    public function reschedule(int $appointmentId, int $eventId, string $appointmentTime, int $adminId, ?Request $request = null): array
+    {
+        return DB::transaction(function () use ($appointmentId, $eventId, $appointmentTime, $adminId, $request): array {
+            $appointment = Appointment::query()
+                ->where('appointment_id', $appointmentId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $appointment) {
+                $this->fail('appointment', 'Appointment not found.');
+            }
+
+            $statuses = app(AppointmentStatusService::class);
+            if (! $statuses->canReschedule((string) $appointment->status)) {
+                $this->fail('appointment', 'Only pending or confirmed appointments can be rescheduled.');
+            }
+
+            if (Schema::hasTable('donation_records')
+                && Schema::hasColumn('donation_records', 'appointment_id')
+                && DB::table('donation_records')->where('appointment_id', $appointmentId)->exists()) {
+                $this->fail('appointment', 'An appointment with a donation record cannot be rescheduled.');
+            }
+
+            if ($eventId === (int) $appointment->event_id) {
+                $this->fail('event_id', 'Choose a different event to reschedule this appointment.');
+            }
+
+            $event = DonationEvent::query()
+                ->where('event_id', $eventId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $event || ! $this->eventAcceptsBookings($event) || $this->remainingSlots($event) < 1) {
+                $this->fail('event_id', 'The selected event is unavailable or has no remaining capacity.');
+            }
+
+            if (Appointment::query()
+                ->where('donor_id', $appointment->donor_id)
+                ->where('event_id', $eventId)
+                ->where('appointment_id', '!=', $appointmentId)
+                ->whereRaw("LOWER(COALESCE(status, '')) IN (" . $this->placeholders(self::SLOT_CONSUMING_STATUSES) . ')', self::SLOT_CONSUMING_STATUSES)
+                ->exists()) {
+                $this->fail('event_id', 'This donor already has an active appointment for the selected event.');
+            }
+
+            $confirmedTime = $this->appointmentTimeForEvent($event, $appointmentTime);
+            $previousEventId = $appointment->event_id !== null ? (int) $appointment->event_id : null;
+            $previousDate = $appointment->appointment_date ? Carbon::parse($appointment->appointment_date)->toDateString() : null;
+            $previousTime = $appointment->appointment_time ? (string) $appointment->appointment_time : null;
+            $previousStatus = $statuses->normalize((string) $appointment->status);
+            $appointmentCode = $this->appointmentCode((int) $appointment->appointment_id);
+
+            $appointment->forceFill([
+                'event_id' => $event->event_id,
+                'appointment_date' => Carbon::parse($event->event_date)->toDateString(),
+                'appointment_time' => $confirmedTime,
+                'donation_center' => $event->location_name,
+                'status' => AppointmentStatusService::CONFIRMED,
+                'admin_id' => $adminId > 0 ? $adminId : null,
+                'updated_at' => now(),
+            ])->save();
+
+            $donor = Donor::query()->find((int) $appointment->donor_id);
+            if ($donor) {
+                $this->createDonorNotification(
+                    (int) $donor->donor_id,
+                    'appointment_rescheduled',
+                    "Your appointment {$appointmentCode} has been rescheduled to {$event->title} on "
+                        .Carbon::parse($event->event_date)->format('M j, Y').' at '.Carbon::parse($confirmedTime)->format('g:i A').'.'
+                );
+            }
+
+            app(AdminNotificationService::class)->createAdminEvent(
+                'appointment_rescheduled',
+                'Appointment Rescheduled',
+                "Appointment {$appointmentCode} was moved to {$event->title}.",
+                'appointment',
+                $appointmentId
+            );
+
+            $this->logAdminRescheduleAudit($request, $appointment, [
+                'previous_status' => $previousStatus,
+                'new_status' => AppointmentStatusService::CONFIRMED,
+                'previous_event_id' => $previousEventId,
+                'new_event_id' => (int) $event->event_id,
+                'previous_date' => $previousDate,
+                'previous_time' => $previousTime,
+                'new_date' => Carbon::parse($event->event_date)->toDateString(),
+                'new_time' => $confirmedTime,
+            ]);
+
+            return ['appointment' => $appointment->fresh(['event']) ?? $appointment, 'already' => false];
         });
     }
 
@@ -256,6 +358,8 @@ class AppointmentBookingService
 
         return [
             'event_id' => (int) $event->event_id,
+            'facility_id' => is_numeric($event->facility_id ?? null) ? (int) $event->facility_id : null,
+            'facility_name' => $event->relationLoaded('facility') ? ($event->facility?->facility_name) : null,
             'title' => (string) $event->title,
             'event_name' => (string) $event->title,
             'location_name' => (string) $event->location_name,
@@ -361,8 +465,8 @@ class AppointmentBookingService
             return false;
         }
 
-        $status = strtolower(trim((string) $eligibility->status));
-        if (! in_array($status, ['eligible', 'approved', 'qualified', 'ready'], true)) {
+        $status = EligibilityStatusValue::normalize($eligibility->status);
+        if ($status !== EligibilityStatusValue::ELIGIBLE) {
             return false;
         }
 
@@ -394,6 +498,29 @@ class AppointmentBookingService
             ->where('event_id', $eventId)
             ->whereRaw("LOWER(COALESCE(status, '')) IN (" . $this->placeholders(self::SLOT_CONSUMING_STATUSES) . ')', self::SLOT_CONSUMING_STATUSES)
             ->exists();
+    }
+
+    /** @param array<string, mixed> $metadata */
+    private function logAdminRescheduleAudit(?Request $request, Appointment $appointment, array $metadata): void
+    {
+        if (! Schema::hasTable('audit_logs')) {
+            return;
+        }
+
+        DB::table('audit_logs')->insert([
+            'actor_admin_id' => is_numeric($request?->session()->get('admin_id')) ? (int) $request->session()->get('admin_id') : null,
+            'actor_name' => trim((string) ($request?->session()->get('admin_full_name') ?: $request?->session()->get('admin_username') ?: 'Admin')),
+            'actor_role' => ucfirst(strtolower((string) $request?->session()->get('admin_role', 'admin'))),
+            'action_type' => 'appointment_rescheduled',
+            'module_type' => 'appointments',
+            'target_table' => 'appointments',
+            'target_id' => (int) $appointment->appointment_id,
+            'description' => 'Rescheduled appointment '.$this->appointmentCode((int) $appointment->appointment_id).'.',
+            'ip_address' => $request?->ip(),
+            'result' => 'success',
+            'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'created_at' => now(),
+        ]);
     }
 
     private function appointmentTimeForEvent(DonationEvent $event, ?string $appointmentTime): string

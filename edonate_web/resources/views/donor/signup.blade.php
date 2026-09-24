@@ -1095,6 +1095,10 @@
 		togglePasswordVisibility('togglePassword', 'password');
 		togglePasswordVisibility('togglePasswordConfirm', 'password_confirmation');
 		setActiveStep(firstInvalidStep());
+		@if (session('otp_sent'))
+		showFeedback('success', @json(session('success', 'OTP sent. Please check your email.')));
+		otpModal.show();
+		@endif
 	});
 </script>
 

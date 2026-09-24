@@ -62,6 +62,18 @@
             </div>
             <div class="col-6">
                 <div class="stat-card stat-card--gold h-100">
+                    <span class="stat-card__label">Temporarily Deferred</span>
+                    <span class="stat-card__value" id="userStatDeferredDonors">0</span>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="stat-card stat-card--blue h-100">
+                    <span class="stat-card__label">For Review</span>
+                    <span class="stat-card__value" id="userStatReviewDonors">0</span>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="stat-card stat-card--gold h-100">
                     <span class="stat-card__label">Total Donations</span>
                     <span class="stat-card__value" id="userStatTotalDonations">0</span>
                 </div>
@@ -113,6 +125,9 @@
                     <option value="">All Status</option>
                     <option value="eligible">Eligible</option>
                     <option value="not_eligible">Not Eligible</option>
+                    <option value="temporary_deferred">Temporarily Deferred</option>
+                    <option value="for_review">For Review</option>
+                    <option value="unknown">Unknown</option>
                 </select>
                 <span class="filter-bar__dropdown-arrow" aria-hidden="true">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -271,6 +286,9 @@
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-danger me-auto" id="userManagementPrintDigitalId" aria-label="Print Digital Donor ID">
+                        <i class="bi bi-printer me-1" aria-hidden="true"></i>Print ID
+                    </button>
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
@@ -307,6 +325,11 @@
                             <div class="col-md-6">
                                 <label for="userManagementEditContactNumber" class="form-label">Contact Number</label>
                                 <input type="text" class="form-control" id="userManagementEditContactNumber" maxlength="20" placeholder="+639XXXXXXXXX or 09XXXXXXXXX">
+                            </div>
+                            <div class="col-12">
+                                <label for="userManagementEditProfilePhoto" class="form-label">Profile Photo</label>
+                                <input type="file" class="form-control" id="userManagementEditProfilePhoto" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+                                <div class="form-text">Optional. JPG, PNG, or WebP; maximum 2 MB and 3000 × 3000 pixels.</div>
                             </div>
                             <div class="col-md-6">
                                 <label for="userManagementEditGender" class="form-label">Gender</label>
@@ -398,7 +421,9 @@
         var exportUrl = payload.api && payload.api.exportUrl ? String(payload.api.exportUrl) : '';
         var showUrlTemplate = payload.api && payload.api.showUrlTemplate ? payload.api.showUrlTemplate : '';
         var updateUrlTemplate = payload.api && payload.api.updateUrlTemplate ? payload.api.updateUrlTemplate : '';
+        var photoUploadUrlTemplate = payload.api && payload.api.photoUploadUrlTemplate ? payload.api.photoUploadUrlTemplate : '';
         var deactivateUrlTemplate = payload.api && payload.api.deactivateUrlTemplate ? payload.api.deactivateUrlTemplate : '';
+        var reactivateUrlTemplate = payload.api && payload.api.reactivateUrlTemplate ? payload.api.reactivateUrlTemplate : '';
         var csrfToken = payload.api && payload.api.csrfToken
             ? String(payload.api.csrfToken)
             : String((document.querySelector('meta[name="csrf-token"]') || {}).content || '');
@@ -410,11 +435,14 @@
         var paginationInfo = document.getElementById('userManagementPaginationInfo');
         var paginationControls = document.getElementById('userManagementPaginationControls');
         var exportButton = document.getElementById('userManagementExportButton');
+        var printDigitalIdButton = document.getElementById('userManagementPrintDigitalId');
         var alertHost = document.getElementById('userManagementAlertHost');
 
         var totalDonorsEl = document.getElementById('userStatTotalDonors');
         var eligibleDonorsEl = document.getElementById('userStatEligibleDonors');
         var notEligibleDonorsEl = document.getElementById('userStatNotEligibleDonors');
+        var deferredDonorsEl = document.getElementById('userStatDeferredDonors');
+        var reviewDonorsEl = document.getElementById('userStatReviewDonors');
         var totalDonationsEl = document.getElementById('userStatTotalDonations');
 
         var viewModalElement = document.getElementById('userManagementViewModal');
@@ -438,7 +466,9 @@
 
         var viewModalSubtitle = document.getElementById('userManagementViewModalSubtitle');
         var viewVerificationBadge = digitalIdField('verificationBadge');
-        var viewCardAvatar = digitalIdField('avatar');
+        var viewCardAvatar = viewDigitalIdCard
+            ? viewDigitalIdCard.querySelector('.digital-id-card__avatar')
+            : null;
         var viewCardName = digitalIdField('name');
         var viewCardCode = digitalIdField('code');
         var viewCardBloodType = digitalIdField('bloodType');
@@ -488,6 +518,7 @@
         var editProvinceInput = document.getElementById('userManagementEditProvince');
         var editLatitudeInput = document.getElementById('userManagementEditLatitude');
         var editLongitudeInput = document.getElementById('userManagementEditLongitude');
+        var editProfilePhotoInput = document.getElementById('userManagementEditProfilePhoto');
         var editSaveButton = document.getElementById('userManagementEditSaveBtn');
 
         var deactivateFeedback = document.getElementById('userManagementDeactivateFeedback');
@@ -583,15 +614,35 @@
         }
 
         function normalizeStatus(value) {
-            return String(value || '').toLowerCase() === 'not_eligible' ? 'not_eligible' : 'eligible';
+            var status = String(value || '').toLowerCase().trim().replace(/[\\s-]+/g, '_');
+            var aliases = {
+                approved: 'eligible', qualified: 'eligible', ready: 'eligible',
+                'not_eligible': 'not_eligible', ineligible: 'not_eligible', declined: 'not_eligible', rejected: 'not_eligible',
+                'temporary_defer': 'temporary_deferred', temporarily_deferred: 'temporary_deferred', deferred: 'temporary_deferred',
+                'pending_review': 'for_review', pending: 'for_review'
+            };
+            if (['eligible', 'not_eligible', 'temporary_deferred', 'for_review'].indexOf(status) !== -1) return status;
+            return aliases[status] || 'unknown';
         }
 
         function statusLabel(value) {
-            return normalizeStatus(value) === 'not_eligible' ? 'Not Eligible' : 'Eligible';
+            return {
+                eligible: 'Eligible',
+                not_eligible: 'Not Eligible',
+                temporary_deferred: 'Temporarily Deferred',
+                for_review: 'For Review',
+                unknown: 'Unknown'
+            }[normalizeStatus(value)];
         }
 
         function statusClass(value) {
-            return normalizeStatus(value) === 'not_eligible' ? 'badge--not-eligible' : 'badge--eligible';
+            return {
+                eligible: 'badge--eligible',
+                not_eligible: 'badge--not-eligible',
+                temporary_deferred: 'badge--deferred',
+                for_review: 'badge--review',
+                unknown: 'badge--unknown'
+            }[normalizeStatus(value)];
         }
 
         function verificationLabel(value) {
@@ -813,6 +864,30 @@
                 });
         }
 
+        function uploadDonorPhoto(url, file) {
+            var formData = new FormData();
+            formData.append('photo', file);
+            var headers = {
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            };
+            if (csrfToken) headers['X-CSRF-TOKEN'] = csrfToken;
+
+            return fetch(url, {
+                method: 'POST',
+                body: formData,
+                headers: headers,
+                credentials: 'same-origin'
+            }).then(function (response) {
+                return response.json().catch(function () { return {}; }).then(function (body) {
+                    if (!response.ok) {
+                        throw new Error(extractErrorMessage(body, 'Unable to upload donor photo.'));
+                    }
+                    return body;
+                });
+            });
+        }
+
         function buildExportUrl() {
             if (!exportUrl) {
                 return '';
@@ -833,13 +908,11 @@
         }
 
         function renderActionButtons(donorId, isActive) {
-            var deactivateButton = isActive
-                ? '<button class="btn-action btn-action--deactivate" type="button" title="Deactivate Donor" aria-label="Deactivate Donor" data-action="deactivate" data-donor-id="' + escapeHtml(donorId) + '">'
-                    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b60c0c" stroke-width="2"><path d="M12 3v9" stroke-linecap="round"/><path d="M6.2 6.2a8 8 0 1 0 11.6 0" stroke-linecap="round"/></svg>'
-                    + '</button>'
-                : '<button class="btn-action btn-action--deactivate" type="button" title="Donor already inactive" aria-label="Donor already inactive" disabled>'
-                    + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b60c0c" stroke-width="2"><path d="M12 3v9" stroke-linecap="round"/><path d="M6.2 6.2a8 8 0 1 0 11.6 0" stroke-linecap="round"/></svg>'
-                    + '</button>';
+            var stateButton = '<button class="btn-action ' + (isActive ? 'btn-action--deactivate' : 'btn-action--reactivate') + '" type="button" title="' + (isActive ? 'Deactivate Donor' : 'Reactivate Donor') + '" aria-label="' + (isActive ? 'Deactivate Donor' : 'Reactivate Donor') + '" data-action="toggle-active" data-is-active="' + (isActive ? 'true' : 'false') + '" data-donor-id="' + escapeHtml(donorId) + '">'
+                + (isActive
+                    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#b60c0c" stroke-width="2"><path d="M12 3v9" stroke-linecap="round"/><path d="M6.2 6.2a8 8 0 1 0 11.6 0" stroke-linecap="round"/></svg>'
+                    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2"><path d="M12 3v9" stroke-linecap="round"/><path d="M6.2 6.2a8 8 0 1 0 11.6 0" stroke-linecap="round"/></svg>')
+                + '</button>';
 
             return ''
                 + '<button class="btn-action btn-action--view" type="button" title="View Digital Donor ID" aria-label="View Digital Donor ID" data-action="view" data-donor-id="' + escapeHtml(donorId) + '">'
@@ -848,7 +921,7 @@
                 + '<button class="btn-action btn-action--edit" type="button" title="Edit Donor" aria-label="Edit Donor" data-action="edit" data-donor-id="' + escapeHtml(donorId) + '">'
                 + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#129800" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>'
                 + '</button>'
-                + deactivateButton;
+                + stateButton;
         }
 
         function renderRows(rows) {
@@ -926,6 +999,12 @@
             }
             if (notEligibleDonorsEl) {
                 notEligibleDonorsEl.textContent = formatNumber(stats.not_eligible_donors || 0);
+            }
+            if (deferredDonorsEl) {
+                deferredDonorsEl.textContent = formatNumber(stats.temporary_deferred_donors || 0);
+            }
+            if (reviewDonorsEl) {
+                reviewDonorsEl.textContent = formatNumber(stats.for_review_donors || 0);
             }
             if (totalDonationsEl) {
                 totalDonationsEl.textContent = formatNumber(stats.total_donations || 0);
@@ -1009,7 +1088,34 @@
                 viewVerificationBadge.className = 'digital-id-card__status digital-id-card__status--' + verificationStatus;
             }
             if (viewCardAvatar) {
-                viewCardAvatar.textContent = donorInitials(donorPayload.full_name);
+                var profilePhotoUrl = String(donorPayload.profile_photo_url || '');
+                var safePhotoUrl = '';
+                try {
+                    var parsedPhotoUrl = new URL(profilePhotoUrl, window.location.origin);
+                    if (profilePhotoUrl && parsedPhotoUrl.origin === window.location.origin) safePhotoUrl = parsedPhotoUrl.toString();
+                } catch (error) {
+                    safePhotoUrl = '';
+                }
+
+                viewCardAvatar.replaceChildren();
+                if (safePhotoUrl) {
+                    var photo = document.createElement('img');
+                    photo.src = safePhotoUrl;
+                    photo.alt = fullName + ' profile photo';
+                    photo.className = 'h-full w-full object-cover';
+                    photo.addEventListener('error', function () {
+                        var initials = document.createElement('span');
+                        initials.textContent = donorInitials(donorPayload.full_name);
+                        initials.setAttribute('aria-hidden', 'true');
+                        viewCardAvatar.replaceChildren(initials);
+                    }, { once: true });
+                    viewCardAvatar.appendChild(photo);
+                } else {
+                    var initials = document.createElement('span');
+                    initials.textContent = donorInitials(donorPayload.full_name);
+                    initials.setAttribute('aria-hidden', 'true');
+                    viewCardAvatar.appendChild(initials);
+                }
             }
             if (viewCardName) {
                 viewCardName.textContent = fullName;
@@ -1036,7 +1142,11 @@
                 viewCardLastDonationDate.textContent = formatDate(donorPayload.last_donation_date, 'Not recorded');
             }
             if (viewCardNextEligibleDate) {
-                viewCardNextEligibleDate.textContent = formatDate(donorPayload.next_eligible_date, 'Not set');
+                var eligibilityStatus = normalizeStatus(donorPayload.eligibility_status);
+                var fallbackDateLabel = eligibilityStatus === 'eligible'
+                    ? 'Eligible now'
+                    : (eligibilityStatus === 'temporary_deferred' ? 'Date not set' : 'See eligibility status');
+                viewCardNextEligibleDate.textContent = formatDate(donorPayload.next_eligible_date, fallbackDateLabel);
                 var hasFutureEligibilityDate = false;
                 if (donorPayload.next_eligible_date) {
                     var nextEligibleDate = new Date(String(donorPayload.next_eligible_date) + 'T00:00:00');
@@ -1044,8 +1154,14 @@
                     today.setHours(0, 0, 0, 0);
                     hasFutureEligibilityDate = !Number.isNaN(nextEligibleDate.getTime()) && nextEligibleDate > today;
                 }
-                viewCardNextEligibleDate.classList.toggle('digital-id-card__field-value--waiting', hasFutureEligibilityDate);
-                viewCardNextEligibleDate.classList.toggle('digital-id-card__field-value--eligible', !hasFutureEligibilityDate);
+                viewCardNextEligibleDate.classList.remove(
+                    'digital-id-card__field-value--waiting',
+                    'digital-id-card__field-value--eligible',
+                    'digital-id-card__field-value--unknown'
+                );
+                viewCardNextEligibleDate.classList.add(hasFutureEligibilityDate
+                    ? 'digital-id-card__field-value--waiting'
+                    : (eligibilityStatus === 'eligible' ? 'digital-id-card__field-value--eligible' : 'digital-id-card__field-value--unknown'));
             }
             if (viewCardAccountStatus) {
                 viewCardAccountStatus.textContent = donorPayload.is_active === false ? 'INACTIVE ACCOUNT' : 'ACTIVE ACCOUNT';
@@ -1081,6 +1197,7 @@
             var responseOptions = options || {};
 
             clearInlineFeedback(editFeedback);
+            if (editProfilePhotoInput) editProfilePhotoInput.value = '';
 
             if (editModalSubtitle) {
                 editModalSubtitle.textContent = displayValue(donorPayload.donor_code || donorPayload.full_name || 'Update donor information');
@@ -1132,7 +1249,9 @@
 
         function buildDeactivatePrompt(target) {
             var donorName = target && target.name ? String(target.name) : 'this donor';
-            return 'Deactivate ' + donorName + '? This will prevent active donor services while preserving historical records.';
+            return target && target.reactivate
+                ? 'Reactivate ' + donorName + '? This restores access to active donor services and preserves historical records.'
+                : 'Deactivate ' + donorName + '? This will prevent active donor services while preserving historical records.';
         }
 
         function loadDonorDetails(donorId) {
@@ -1189,16 +1308,24 @@
                 });
         }
 
-        function openDeactivateModal(donorId, donorName) {
+        function openDeactivateModal(donorId, donorName, reactivate) {
             state.deactivateTarget = {
                 id: donorId,
-                name: donorName
+                name: donorName,
+                reactivate: !!reactivate
             };
 
             clearInlineFeedback(deactivateFeedback);
 
             if (deactivatePrompt) {
                 deactivatePrompt.textContent = buildDeactivatePrompt(state.deactivateTarget);
+            }
+            var title = document.getElementById('userManagementDeactivateModalLabel');
+            if (title) title.textContent = reactivate ? 'Reactivate Donor?' : 'Deactivate Donor?';
+            if (deactivateConfirmButton) {
+                deactivateConfirmButton.textContent = reactivate ? 'Reactivate Donor' : 'Deactivate Donor';
+                deactivateConfirmButton.classList.toggle('btn-success', !!reactivate);
+                deactivateConfirmButton.classList.toggle('btn-danger', !reactivate);
             }
 
             deactivateModal = ensureModal(deactivateModalElement, deactivateModal);
@@ -1319,8 +1446,8 @@
                     return;
                 }
 
-                if (action === 'deactivate') {
-                    openDeactivateModal(donorId, donorName);
+                if (action === 'toggle-active') {
+                    openDeactivateModal(donorId, donorName, actionButton.getAttribute('data-is-active') === 'false');
                 }
             });
         }
@@ -1355,6 +1482,9 @@
                     longitude: String((editLongitudeInput && editLongitudeInput.value) || '').trim() || null,
                     eligibility_status: String((editEligibilityStatusSelect && editEligibilityStatusSelect.value) || '').trim() || null
                 };
+                var selectedPhoto = editProfilePhotoInput && editProfilePhotoInput.files
+                    ? editProfilePhotoInput.files[0]
+                    : null;
 
                 clearInlineFeedback(editFeedback);
                 setTextButtonLoading(editSaveButton, true, 'Saving...');
@@ -1364,15 +1494,40 @@
                     body: JSON.stringify(payloadBody)
                 })
                     .then(function (responsePayload) {
+                        if (!selectedPhoto) {
+                            return { profile: responsePayload, photo: null };
+                        }
+
+                        var photoUrl = buildDonorActionUrl(photoUploadUrlTemplate, donorId);
+                        if (!photoUrl) {
+                            var routeError = new Error('Profile saved, but the photo upload route is not configured.');
+                            routeError.profileSaved = true;
+                            throw routeError;
+                        }
+
+                        return uploadDonorPhoto(photoUrl, selectedPhoto)
+                            .then(function (photoPayload) {
+                                return { profile: responsePayload, photo: photoPayload };
+                            })
+                            .catch(function (error) {
+                                error.profileSaved = true;
+                                throw error;
+                            });
+                    })
+                    .then(function (result) {
                         if (editModal) {
                             editModal.hide();
                         }
 
-                        showAlert('success', responsePayload.message || 'Donor updated successfully.');
+                        showAlert('success', result.profile.message || 'Donor updated successfully.');
                         loadUsers();
                     })
                     .catch(function (error) {
-                        showInlineFeedback(editFeedback, 'danger', error.message || 'Unable to update donor.');
+                        var message = error.message || 'Unable to update donor.';
+                        showInlineFeedback(editFeedback, error.profileSaved ? 'warning' : 'danger', message);
+                        if (error.profileSaved) {
+                            loadUsers();
+                        }
                     })
                     .finally(function () {
                         setTextButtonLoading(editSaveButton, false, 'Saving...');
@@ -1380,19 +1535,31 @@
             });
         }
 
+        if (printDigitalIdButton && viewDigitalIdCard) {
+            printDigitalIdButton.addEventListener('click', function () {
+                document.body.classList.add('digital-id-printing');
+                window.addEventListener('afterprint', function cleanupDigitalIdPrint() {
+                    document.body.classList.remove('digital-id-printing');
+                }, { once: true });
+                window.print();
+            });
+        }
+
         if (deactivateConfirmButton) {
             deactivateConfirmButton.addEventListener('click', function () {
                 var targetDonor = state.deactivateTarget;
                 var donorId = targetDonor ? Number(targetDonor.id || 0) : 0;
-                var requestUrl = buildDonorActionUrl(deactivateUrlTemplate, donorId);
+                var isReactivate = !!(targetDonor && targetDonor.reactivate);
+                var requestUrl = buildDonorActionUrl(isReactivate ? reactivateUrlTemplate : deactivateUrlTemplate, donorId);
 
                 if (!donorId || !requestUrl) {
-                    showInlineFeedback(deactivateFeedback, 'danger', 'Donor deactivation route is not configured correctly.');
+                    showInlineFeedback(deactivateFeedback, 'danger', 'Donor account-status route is not configured correctly.');
                     return;
                 }
 
                 clearInlineFeedback(deactivateFeedback);
-                setTextButtonLoading(deactivateConfirmButton, true, 'Deactivating...');
+                var loadingLabel = isReactivate ? 'Reactivating...' : 'Deactivating...';
+                setTextButtonLoading(deactivateConfirmButton, true, loadingLabel);
 
                 requestJson(requestUrl, {
                     method: 'PATCH'
@@ -1402,7 +1569,7 @@
                             deactivateModal.hide();
                         }
 
-                        showAlert('success', responsePayload.message || 'Donor account deactivated.');
+                        showAlert('success', responsePayload.message || (isReactivate ? 'Donor account reactivated.' : 'Donor account deactivated.'));
                         state.deactivateTarget = null;
                         loadUsers();
                     })
@@ -1410,7 +1577,7 @@
                         showInlineFeedback(deactivateFeedback, 'danger', error.message || 'Unable to deactivate donor.');
                     })
                     .finally(function () {
-                        setTextButtonLoading(deactivateConfirmButton, false, 'Deactivating...');
+                        setTextButtonLoading(deactivateConfirmButton, false, isReactivate ? 'Reactivate Donor' : 'Deactivate Donor');
                     });
             });
         }

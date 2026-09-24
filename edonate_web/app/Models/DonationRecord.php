@@ -19,6 +19,7 @@ class DonationRecord extends Model
         'donation_date',
         'donation_status',
         'blood_units',
+        'inventory_received_at',
         'remarks',
         'deferred_reason',
     ];
@@ -27,6 +28,7 @@ class DonationRecord extends Model
         'donation_date' => 'date',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+        'inventory_received_at' => 'datetime',
     ];
 
     public function appointment()

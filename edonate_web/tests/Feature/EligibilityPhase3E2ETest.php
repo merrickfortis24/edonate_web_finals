@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureAdminAuthenticated;
 use App\Http\Middleware\EnsureAdminRole;
-use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -12,14 +11,20 @@ use Tests\TestCase;
 
 class EligibilityPhase3E2ETest extends TestCase
 {
-    use DatabaseTransactions;
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Eligibility end-to-end coverage must never touch the configured or
+        // hosted database; this test provisions only an isolated memory DB.
+        $this->assertSame('sqlite', config('database.default'));
+        $this->assertSame(':memory:', config('database.connections.sqlite.database'));
+        $this->artisan('migrate', ['--database' => 'sqlite', '--force' => true])
+            ->assertSuccessful();
+    }
 
     public function test_phase_3_automatic_eligibility_end_to_end_cases(): void
     {
-        if (! Schema::hasTable('screening_questions') || ! Schema::hasTable('donors') || ! Schema::hasTable('eligibility_status')) {
-            $this->markTestSkipped('Eligibility tables are not available in the current testing database connection.');
-        }
-
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
 
         $bloodTypeId = $this->ensureBloodType();
@@ -120,10 +125,10 @@ class EligibilityPhase3E2ETest extends TestCase
                 'donor_id' => $donorId,
                 'donor_name' => 'Phase3 Donor',
             ])
-            ->post(route('donor.check-eligibility.submit'), [
+            ->post(route('donor.check-eligibility.submit'), array_merge($this->privacyAcknowledgment(), [
                 'answers' => $answers,
                 'followups' => [],
-            ]);
+            ]));
 
         $response->assertRedirect(route('donor.check-eligibility'));
 
@@ -162,7 +167,7 @@ class EligibilityPhase3E2ETest extends TestCase
 
     private function assertReviewableState(int $donorId, bool $expectedReviewable): void
     {
-        $response = $this->getJson(route('admin.eligibility.data', ['per_page' => 200]));
+        $response = $this->getJson(route('admin.eligibility.data', ['per_page' => 100]));
         $response->assertOk();
         $payload = $response->json('data');
         $this->assertIsArray($payload);

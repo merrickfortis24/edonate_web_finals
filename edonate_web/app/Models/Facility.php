@@ -49,4 +49,9 @@ class Facility extends Model
     {
         return $this->hasMany(BloodRequest::class, 'facility_id', 'facility_id');
     }
+
+    public function donationEvents()
+    {
+        return $this->hasMany(DonationEvent::class, 'facility_id', 'facility_id');
+    }
 }

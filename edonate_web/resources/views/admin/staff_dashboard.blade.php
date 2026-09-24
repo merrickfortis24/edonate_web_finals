@@ -8,7 +8,7 @@
 @section('header_actions')
 	<div class="header__date-group" aria-label="Current date">
 		<p class="header__date-label">Today's Date</p>
-		<p class="header__date-value" id="todayDate">-</p>
+		<p class="header__date-value" id="todayDate">{{ now()->format('F j, Y') }}</p>
 	</div>
 
 	<div class="header__icon-actions" aria-label="Staff quick actions">
@@ -29,52 +29,45 @@
 @section('admin_page_data')
 {!! json_encode([
 	'page' => 'staff-dashboard',
-	'dashboard' => [
-		'kpis' => [
-			'appointmentsToday' => 42,
-			'pendingDonations' => 18,
-			'stockAlerts' => 6,
-			'notificationsSent' => 27,
-		],
+		'dashboard' => [
+		'kpis' => data_get($staffDashboardPayload ?? [], 'metrics', []),
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
 
 @section('main_content')
+	@php
+		$metrics = data_get($staffDashboardPayload ?? [], 'metrics', []);
+		$activities = data_get($staffDashboardPayload ?? [], 'activities', []);
+		$activityAvailable = (bool) data_get($staffDashboardPayload ?? [], 'activity_available', false);
+		$metricCards = [
+			['key' => 'appointments_today', 'label' => 'Appointments Today', 'note' => 'All scheduled appointments', 'class' => 'red'],
+			['key' => 'confirmed_today', 'label' => 'Confirmed Today', 'note' => 'Confirmed donor schedules', 'class' => 'green'],
+			['key' => 'checked_in_today', 'label' => 'Checked In', 'note' => 'Today’s arrived donors', 'class' => 'blue'],
+			['key' => 'completed_today', 'label' => 'Completed Donations', 'note' => 'Recorded today', 'class' => 'gold'],
+			['key' => 'deferred_today', 'label' => 'Deferred Today', 'note' => 'On-site deferrals', 'class' => 'red'],
+			['key' => 'open_requests', 'label' => 'Open Blood Requests', 'note' => 'Open or in progress', 'class' => 'green'],
+			['key' => 'emergency_requests', 'label' => 'Emergency Requests', 'note' => 'Open emergency requests', 'class' => 'blue'],
+			['key' => 'inventory_alerts', 'label' => 'Inventory Alerts', 'note' => 'Low or out-of-stock types', 'class' => 'gold'],
+			['key' => 'active_facilities', 'label' => 'Active Facilities', 'note' => 'Current facility snapshot', 'class' => 'red'],
+		];
+	@endphp
 	<div class="main container-fluid px-0">
 		<main class="content container-fluid py-3">
-			<section class="dashboard-stats row" aria-label="Staff dashboard statistics">
-				<div class="col-6 col-lg-3">
-					<div class="stat-card stat-card--red h-100">
-						<p class="stat-card__label stat-card__label--white">Appointments Today</p>
-						<p class="stat-card__value stat-card__value--white" id="staffStatAppointments">0</p>
-						<p class="stat-card__change stat-card__change--white">Operational queue</p>
+			<section class="dashboard-stats row g-3" aria-label="Staff dashboard statistics">
+				@foreach ($metricCards as $card)
+					@php
+						$metric = data_get($metrics, $card['key'], []);
+						$available = (bool) data_get($metric, 'available', false);
+					@endphp
+					<div class="col-6 col-lg-3">
+						<div class="stat-card stat-card--{{ $card['class'] }} h-100">
+							<p class="stat-card__label">{{ $card['label'] }}</p>
+							<p class="stat-card__value">{{ $available ? number_format((int) data_get($metric, 'value', 0)) : 'N/A' }}</p>
+							<p class="stat-card__change">{{ $available ? $card['note'] : 'Unable to load this metric' }}</p>
+						</div>
 					</div>
-				</div>
-
-				<div class="col-6 col-lg-3">
-					<div class="stat-card stat-card--green h-100">
-						<p class="stat-card__label">Pending Donations</p>
-						<p class="stat-card__value" id="staffStatPendingDonations">0</p>
-						<p class="stat-card__change stat-card__change--green">For verification</p>
-					</div>
-				</div>
-
-				<div class="col-6 col-lg-3">
-					<div class="stat-card stat-card--blue h-100">
-						<p class="stat-card__label">Stock Alerts</p>
-						<p class="stat-card__value" id="staffStatStockAlerts">0</p>
-						<p class="stat-card__change stat-card__change--blue">Needs attention</p>
-					</div>
-				</div>
-
-				<div class="col-6 col-lg-3">
-					<div class="stat-card stat-card--gold h-100">
-						<p class="stat-card__label">Notifications Sent</p>
-						<p class="stat-card__value" id="staffStatNotifications">0</p>
-						<p class="stat-card__change stat-card__change--gold">Today</p>
-					</div>
-				</div>
+				@endforeach
 			</section>
 
 			<section class="map-banner d-flex align-items-center" aria-label="Blood map quick access">
@@ -131,30 +124,20 @@
 					<div class="panel h-100">
 						<h2 class="panel__title">Recent Staff Activities</h2>
 						<ul class="activity-list">
-							<li class="activity-item">
-								<span class="activity-item__dot activity-item__dot--green"></span>
-								<div class="activity-item__info">
-									<p class="activity-item__name">Appointment queue updated</p>
-									<p class="activity-item__action">3 donors marked ready for screening</p>
-								</div>
-								<span class="activity-item__time">12 min ago</span>
-							</li>
-							<li class="activity-item">
-								<span class="activity-item__dot activity-item__dot--blue"></span>
-								<div class="activity-item__info">
-									<p class="activity-item__name">Donation record validated</p>
-									<p class="activity-item__action">Bag tracking data verified</p>
-								</div>
-								<span class="activity-item__time">45 min ago</span>
-							</li>
-							<li class="activity-item">
-								<span class="activity-item__dot activity-item__dot--gold"></span>
-								<div class="activity-item__info">
-									<p class="activity-item__name">Low stock alert reviewed</p>
-									<p class="activity-item__action">O- inventory escalated</p>
-								</div>
-								<span class="activity-item__time">1 hr ago</span>
-							</li>
+							@forelse ($activities as $activity)
+								<li class="activity-item">
+									<span class="activity-item__dot activity-item__dot--blue"></span>
+									<div class="activity-item__info">
+										<p class="activity-item__name">{{ $activity['title'] }}</p>
+										<p class="activity-item__action">{{ $activity['description'] ?: 'No description recorded' }}@if($activity['actor']) · {{ $activity['actor'] }}@endif</p>
+									</div>
+									<span class="activity-item__time">{{ $activity['created_at'] ? \Illuminate\Support\Carbon::parse($activity['created_at'])->diffForHumans() : '' }}</span>
+								</li>
+							@empty
+								<li class="activity-item text-muted py-3">
+									{{ $activityAvailable ? 'No recent activity.' : 'Recent activity is unavailable.' }}
+								</li>
+							@endforelse
 						</ul>
 						<a class="panel__footer-btn panel__footer-btn--green btn" href="{{ route('admin.audit-logs') }}">View Audit Logs</a>
 					</div>
@@ -163,40 +146,3 @@
 		</main>
 	</div>
 @endsection
-
-@push('admin_scripts')
-<script>
-	(function () {
-		var dateElement = document.getElementById('todayDate');
-		if (dateElement) {
-			var now = new Date();
-			dateElement.textContent = now.toLocaleDateString('en-US', {
-				year: 'numeric',
-				month: 'long',
-				day: 'numeric'
-			});
-		}
-
-		var dashboardData = (window.AdminPageData && window.AdminPageData.dashboard) ? window.AdminPageData.dashboard : {};
-		var kpis = (dashboardData && dashboardData.kpis && typeof dashboardData.kpis === 'object') ? dashboardData.kpis : {};
-
-		var statAppointments = document.getElementById('staffStatAppointments');
-		var statPendingDonations = document.getElementById('staffStatPendingDonations');
-		var statStockAlerts = document.getElementById('staffStatStockAlerts');
-		var statNotifications = document.getElementById('staffStatNotifications');
-
-		if (statAppointments) {
-			statAppointments.textContent = String(Number(kpis.appointmentsToday || 0));
-		}
-		if (statPendingDonations) {
-			statPendingDonations.textContent = String(Number(kpis.pendingDonations || 0));
-		}
-		if (statStockAlerts) {
-			statStockAlerts.textContent = String(Number(kpis.stockAlerts || 0));
-		}
-		if (statNotifications) {
-			statNotifications.textContent = String(Number(kpis.notificationsSent || 0));
-		}
-	})();
-</script>
-@endpush

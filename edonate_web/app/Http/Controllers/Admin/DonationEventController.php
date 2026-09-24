@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\DonationEvent;
+use App\Models\Facility;
 use App\Services\AppointmentBookingService;
 use App\Services\AdminNotificationService;
 use App\Services\DonationEventService;
@@ -33,6 +34,7 @@ class DonationEventController extends Controller
                 'api' => [
                     'listUrl' => route('admin.donation-events.data'),
                     'storeUrl' => route('admin.donation-events.store'),
+                    'facilities' => $this->facilityOptions(),
                 ],
             ],
         ]);
@@ -49,6 +51,9 @@ class DonationEventController extends Controller
         ]);
 
         $query = DonationEvent::query()->with('creator');
+        if ($this->eventFacilityAvailable()) {
+            $query->with('facility');
+        }
         $search = trim((string) ($validated['search'] ?? ''));
         $status = Str::lower(trim((string) ($validated['status'] ?? '')));
 
@@ -262,16 +267,33 @@ class DonationEventController extends Controller
 
     private function validatedPayload(Request $request, ?DonationEvent $event, bool $creating): array
     {
-        $validated = $request->validate([
+        $rules = [
             'title' => ['required', 'string', 'max:150'],
             'location_name' => ['required', 'string', 'max:150'],
+            'facility_id' => ['nullable', 'integer'],
             'address' => ['nullable', 'string', 'max:5000'],
             'event_date' => ['required', 'date', $creating ? 'after_or_equal:today' : 'date'],
             'start_time' => ['required', 'date_format:H:i'],
             'end_time' => ['required', 'date_format:H:i', 'after:start_time'],
             'max_capacity' => ['required', 'integer', 'min:1', 'max:100000'],
             'status' => ['required', Rule::in(['open', 'closed', 'completed', 'cancelled'])],
-        ]);
+        ];
+
+        if ($request->filled('facility_id')) {
+            if (! $this->eventFacilityAvailable()) {
+                throw ValidationException::withMessages([
+                    'facility_id' => 'Facility assignment is unavailable until the latest database migrations are applied.',
+                ]);
+            }
+            $rules['facility_id'][] = Rule::exists('facilities', 'facility_id');
+        }
+
+        $validated = $request->validate($rules);
+        if (! $this->eventFacilityAvailable()) {
+            unset($validated['facility_id']);
+        } elseif (($validated['facility_id'] ?? null) === '') {
+            $validated['facility_id'] = null;
+        }
 
         if ($event instanceof DonationEvent && (int) $validated['max_capacity'] < $this->eventService->bookedSlotCount((int) $event->event_id)) {
             throw ValidationException::withMessages([
@@ -284,12 +306,42 @@ class DonationEventController extends Controller
 
     private function eventResponse(DonationEvent $event): array
     {
+        if ($this->eventFacilityAvailable()) {
+            $event->loadMissing('facility');
+        }
+
         $payload = $this->bookingService->eventPayload($event);
         $payload['created_by'] = $event->relationLoaded('creator')
             ? ($event->creator?->full_name ?: $event->creator?->username)
             : DB::table('admins')->where('admin_id', $event->created_by_admin_id)->value('full_name');
 
         return $payload;
+    }
+
+    /** @return array<int, array{id: int, name: string}> */
+    private function facilityOptions(): array
+    {
+        if (! Schema::hasColumns('facilities', ['facility_id', 'facility_name'])) {
+            return [];
+        }
+
+        $query = DB::table('facilities');
+        if (Schema::hasColumn('facilities', 'status')) {
+            $query->whereRaw("LOWER(TRIM(COALESCE(status, 'active'))) = 'active'");
+        }
+
+        return $query->orderBy('facility_name')->get(['facility_id', 'facility_name'])
+            ->map(static fn (object $facility): array => [
+                'id' => (int) $facility->facility_id,
+                'name' => trim((string) $facility->facility_name),
+            ])->all();
+    }
+
+    private function eventFacilityAvailable(): bool
+    {
+        return Schema::hasTable('facilities')
+            && Schema::hasColumn('donation_events', 'facility_id')
+            && Schema::hasColumns('facilities', ['facility_id', 'facility_name']);
     }
 
     private function statusStats(): array

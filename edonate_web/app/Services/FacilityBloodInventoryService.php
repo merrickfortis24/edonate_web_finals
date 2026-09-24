@@ -184,6 +184,78 @@ class FacilityBloodInventoryService
     }
 
     /**
+     * Add a completed donation to facility inventory exactly once.
+     *
+     * The donation record is the idempotency key: the unique nullable log
+     * reference is the durable guard, while the caller's transaction makes
+     * the inventory update, history row, and receipt marker atomic.
+     */
+    public function receiveDonation(
+        int $facilityId,
+        int $bloodTypeId,
+        int $units,
+        int $adminId,
+        int $donationId
+    ): bool {
+        if ($facilityId <= 0 || $bloodTypeId <= 0 || $units <= 0 || $donationId <= 0) {
+            throw ValidationException::withMessages(['inventory' => 'Facility, verified blood type, units, and donation are required.']);
+        }
+
+        return DB::transaction(function () use ($facilityId, $bloodTypeId, $units, $adminId, $donationId): bool {
+            $facility = Facility::query()
+                ->where('facility_id', $facilityId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $facility) {
+                throw ValidationException::withMessages(['inventory' => 'The event facility no longer exists.']);
+            }
+
+            $alreadyReceived = FacilityBloodInventoryLog::query()
+                ->where('related_donation_id', $donationId)
+                ->exists();
+
+            if ($alreadyReceived) {
+                return false;
+            }
+
+            $inventory = FacilityBloodInventory::query()
+                ->where('facility_id', $facilityId)
+                ->where('blood_type_id', $bloodTypeId)
+                ->lockForUpdate()
+                ->first();
+            $previousUnits = max(0, (int) ($inventory?->available_units ?? 0));
+            $newUnits = $previousUnits + $units;
+
+            $inventory ??= new FacilityBloodInventory([
+                'facility_id' => $facilityId,
+                'blood_type_id' => $bloodTypeId,
+                'reserved_units' => 0,
+                'low_stock_threshold' => $this->defaultThreshold(),
+            ]);
+            $inventory->available_units = $newUnits;
+            $inventory->last_updated = now();
+            $inventory->updated_by_admin_id = $adminId > 0 ? $adminId : null;
+            $inventory->save();
+
+            FacilityBloodInventoryLog::query()->create([
+                'facility_id' => $facilityId,
+                'blood_type_id' => $bloodTypeId,
+                'previous_units' => $previousUnits,
+                'new_units' => $newUnits,
+                'change_amount' => $units,
+                'action_type' => 'donation_received',
+                'reason' => 'Completed donation DR'.str_pad((string) $donationId, 3, '0', STR_PAD_LEFT).' received into facility inventory.',
+                'updated_by_admin_id' => $adminId > 0 ? $adminId : null,
+                'related_donation_id' => $donationId,
+                'created_at' => now(),
+            ]);
+
+            return true;
+        });
+    }
+
+    /**
      * @param array{blood_type?: string|null, facility_type?: string|null, search?: string|null} $filters
      * @return array<string, mixed>
      */

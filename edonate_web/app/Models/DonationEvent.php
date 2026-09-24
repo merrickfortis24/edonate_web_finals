@@ -19,6 +19,7 @@ class DonationEvent extends Model
         'start_time',
         'end_time',
         'location_name',
+        'facility_id',
         'address',
         'max_capacity',
         'status',
@@ -40,5 +41,10 @@ class DonationEvent extends Model
     public function creator()
     {
         return $this->belongsTo(Admin::class, 'created_by_admin_id', 'admin_id');
+    }
+
+    public function facility()
+    {
+        return $this->belongsTo(Facility::class, 'facility_id', 'facility_id');
     }
 }

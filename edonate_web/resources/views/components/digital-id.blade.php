@@ -52,7 +52,8 @@
 
     $lastDonationDate = $parseDate(data_get($donor, 'last_donation_date'));
     $nextEligibleDate = $parseDate(data_get($donor, 'next_eligible_date'));
-    $isEligible = ! $nextEligibleDate || $nextEligibleDate->startOfDay()->lte(now()->startOfDay());
+    $eligibilityStatus = \App\Support\EligibilityStatus::normalize(data_get($donor, 'eligibility_status', 'unknown'));
+    $isWithinWaitingDate = $nextEligibleDate && $nextEligibleDate->startOfDay()->gt(now()->startOfDay());
 
     $initials = collect(preg_split('/\s+/', $donorName) ?: [])
         ->filter()
@@ -74,8 +75,15 @@
         'unverified' => 'UNVERIFIED DONOR',
     ][$verificationStatus];
 
-    $eligibilityStatus = strtolower((string) data_get($donor, 'eligibility_status', 'eligible'));
-    $eligibilityLabel = $eligibilityStatus === 'not_eligible' ? 'Not Eligible' : 'Eligible';
+    $eligibilityLabel = \App\Support\EligibilityStatus::label($eligibilityStatus);
+    $eligibilityBadgeClass = \App\Support\EligibilityStatus::badgeClass($eligibilityStatus);
+    $eligibilityVariant = match ($eligibilityStatus) {
+        'eligible' => 'eligible',
+        'not_eligible' => 'not-eligible',
+        'temporary_deferred' => 'deferred',
+        'for_review' => 'review',
+        default => 'unknown',
+    };
     $fieldId = static fn (string $suffix): ?string => filled($fieldPrefix)
         ? trim((string) $fieldPrefix).$suffix
         : null;
@@ -114,7 +122,7 @@
         <div class="digital-id-card__col digital-id-card__col--left col-span-12 sm:col-span-4 flex flex-col items-center justify-between border-b sm:border-b-0 sm:border-r border-slate-200 p-4 text-center">
             <div class="digital-id-card__avatar flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-[3px] border-red-700 bg-red-100 text-xl font-extrabold text-red-700 shadow-inner">
                 @if ($photoUrl)
-                    <img src="{{ $photoUrl }}" alt="{{ $donorName }} profile photo" class="h-full w-full object-cover">
+                    <img src="{{ $photoUrl }}" alt="{{ $donorName }} profile photo" class="h-full w-full object-cover" data-digital-id-field="avatarImage">
                 @else
                     <span
                         data-digital-id-field="avatar"
@@ -188,10 +196,10 @@
                 <div class="digital-id-card__date-col p-3">
                     <span class="digital-id-card__field-label block text-[0.62rem] font-bold uppercase tracking-wider text-slate-500">NEXT ELIGIBLE</span>
                     <span
-                        class="digital-id-card__field-value digital-id-card__field-value--{{ $isEligible ? 'eligible' : 'waiting' }} mt-1 block text-xs font-bold {{ $isEligible ? 'text-emerald-600' : 'text-amber-600' }}"
+                        class="digital-id-card__field-value digital-id-card__field-value--{{ $isWithinWaitingDate ? 'waiting' : ($eligibilityStatus === 'eligible' ? 'eligible' : 'unknown') }} mt-1 block text-xs font-bold {{ $isWithinWaitingDate ? 'text-amber-600' : ($eligibilityStatus === 'eligible' ? 'text-emerald-600' : 'text-slate-600') }}"
                         data-digital-id-field="nextEligibleDate"
                         @if ($fieldId('NextEligibleDate')) id="{{ $fieldId('NextEligibleDate') }}" @endif
-                    >{{ $nextEligibleDate?->format('M d, Y') ?? 'Eligible now' }}</span>
+                    >{{ $nextEligibleDate?->format('M d, Y') ?? ($eligibilityStatus === 'eligible' ? 'Eligible now' : ($eligibilityStatus === 'temporary_deferred' ? 'Date not set' : 'See eligibility status')) }}</span>
                 </div>
             </div>
         </div>
@@ -201,16 +209,16 @@
             <div class="digital-id-card__status-stack w-full flex flex-col items-center gap-2">
                 <div class="digital-id-card__status-item w-full flex flex-col items-center">
                     <span
-                        class="digital-id-card__badge digital-id-card__badge--{{ $isEligible ? 'eligible' : 'waiting' }} inline-block rounded bg-emerald-700 px-3 py-0.5 text-xs font-extrabold text-white tracking-wide uppercase"
+                        class="digital-id-card__badge digital-id-card__badge--{{ $eligibilityVariant }} inline-block rounded px-3 py-0.5 text-xs font-extrabold tracking-wide uppercase {{ $eligibilityBadgeClass }}"
                         data-digital-id-field="eligibility"
                         @if ($fieldId('Eligibility')) id="{{ $fieldId('Eligibility') }}" @endif
                     >{{ strtoupper($eligibilityLabel) }}</span>
-                    <span class="digital-id-card__badge-sub text-[0.62rem] font-medium text-slate-700 mt-0.5">Identity Status</span>
+                    <span class="digital-id-card__badge-sub text-[0.62rem] font-medium text-slate-700 mt-0.5">Eligibility Status</span>
                 </div>
 
                 <div class="digital-id-card__status-item w-full flex flex-col items-center">
                     <span
-                        class="digital-id-card__badge digital-id-card__badge--verified inline-block rounded bg-emerald-700 px-3 py-0.5 text-xs font-extrabold text-white tracking-wide uppercase"
+                        class="digital-id-card__badge digital-id-card__identity--{{ $verificationStatus }} inline-block rounded px-3 py-0.5 text-xs font-extrabold tracking-wide uppercase"
                         data-digital-id-field="identity"
                         @if ($fieldId('Identity')) id="{{ $fieldId('Identity') }}" @endif
                     >{{ strtoupper($verificationStatus === 'verified' ? 'VERIFIED' : $verificationStatus) }}</span>
@@ -218,63 +226,7 @@
                 </div>
             </div>
 
-            <!-- Realistic QR Matrix -->
-            <div class="digital-id-card__qr-section mt-2 flex flex-col items-center">
-                <div class="digital-id-card__qr-box h-20 w-20 flex items-center justify-center p-1 bg-white" aria-label="QR code placeholder">
-                    <svg class="digital-id-card__qr-svg h-full w-full text-slate-900" viewBox="0 0 100 100" fill="currentColor" aria-hidden="true">
-                        <!-- Top-Left Finder -->
-                        <rect x="6" y="6" width="26" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="4" />
-                        <rect x="13" y="13" width="12" height="12" rx="1.5" fill="currentColor" />
-                        <!-- Top-Right Finder -->
-                        <rect x="68" y="6" width="26" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="4" />
-                        <rect x="75" y="13" width="12" height="12" rx="1.5" fill="currentColor" />
-                        <!-- Bottom-Left Finder -->
-                        <rect x="6" y="68" width="26" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="4" />
-                        <rect x="13" y="75" width="12" height="12" rx="1.5" fill="currentColor" />
-                        <!-- Timing & Data Dots -->
-                        <rect x="38" y="8" width="4.5" height="4.5" rx="1" />
-                        <rect x="46" y="8" width="4.5" height="4.5" rx="1" />
-                        <rect x="54" y="8" width="4.5" height="4.5" rx="1" />
-                        <rect x="38" y="18" width="4.5" height="4.5" rx="1" />
-                        <rect x="54" y="18" width="4.5" height="4.5" rx="1" />
-                        <rect x="38" y="26" width="4.5" height="4.5" rx="1" />
-                        <rect x="46" y="26" width="4.5" height="4.5" rx="1" />
-                        <rect x="8" y="38" width="4.5" height="4.5" rx="1" />
-                        <rect x="18" y="38" width="4.5" height="4.5" rx="1" />
-                        <rect x="26" y="38" width="4.5" height="4.5" rx="1" />
-                        <rect x="68" y="38" width="4.5" height="4.5" rx="1" />
-                        <rect x="78" y="38" width="4.5" height="4.5" rx="1" />
-                        <rect x="88" y="38" width="4.5" height="4.5" rx="1" />
-                        <rect x="8" y="48" width="4.5" height="4.5" rx="1" />
-                        <rect x="22" y="48" width="4.5" height="4.5" rx="1" />
-                        <rect x="72" y="48" width="4.5" height="4.5" rx="1" />
-                        <rect x="88" y="48" width="4.5" height="4.5" rx="1" />
-                        <rect x="8" y="56" width="4.5" height="4.5" rx="1" />
-                        <rect x="18" y="56" width="4.5" height="4.5" rx="1" />
-                        <rect x="26" y="56" width="4.5" height="4.5" rx="1" />
-                        <rect x="68" y="56" width="4.5" height="4.5" rx="1" />
-                        <rect x="82" y="56" width="4.5" height="4.5" rx="1" />
-                        <rect x="38" y="68" width="4.5" height="4.5" rx="1" />
-                        <rect x="48" y="68" width="4.5" height="4.5" rx="1" />
-                        <rect x="58" y="68" width="4.5" height="4.5" rx="1" />
-                        <rect x="38" y="78" width="4.5" height="4.5" rx="1" />
-                        <rect x="52" y="78" width="4.5" height="4.5" rx="1" />
-                        <rect x="38" y="88" width="4.5" height="4.5" rx="1" />
-                        <rect x="48" y="88" width="4.5" height="4.5" rx="1" />
-                        <rect x="58" y="88" width="4.5" height="4.5" rx="1" />
-                        <rect x="68" y="68" width="4.5" height="4.5" rx="1" />
-                        <rect x="80" y="68" width="4.5" height="4.5" rx="1" />
-                        <rect x="74" y="78" width="4.5" height="4.5" rx="1" />
-                        <rect x="86" y="78" width="4.5" height="4.5" rx="1" />
-                        <rect x="68" y="88" width="4.5" height="4.5" rx="1" />
-                        <rect x="80" y="88" width="4.5" height="4.5" rx="1" />
-                        <!-- Center Badge -->
-                        <rect x="34" y="34" width="32" height="32" rx="4" fill="#ffffff" stroke="currentColor" stroke-width="2.5" />
-                        <text x="50" y="56" font-family="system-ui, -apple-system, sans-serif" font-size="14" font-weight="900" text-anchor="middle" fill="currentColor">QR</text>
-                    </svg>
-                </div>
-                <p class="digital-id-card__qr-text text-[0.65rem] font-semibold text-slate-800 m-0 mt-0.5">Scan to verify donor</p>
-            </div>
+            <p class="digital-id-card__verification-note">Verify this ID with an authorized eDonate administrator.</p>
         </div>
     </div>
 </article>

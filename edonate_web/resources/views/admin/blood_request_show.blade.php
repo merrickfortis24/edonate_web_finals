@@ -33,6 +33,7 @@
                 <strong>Status</strong><span>{{ Str::headline($details['request']['status']) }}</span>
                 <strong>Inventory</strong><span>{{ $details['inventory']['available_units'] }} recorded unit(s)</span>
             </div>
+            <p class="small text-muted mt-3 mb-0">Candidate fulfillment tracks donor responses only. It does not allocate or deduct physical inventory; recorded units must be reconciled through facility inventory management.</p>
         </section>
         <section class="br-card">
             <h2>Candidate Summary</h2>

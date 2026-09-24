@@ -8,15 +8,20 @@ use App\Models\AdminNotificationPreference;
 use App\Models\BloodType;
 use App\Models\Donor;
 use App\Models\DonorAuthentication;
+use App\Models\DonationEvent;
 use App\Models\EligibilityStatus;
 use App\Models\Location;
 use App\Services\AdminNotificationService;
 use App\Services\BloodAvailabilityService;
 use App\Services\DonationProcessingService;
+use App\Services\AppointmentBookingService;
+use App\Services\AppointmentStatusService;
+use App\Support\EligibilityStatus as EligibilityStatusValue;
 use App\Services\FacilityBloodInventoryService;
 use App\Services\FirebaseGoogleIdentityService;
 use App\Services\GeocodingService;
 use App\Services\PrivacyLegalSettings;
+use App\Services\StaffDashboardService;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
@@ -43,6 +48,12 @@ use Throwable;
 
 class AdminAuthController extends BaseController
 {
+    /** @var array<string, bool> */
+    private array $dashboardTableAvailability = [];
+
+    /** @var array<string, bool> */
+    private array $dashboardColumnAvailability = [];
+
     private const SECURITY_SETTINGS_TABLE = 'admin_security_settings';
 
     private const ADMIN_NOTIFICATION_PREFERENCES_TABLE = 'admin_notification_preferences';
@@ -635,9 +646,11 @@ class AdminAuthController extends BaseController
     /**
      * Display staff dashboard.
      */
-    public function staffDashboard(Request $request)
+    public function staffDashboard(Request $request, StaffDashboardService $dashboardService)
     {
-        return view('admin.staff_dashboard');
+        return view('admin.staff_dashboard', [
+            'staffDashboardPayload' => $dashboardService->build(),
+        ]);
     }
 
     /**
@@ -651,8 +664,10 @@ class AdminAuthController extends BaseController
                     'listUrl' => route('admin.users.data'),
                     'exportUrl' => route('admin.users.export'),
                     'showUrlTemplate' => route('admin.users.show', ['donor' => '__DONOR_ID__']),
+                    'photoUploadUrlTemplate' => route('admin.users.photo.upload', ['donor' => '__DONOR_ID__']),
                     'updateUrlTemplate' => route('admin.users.update', ['donor' => '__DONOR_ID__']),
                     'deactivateUrlTemplate' => route('admin.users.deactivate', ['donor' => '__DONOR_ID__']),
+                    'reactivateUrlTemplate' => route('admin.users.reactivate', ['donor' => '__DONOR_ID__']),
                     'csrfToken' => csrf_token(),
                 ],
                 'filters' => [
@@ -672,7 +687,7 @@ class AdminAuthController extends BaseController
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
             'blood_type' => ['nullable', 'string', 'max:10'],
-            'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible'])],
+            'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible', 'temporary_deferred', 'for_review', 'unknown'])],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
@@ -733,16 +748,18 @@ class AdminAuthController extends BaseController
                 'total_donors' => (int) DB::table('donors')->count(),
                 'eligible_donors' => (int) ($statusCounts['eligible'] ?? 0),
                 'not_eligible_donors' => (int) ($statusCounts['not_eligible'] ?? 0),
+                'temporary_deferred_donors' => (int) ($statusCounts['temporary_deferred'] ?? 0),
+                'for_review_donors' => (int) ($statusCounts['for_review'] ?? 0),
                 'total_donations' => Schema::hasTable('donation_records')
                     ? (int) DB::table('donation_records')->count()
                     : 0,
             ],
             'filters' => [
                 'blood_types' => $this->userManagementBloodTypeOptions(),
-                'statuses' => [
-                    ['value' => 'eligible', 'label' => 'Eligible'],
-                    ['value' => 'not_eligible', 'label' => 'Not Eligible'],
-                ],
+                'statuses' => array_values(array_filter(
+                    EligibilityStatusValue::options(),
+                    static fn (array $option): bool => $option['value'] !== EligibilityStatusValue::UNKNOWN
+                )),
             ],
         ]);
     }
@@ -759,7 +776,7 @@ class AdminAuthController extends BaseController
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:150'],
             'blood_type' => ['nullable', 'string', 'max:10'],
-            'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible'])],
+            'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible', 'temporary_deferred', 'for_review', 'unknown'])],
         ]);
 
         $searchTerm = trim((string) ($validated['search'] ?? ''));
@@ -900,7 +917,12 @@ class AdminAuthController extends BaseController
             'province' => ['nullable', 'string', 'max:100'],
             'latitude' => ['nullable', 'numeric', 'between:-90,90'],
             'longitude' => ['nullable', 'numeric', 'between:-180,180'],
-            'eligibility_status' => ['nullable', 'string', Rule::in(['eligible', 'not_eligible'])],
+            'eligibility_status' => ['nullable', 'string', Rule::in([
+                EligibilityStatusValue::ELIGIBLE,
+                EligibilityStatusValue::NOT_ELIGIBLE,
+                EligibilityStatusValue::TEMPORARY_DEFERRED,
+                EligibilityStatusValue::FOR_REVIEW,
+            ])],
         ]);
 
         $requestedBloodTypeId = isset($validated['blood_type_id']) ? (int) $validated['blood_type_id'] : null;
@@ -1106,6 +1128,51 @@ class AdminAuthController extends BaseController
         ]);
     }
 
+    /** Reactivate a previously deactivated donor without altering their history. */
+    public function reactivateUser(Request $request, int $donor): JsonResponse
+    {
+        if (! Schema::hasColumn('donors', 'is_active')) {
+            return response()->json(['message' => 'Donor account status is unavailable until its migration has been applied.'], 409);
+        }
+
+        $result = DB::transaction(function () use ($donor): array {
+            $locked = Donor::query()->whereKey($donor)->lockForUpdate()->first();
+            if (! $locked) {
+                return ['donor' => null, 'reactivated' => false];
+            }
+
+            $reactivated = ! (bool) $locked->is_active;
+            if ($reactivated) {
+                $locked->forceFill(['is_active' => true])->save();
+            }
+
+            return ['donor' => $locked, 'reactivated' => $reactivated];
+        });
+
+        $targetDonor = $result['donor'];
+        if (! $targetDonor) {
+            return response()->json(['message' => 'Donor not found.'], 404);
+        }
+
+        $summary = $this->getUserManagementDonorDetail($donor) ?? [];
+        if ($result['reactivated']) {
+            $this->logUserManagementAudit(
+                $request,
+                'reactivate',
+                'Reactivated donor account: '.($summary['full_name'] ?? ('Donor #'.$donor)),
+                $donor,
+                ['email' => $summary['email'] ?? null, 'donor_code' => $summary['donor_code'] ?? null]
+            );
+        }
+
+        return response()->json([
+            'message' => $result['reactivated']
+                ? 'Donor account reactivated. Historical records were preserved.'
+                : 'This donor account is already active.',
+            'donor' => $this->getUserManagementDonorDetail($donor),
+        ]);
+    }
+
     /**
      * Display appointment management page.
      */
@@ -1116,6 +1183,7 @@ class AdminAuthController extends BaseController
                 'api' => [
                     'listUrl' => route('admin.appointments.data'),
                     'donationProcessingUrl' => route('admin.donation-records'),
+                    'rescheduleOptionsUrl' => route('admin.appointments.reschedule-options'),
                 ],
                 'filters' => [
                     'centers' => $this->appointmentManagementCenterOptions(),
@@ -1217,30 +1285,65 @@ class AdminAuthController extends BaseController
         ]);
     }
 
+    public function rescheduleEventOptions(Request $request, AppointmentBookingService $bookingService): JsonResponse
+    {
+        $validated = $request->validate([
+            'exclude_event_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $events = DonationEvent::query()
+            ->whereIn('status', ['open', 'upcoming', 'ongoing'])
+            ->whereDate('event_date', '>=', Carbon::today()->toDateString())
+            ->when(! empty($validated['exclude_event_id']), fn ($query) => $query->where('event_id', '!=', (int) $validated['exclude_event_id']))
+            ->orderBy('event_date')
+            ->orderBy('start_time')
+            ->limit(100)
+            ->get()
+            ->map(fn (DonationEvent $event): array => $bookingService->eventPayload($event))
+            ->filter(static fn (array $event): bool => $event['accepts_bookings'] && (int) $event['remaining_slots'] > 0)
+            ->values();
+
+        return response()->json(['data' => $events]);
+    }
+
+    public function rescheduleAppointment(Request $request, int $appointment, AppointmentBookingService $bookingService): JsonResponse
+    {
+        $validated = $request->validate([
+            'event_id' => ['required', 'integer', 'min:1', 'exists:donation_events,event_id'],
+            'appointment_time' => ['required', 'date_format:H:i'],
+        ]);
+
+        $result = $bookingService->reschedule(
+            $appointment,
+            (int) $validated['event_id'],
+            (string) $validated['appointment_time'],
+            $this->currentAdminId($request),
+            $request
+        );
+
+        return response()->json([
+            'message' => 'Appointment rescheduled and remains confirmed.',
+            'appointment' => $bookingService->appointmentPayload($result['appointment']),
+        ]);
+    }
+
     /**
      * Approve (confirm) a pending appointment.
      */
-    public function approveAppointment(Request $request, int $appointment): JsonResponse
+    public function approveAppointment(Request $request, int $appointment, AppointmentStatusService $statuses): JsonResponse
     {
-        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (! $row) {
+        $result = $statuses->transition($appointment, AppointmentStatusService::CONFIRMED, $this->currentAdminId($request), [], [AppointmentStatusService::PENDING]);
+        if (! $result['found']) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
-
-        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
-        if ($normalized !== 'pending') {
+        if ($result['already']) {
+            return response()->json(['message' => 'Appointment is already approved.']);
+        }
+        if (! $result['transitioned']) {
             return response()->json(['message' => 'Only pending appointments can be approved.'], 422);
         }
 
-        $actorAdminId = is_numeric($request->session()->get('admin_id'))
-            ? (int) $request->session()->get('admin_id')
-            : null;
-
-        DB::table('appointments')->where('appointment_id', $appointment)->update([
-            'status' => 'confirmed',
-            'admin_id' => $actorAdminId,
-        ]);
-
+        $row = $result['appointment'];
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
         $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
@@ -1255,7 +1358,7 @@ class AdminAuthController extends BaseController
         $this->logAppointmentAudit($request, 'appointment_approved', "Approved appointment {$appointmentCode}.", $appointment, [
             'appointment_id' => $appointment,
             'donor_id' => $donorId,
-            'previous_status' => $row->status ?? null,
+            'previous_status' => $result['from'],
             'new_status' => 'confirmed',
         ]);
 
@@ -1265,27 +1368,20 @@ class AdminAuthController extends BaseController
     /**
      * Reject (cancel) a pending appointment.
      */
-    public function rejectAppointment(Request $request, int $appointment): JsonResponse
+    public function rejectAppointment(Request $request, int $appointment, AppointmentStatusService $statuses): JsonResponse
     {
-        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (! $row) {
+        $result = $statuses->transition($appointment, AppointmentStatusService::CANCELLED, $this->currentAdminId($request), [], [AppointmentStatusService::PENDING]);
+        if (! $result['found']) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
-
-        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
-        if ($normalized !== 'pending') {
+        if ($result['already']) {
+            return response()->json(['message' => 'Appointment is already cancelled.']);
+        }
+        if (! $result['transitioned']) {
             return response()->json(['message' => 'Only pending appointments can be rejected.'], 422);
         }
 
-        $actorAdminId = is_numeric($request->session()->get('admin_id'))
-            ? (int) $request->session()->get('admin_id')
-            : null;
-
-        DB::table('appointments')->where('appointment_id', $appointment)->update([
-            'status' => 'cancelled',
-            'admin_id' => $actorAdminId,
-        ]);
-
+        $row = $result['appointment'];
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
         $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
@@ -1300,7 +1396,7 @@ class AdminAuthController extends BaseController
         $this->logAppointmentAudit($request, 'appointment_rejected', "Rejected appointment {$appointmentCode}.", $appointment, [
             'appointment_id' => $appointment,
             'donor_id' => $donorId,
-            'previous_status' => $row->status ?? null,
+            'previous_status' => $result['from'],
             'new_status' => 'cancelled',
         ]);
 
@@ -1389,9 +1485,11 @@ class AdminAuthController extends BaseController
             : null;
 
         return response()->json([
-            'message' => $result['already'] ?? false
+            'message' => ($result['already'] ?? false)
                 ? 'This appointment already has a completed donation record.'
                 : 'Donation completed and record created.',
+            'inventory_status' => $result['inventory_status'] ?? 'manual_reconciliation',
+            'inventory_message' => $result['inventory_message'] ?? 'Facility inventory needs manual reconciliation.',
             'donation_id' => $result['record']->donation_id ?? null,
             'donor' => $donorPayload,
         ]);
@@ -1415,32 +1513,29 @@ class AdminAuthController extends BaseController
         ]);
     }
 
-    public function cancelAppointment(Request $request, int $appointment): JsonResponse
+    public function cancelAppointment(Request $request, int $appointment, AppointmentStatusService $statuses): JsonResponse
     {
         $validated = $request->validate([
             'cancellation_reason' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $row = DB::table('appointments')->where('appointment_id', $appointment)->first();
-        if (! $row) {
+        $result = $statuses->transition(
+            $appointment,
+            AppointmentStatusService::CANCELLED,
+            $this->currentAdminId($request),
+            ['cancellation_reason' => $validated['cancellation_reason'] ?? null]
+        );
+        if (! $result['found']) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
-
-        $normalized = $this->normalizeAppointmentStatusValue((string) ($row->status ?? ''));
-        if (in_array($normalized, ['cancelled', 'completed', 'checked_in', 'deferred_on_site', 'no_show'], true)) {
+        if ($result['already']) {
+            return response()->json(['message' => 'This appointment is already cancelled.']);
+        }
+        if (! $result['transitioned']) {
             return response()->json(['message' => 'This appointment can no longer be cancelled.'], 422);
         }
 
-        $actorAdminId = is_numeric($request->session()->get('admin_id'))
-            ? (int) $request->session()->get('admin_id')
-            : null;
-
-        DB::table('appointments')->where('appointment_id', $appointment)->update([
-            'status' => 'cancelled',
-            'cancellation_reason' => $validated['cancellation_reason'] ?? null,
-            'admin_id' => $actorAdminId,
-        ]);
-
+        $row = $result['appointment'];
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
         $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
@@ -1455,7 +1550,7 @@ class AdminAuthController extends BaseController
         $this->logAppointmentAudit($request, 'appointment_cancelled', "Cancelled appointment {$appointmentCode}.", $appointment, [
             'appointment_id' => $appointment,
             'donor_id' => $donorId,
-            'previous_status' => $row->status ?? null,
+            'previous_status' => $result['from'],
             'new_status' => 'cancelled',
             'reason' => $validated['cancellation_reason'] ?? null,
         ]);
@@ -2562,7 +2657,6 @@ class AdminAuthController extends BaseController
             'settingsPayload' => [
                 'page' => 'settings',
                 'settings' => [
-                    'general' => $this->getSystemSettingsValues(),
                     'account' => [
                         'updateUrl' => route('admin.settings.account.update'),
                     ],
@@ -2583,58 +2677,6 @@ class AdminAuthController extends BaseController
                     ]),
                 ],
             ],
-        ]);
-    }
-
-    /**
-     * Persist display/contact settings for the admin portal.
-     */
-    public function updateGeneralSettings(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'system_name' => ['required', 'string', 'max:150'],
-            'system_email' => ['required', 'email', 'max:150'],
-            'contact_number' => ['required', 'string', 'max:30', 'regex:/^[+0-9][0-9\s-]{6,}$/'],
-        ]);
-
-        if (! $this->supportsSystemSettingsStorage()) {
-            return response()->json([
-                'message' => 'General settings storage is not available. Please run migrations first.',
-            ], 409);
-        }
-
-        $settings = [
-            'system_name' => trim((string) $validated['system_name']),
-            'system_email' => Str::lower(trim((string) $validated['system_email'])),
-            'contact_number' => trim((string) $validated['contact_number']),
-        ];
-
-        DB::transaction(function () use ($settings): void {
-            foreach ($settings as $key => $value) {
-                DB::table(self::SYSTEM_SETTINGS_TABLE)->updateOrInsert(
-                    ['setting_key' => $key],
-                    [
-                        'setting_value' => $value,
-                        'updated_at' => now(),
-                    ]
-                );
-            }
-        });
-
-        $this->logAdminSettingsAudit(
-            $request,
-            'update',
-            'Updated admin portal general settings.',
-            [
-                'changed_keys' => array_keys($settings),
-            ]
-        );
-
-        return response()->json([
-            'message' => 'General settings saved successfully.',
-            'general' => array_merge($this->getSystemSettingsValues(), [
-                'updateUrl' => route('admin.settings.general.update'),
-            ]),
         ]);
     }
 
@@ -3448,47 +3490,6 @@ class AdminAuthController extends BaseController
     }
 
     /**
-     * Resolve persisted portal display/contact settings with safe defaults.
-     *
-     * @return array{systemName:string,systemEmail:string,contactNumber:string}
-     */
-    private function getSystemSettingsValues(): array
-    {
-        $defaults = [
-            'systemName' => 'eDonate',
-            'systemEmail' => 'admin@edonate.local',
-            'contactNumber' => '+63 917 123 4567',
-        ];
-
-        if (! $this->supportsSystemSettingsStorage()) {
-            return $defaults;
-        }
-
-        $rows = DB::table(self::SYSTEM_SETTINGS_TABLE)
-            ->whereIn('setting_key', ['system_name', 'system_email', 'contact_number'])
-            ->pluck('setting_value', 'setting_key');
-
-        return [
-            'systemName' => trim((string) ($rows['system_name'] ?? $defaults['systemName'])) ?: $defaults['systemName'],
-            'systemEmail' => trim((string) ($rows['system_email'] ?? $defaults['systemEmail'])) ?: $defaults['systemEmail'],
-            'contactNumber' => trim((string) ($rows['contact_number'] ?? $defaults['contactNumber'])) ?: $defaults['contactNumber'],
-        ];
-    }
-
-    /**
-     * Detect whether the optional portal-settings migration is available.
-     */
-    private function supportsSystemSettingsStorage(): bool
-    {
-        if (! Schema::hasTable(self::SYSTEM_SETTINGS_TABLE)) {
-            return false;
-        }
-
-        return Schema::hasColumn(self::SYSTEM_SETTINGS_TABLE, 'setting_key')
-            && Schema::hasColumn(self::SYSTEM_SETTINGS_TABLE, 'setting_value');
-    }
-
-    /**
      * Determine if admin account currently enforces Google Authenticator.
      */
     private function isTwoFactorEnabledForAdmin(?object $admin): bool
@@ -3822,6 +3823,7 @@ class AdminAuthController extends BaseController
             ->select([
                 'ap.appointment_id',
                 'ap.donor_id',
+                'ap.event_id',
                 'ap.appointment_date',
                 'ap.appointment_time',
                 'ap.status',
@@ -3961,6 +3963,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'donor_name' => $donorName,
             'donor_email' => trim((string) ($entry->email ?? '')),
             'blood_type' => trim((string) ($entry->blood_type ?? '')),
+            'event_id' => isset($entry->event_id) ? (int) $entry->event_id : null,
             'appointment_date' => ! empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
             'appointment_time' => ! empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
             'center_label' => trim((string) ($entry->center_label ?? '')) !== ''
@@ -3973,6 +3976,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
     private function donationProcessingBaseQuery()
     {
         $statusExpression = $this->appointmentStatusExpression('ap');
+        $inventoryReceivedAt = Schema::hasColumn('donation_records', 'inventory_received_at')
+            ? 'dr.inventory_received_at'
+            : DB::raw('NULL as inventory_received_at');
 
         return DB::table('appointments as ap')
             ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
@@ -4021,6 +4027,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'dr.donation_date',
                 'dr.donation_status',
                 'dr.blood_units',
+                $inventoryReceivedAt,
                 'dr.verified_blood_type_id',
                 'verified_bt.blood_type as verified_blood_type',
                 'dr.remarks',
@@ -4078,6 +4085,10 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'next_eligible_date' => ! empty($entry->next_eligible_date) ? (string) $entry->next_eligible_date : null,
             'donation_status' => $entry->donation_status ? Str::lower((string) $entry->donation_status) : null,
             'blood_units' => is_numeric($entry->blood_units ?? null) ? (int) $entry->blood_units : null,
+            'inventory_status' => empty($entry->donation_id)
+                || Str::lower(trim((string) ($entry->donation_status ?? ''))) !== 'completed'
+                ? null
+                : (! empty($entry->inventory_received_at) ? 'received' : 'manual_reconciliation'),
             'verified_blood_type_id' => isset($entry->verified_blood_type_id) ? (int) $entry->verified_blood_type_id : null,
             'verified_blood_type' => trim((string) ($entry->verified_blood_type ?? '')),
             'remarks' => $entry->remarks,
@@ -4237,15 +4248,22 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function buildAdminDashboardPayload(): array
     {
-        $unreadNotifications = $this->dashboardTry('notification_count', function (): int {
-            return $this->dashboardUnreadNotificationCount();
-        }, 0);
+        $notificationResult = $this->dashboardTryWithAvailability('notification_count', fn (): int => $this->dashboardUnreadNotificationCount(), 0);
+        $statsResult = $this->dashboardTryWithAvailability('stats', fn (): array => $this->buildAdminDashboardStats(), $this->emptyDashboardStats());
+        $monthlyResult = $this->dashboardTryWithAvailability('monthly_donations', fn (): array => $this->buildDashboardMonthlyDonations(), $this->emptyDashboardMonthlyDonations());
+        $distributionResult = $this->dashboardTryWithAvailability('blood_type_distribution', fn (): array => $this->buildDashboardBloodTypeDistribution(), []);
+        $activityResult = $this->dashboardTryWithAvailability('recent_activities', fn (): array => $this->buildDashboardRecentActivities(), []);
+        $approvalsResult = $this->dashboardTryWithAvailability('pending_approvals', fn (): array => $this->buildDashboardPendingApprovals(), []);
+        $unreadNotifications = (int) $notificationResult['value'];
+        $monthlyDonations = $monthlyResult['value'];
+        $monthlyDonations['available'] = (bool) ($monthlyDonations['available'] ?? false) && $monthlyResult['available'];
 
         return [
-            'stats' => $this->dashboardTry('stats', function (): array {
-                return $this->buildAdminDashboardStats();
-            }, $this->emptyDashboardStats()),
+            'stats' => $statsResult['value'],
+            'stats_available' => $statsResult['available'],
             'notification_count' => $unreadNotifications,
+            'notification_count_available' => $notificationResult['available']
+                && $this->dashboardTableHasColumns('admin_notifications', ['admin_notification_id', 'is_read']),
             'notification_badge' => [
                 'label' => $unreadNotifications > 9 ? '9+' : (string) $unreadNotifications,
                 'visible' => $unreadNotifications > 0,
@@ -4253,24 +4271,43 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'notification_banner' => $this->dashboardTry('notification_banner', function (): ?array {
                 return $this->dashboardLatestUnreadAdminNotification();
             }, null),
-            'monthly_donations' => $this->dashboardTry('monthly_donations', function (): array {
-                return $this->buildDashboardMonthlyDonations();
-            }, $this->emptyDashboardMonthlyDonations()),
-            'blood_type_distribution' => $this->dashboardTry('blood_type_distribution', function (): array {
-                return $this->buildDashboardBloodTypeDistribution();
-            }, []),
-            'recent_activities' => $this->dashboardTry('recent_activities', function (): array {
-                return $this->buildDashboardRecentActivities();
-            }, []),
-            'pending_approvals' => $this->dashboardTry('pending_approvals', function (): array {
-                return $this->buildDashboardPendingApprovals();
-            }, []),
+            'monthly_donations' => $monthlyDonations,
+            'blood_type_distribution' => $distributionResult['value'],
+            'blood_type_distribution_available' => $distributionResult['available']
+                && $this->dashboardTableHasColumns('donors', ['donor_id', 'blood_type_id'])
+                && $this->dashboardTableHasColumns('blood_types', ['blood_type_id', 'blood_type']),
+            'recent_activities' => $activityResult['value'],
+            'recent_activities_available' => $activityResult['available']
+                && ($this->dashboardTableHasColumns('audit_logs', ['actor_name', 'description', 'action_type', 'created_at'])
+                    || $this->dashboardTableHasColumns('donors', ['first_name', 'last_name', 'date_registered'])
+                    || ($this->dashboardTableHasColumns('donation_records', ['donation_date', 'donor_id'])
+                        && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name']))),
+            'pending_approvals' => $approvalsResult['value'],
+            'pending_approvals_available' => $approvalsResult['available']
+                && ($this->dashboardTableHasColumns('donors', ['donor_id', 'verification_status'])
+                    || $this->dashboardTableHasColumns('eligibility_status', ['eligibility_id', 'donor_id', 'status'])
+                    || $this->dashboardTableHasColumns('appointments', ['appointment_id', 'status'])),
             'links' => [
                 'map' => route('admin.blood-availability-mapping'),
                 'activities' => route('admin.audit-logs'),
                 'approvals' => route('admin.eligibility.index'),
             ],
         ];
+    }
+
+    /** @return array{value: mixed, available: bool} */
+    private function dashboardTryWithAvailability(string $section, callable $callback, mixed $fallback): array
+    {
+        try {
+            return ['value' => $callback(), 'available' => true];
+        } catch (Throwable $exception) {
+            logger()->warning('Admin dashboard data section failed.', [
+                'section' => $section,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return ['value' => $fallback, 'available' => false];
+        }
     }
 
     /**
@@ -4295,24 +4332,22 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function dashboardTableExists(string $table): bool
     {
-        static $cache = [];
-
-        if (array_key_exists($table, $cache)) {
-            return $cache[$table];
+        if (array_key_exists($table, $this->dashboardTableAvailability)) {
+            return $this->dashboardTableAvailability[$table];
         }
 
         try {
-            $cache[$table] = Schema::hasTable($table);
+            $this->dashboardTableAvailability[$table] = Schema::hasTable($table);
         } catch (Throwable $exception) {
             logger()->warning('Admin dashboard table check failed.', [
                 'table' => $table,
                 'error' => $exception->getMessage(),
             ]);
 
-            $cache[$table] = false;
+            $this->dashboardTableAvailability[$table] = false;
         }
 
-        return $cache[$table];
+        return $this->dashboardTableAvailability[$table];
     }
 
     /**
@@ -4340,15 +4375,14 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function dashboardColumnExists(string $table, string $column): bool
     {
-        static $cache = [];
         $key = $table.'.'.$column;
 
-        if (array_key_exists($key, $cache)) {
-            return $cache[$key];
+        if (array_key_exists($key, $this->dashboardColumnAvailability)) {
+            return $this->dashboardColumnAvailability[$key];
         }
 
         try {
-            $cache[$key] = Schema::hasColumn($table, $column);
+            $this->dashboardColumnAvailability[$key] = Schema::hasColumn($table, $column);
         } catch (Throwable $exception) {
             logger()->warning('Admin dashboard column check failed.', [
                 'table' => $table,
@@ -4356,10 +4390,10 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'error' => $exception->getMessage(),
             ]);
 
-            $cache[$key] = false;
+            $this->dashboardColumnAvailability[$key] = false;
         }
 
-        return $cache[$key];
+        return $this->dashboardColumnAvailability[$key];
     }
 
     /**
@@ -4369,11 +4403,22 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function emptyDashboardStats(): array
     {
+        $unavailable = ['value' => 'N/A', 'change' => 'Data unavailable'];
+
         return [
-            'total_donors' => ['value' => '0', 'change' => '0% this month'],
-            'successful_donations' => ['value' => '0', 'change' => '0% this month'],
-            'upcoming_appointments' => ['value' => '0', 'change' => '0% this month'],
-            'donation_records' => ['value' => '0', 'change' => '0% this month'],
+            'total_donors' => $unavailable,
+            'successful_donations' => $unavailable,
+            'upcoming_appointments' => $unavailable,
+            'donation_records' => $unavailable,
+            'operational' => [
+                'verified_donors' => null,
+                'pending_verification' => null,
+                'eligible_donors' => null,
+                'open_requests' => null,
+                'emergency_requests' => null,
+                'low_stock' => null,
+                'out_of_stock' => null,
+            ],
         ];
     }
 
@@ -4389,6 +4434,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'values' => array_fill(0, 12, 0),
             'maxY' => 5,
             'stepY' => 1,
+            'available' => false,
         ];
     }
 
@@ -4399,40 +4445,58 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function buildAdminDashboardStats(): array
     {
-        $donorTotal = $this->dashboardTableExists('donors')
-            ? (int) DB::table('donors')->count()
-            : 0;
-        $successfulDonationTotal = $this->dashboardSuccessfulDonationQuery()->count();
-        $upcomingAppointmentTotal = $this->dashboardUpcomingAppointmentQuery()->count();
-        $donationRecordTotal = $this->dashboardTableExists('donation_records')
-            ? (int) DB::table('donation_records')->count()
-            : 0;
+        $donorsAvailable = $this->dashboardTableHasColumns('donors', ['donor_id']);
+        $donorTrendAvailable = $this->dashboardTableHasColumns('donors', ['donor_id', 'date_registered']);
+        $donationRecordsAvailable = $this->dashboardTableHasColumns('donation_records', ['donation_id']);
+        $donationDatesAvailable = $this->dashboardTableHasColumns('donation_records', ['donation_date']);
+        $appointmentsAvailable = $this->dashboardTableHasColumns('appointments', ['appointment_id', 'appointment_date', 'status']);
+        $verificationAvailable = $this->dashboardTableHasColumns('donors', ['donor_id', 'verification_status']);
 
-        $verifiedDonorTotal = $this->dashboardTableHasColumns('donors', ['verification_status'])
+        $donorTotal = $donorsAvailable ? (int) DB::table('donors')->count() : null;
+        $successfulDonationTotal = $donationDatesAvailable ? (int) $this->dashboardSuccessfulDonationQuery()->count() : null;
+        $upcomingAppointmentTotal = $appointmentsAvailable ? (int) $this->dashboardUpcomingAppointmentQuery()->count() : null;
+        $donationRecordTotal = $donationRecordsAvailable ? (int) DB::table('donation_records')->count() : null;
+
+        $verifiedDonorTotal = $verificationAvailable
             ? (int) DB::table('donors')->whereRaw("LOWER(COALESCE(verification_status, '')) = ?", ['verified'])->count()
-            : 0;
-        $pendingVerificationTotal = $this->dashboardTableHasColumns('donors', ['verification_status'])
+            : null;
+        $pendingVerificationTotal = $verificationAvailable
             ? (int) DB::table('donors')->whereRaw("LOWER(COALESCE(verification_status, '')) = ?", ['pending'])->count()
-            : 0;
-        $eligibleDonorTotal = 0;
-        if ($this->dashboardTableHasColumns('eligibility_status', ['eligibility_id', 'donor_id', 'status'])) {
+            : null;
+
+        $eligibilityColumns = ['eligibility_id', 'donor_id', 'status'];
+        $eligibleAvailable = $this->dashboardTableHasColumns('eligibility_status', $eligibilityColumns);
+        if ($this->dashboardTableHasColumns('eligibility_status', ['next_eligible_date'])) {
+            $eligibilityColumns[] = 'next_eligible_date';
+        }
+        $eligibleDonorTotal = null;
+        if ($eligibleAvailable) {
             $latestEligibilityIds = DB::table('eligibility_status')
                 ->selectRaw('MAX(eligibility_id) as latest_eligibility_id')
                 ->groupBy('donor_id');
-            $eligibleDonorTotal = (int) DB::table('eligibility_status')
+            $eligibleQuery = DB::table('eligibility_status')
                 ->whereIn('eligibility_id', $latestEligibilityIds)
-                ->whereRaw("LOWER(COALESCE(status, '')) = ?", ['eligible'])
-                ->count();
+                ->whereRaw("LOWER(COALESCE(status, '')) = ?", ['eligible']);
+            if (in_array('next_eligible_date', $eligibilityColumns, true)) {
+                $eligibleQuery->where(function ($query): void {
+                    $query->whereNull('next_eligible_date')->orWhereDate('next_eligible_date', '<=', Carbon::today()->toDateString());
+                });
+            }
+            $eligibleDonorTotal = (int) $eligibleQuery->count();
         }
-        $openBloodRequestTotal = $this->dashboardTableHasColumns('blood_requests', ['status'])
+
+        $openRequestsAvailable = $this->dashboardTableHasColumns('blood_requests', ['request_id', 'status']);
+        $openBloodRequestTotal = $openRequestsAvailable
             ? (int) DB::table('blood_requests')->whereIn('status', ['open', 'in_progress'])->count()
-            : 0;
-        $emergencyBloodRequestTotal = $this->dashboardTableHasColumns('blood_requests', ['status', 'urgency'])
+            : null;
+        $emergencyRequestsAvailable = $this->dashboardTableHasColumns('blood_requests', ['request_id', 'status', 'urgency']);
+        $emergencyBloodRequestTotal = $emergencyRequestsAvailable
             ? (int) DB::table('blood_requests')->whereIn('status', ['open', 'in_progress'])->where('urgency', 'emergency')->count()
-            : 0;
-        $lowStockTotal = 0;
-        $outOfStockTotal = 0;
-        if ($this->dashboardTableHasColumns('facility_blood_inventory', ['available_units', 'low_stock_threshold'])) {
+            : null;
+        $inventoryAvailable = $this->dashboardTableHasColumns('facility_blood_inventory', ['inventory_id', 'available_units', 'low_stock_threshold']);
+        $lowStockTotal = $inventoryAvailable ? 0 : null;
+        $outOfStockTotal = $inventoryAvailable ? 0 : null;
+        if ($inventoryAvailable) {
             $inventoryRows = DB::table('facility_blood_inventory')
                 ->get(['available_units', 'low_stock_threshold']);
             foreach ($inventoryRows as $inventoryRow) {
@@ -4448,66 +4512,71 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
 
         [$currentStart, $currentEnd, $previousStart, $previousEnd] = $this->dashboardMonthRanges();
 
-        $donorCurrent = $this->dashboardTableHasColumns('donors', ['date_registered'])
+        $donorCurrent = $donorTrendAvailable
             ? (int) DB::table('donors')
                 ->whereDate('date_registered', '>=', $currentStart)
                 ->whereDate('date_registered', '<=', $currentEnd)
                 ->count()
-            : 0;
-        $donorPrevious = $this->dashboardTableHasColumns('donors', ['date_registered'])
+            : null;
+        $donorPrevious = $donorTrendAvailable
             ? (int) DB::table('donors')
                 ->whereDate('date_registered', '>=', $previousStart)
                 ->whereDate('date_registered', '<=', $previousEnd)
                 ->count()
-            : 0;
+            : null;
 
-        $successfulDonationCurrent = $this->dashboardSuccessfulDonationQuery()
+        $successfulDonationCurrent = $donationDatesAvailable ? $this->dashboardSuccessfulDonationQuery()
             ->whereDate('dr.donation_date', '>=', $currentStart)
             ->whereDate('dr.donation_date', '<=', $currentEnd)
-            ->count();
-        $successfulDonationPrevious = $this->dashboardSuccessfulDonationQuery()
+            ->count() : null;
+        $successfulDonationPrevious = $donationDatesAvailable ? $this->dashboardSuccessfulDonationQuery()
             ->whereDate('dr.donation_date', '>=', $previousStart)
             ->whereDate('dr.donation_date', '<=', $previousEnd)
-            ->count();
+            ->count() : null;
 
-        $appointmentCurrent = $this->dashboardSchedulableAppointmentQuery()
+        $appointmentCurrent = $appointmentsAvailable ? $this->dashboardSchedulableAppointmentQuery()
             ->whereDate('ap.appointment_date', '>=', $currentStart)
             ->whereDate('ap.appointment_date', '<=', $currentEnd)
-            ->count();
-        $appointmentPrevious = $this->dashboardSchedulableAppointmentQuery()
+            ->count() : null;
+        $appointmentPrevious = $appointmentsAvailable ? $this->dashboardSchedulableAppointmentQuery()
             ->whereDate('ap.appointment_date', '>=', $previousStart)
             ->whereDate('ap.appointment_date', '<=', $previousEnd)
-            ->count();
+            ->count() : null;
 
-        $donationRecordCurrent = $this->dashboardTableHasColumns('donation_records', ['donation_date'])
+        $donationRecordTrendAvailable = $this->dashboardTableHasColumns('donation_records', ['donation_id', 'donation_date']);
+        $donationRecordCurrent = $donationRecordTrendAvailable
             ? (int) DB::table('donation_records as dr')
                 ->whereDate('dr.donation_date', '>=', $currentStart)
                 ->whereDate('dr.donation_date', '<=', $currentEnd)
                 ->count()
-            : 0;
-        $donationRecordPrevious = $this->dashboardTableHasColumns('donation_records', ['donation_date'])
+            : null;
+        $donationRecordPrevious = $donationRecordTrendAvailable
             ? (int) DB::table('donation_records as dr')
                 ->whereDate('dr.donation_date', '>=', $previousStart)
                 ->whereDate('dr.donation_date', '<=', $previousEnd)
                 ->count()
-            : 0;
+            : null;
+
+        $changeLabel = fn (?int $current, ?int $previous): string => $current === null || $previous === null
+            ? 'Trend unavailable'
+            : $this->dashboardMonthlyChangeLabel($current, $previous);
 
         return [
             'total_donors' => [
-                'value' => number_format($donorTotal),
-                'change' => $this->dashboardMonthlyChangeLabel($donorCurrent, $donorPrevious),
+                'value' => $donorTotal === null ? 'N/A' : number_format($donorTotal),
+                'change' => $changeLabel($donorCurrent, $donorPrevious),
             ],
             'successful_donations' => [
-                'value' => number_format($successfulDonationTotal),
-                'change' => $this->dashboardMonthlyChangeLabel($successfulDonationCurrent, $successfulDonationPrevious),
+                'value' => $successfulDonationTotal === null ? 'N/A' : number_format($successfulDonationTotal),
+                'change' => $changeLabel($successfulDonationCurrent === null ? null : (int) $successfulDonationCurrent, $successfulDonationPrevious === null ? null : (int) $successfulDonationPrevious),
             ],
             'upcoming_appointments' => [
-                'value' => number_format($upcomingAppointmentTotal),
-                'change' => $this->dashboardMonthlyChangeLabel($appointmentCurrent, $appointmentPrevious),
+                'value' => $upcomingAppointmentTotal === null ? 'N/A' : number_format($upcomingAppointmentTotal),
+                'change' => $changeLabel($appointmentCurrent === null ? null : (int) $appointmentCurrent, $appointmentPrevious === null ? null : (int) $appointmentPrevious),
             ],
             'donation_records' => [
-                'value' => number_format($donationRecordTotal),
-                'change' => $this->dashboardMonthlyChangeLabel($donationRecordCurrent, $donationRecordPrevious),
+                'value' => $donationRecordTotal === null ? 'N/A' : number_format($donationRecordTotal),
+                'change' => $changeLabel($donationRecordCurrent, $donationRecordPrevious),
             ],
             'operational' => [
                 'verified_donors' => $verifiedDonorTotal,
@@ -4646,11 +4715,21 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
 
         $query = DB::table('donation_records as dr');
 
-        if ($this->dashboardTableHasColumns('donation_records', ['remarks'])) {
-            return $query->whereRaw('('.$this->donationRecordStatusExpression('dr').') = ?', ['completed']);
+        if ($this->dashboardTableHasColumns('donation_records', ['donation_status'])) {
+            return $query->where(function ($builder): void {
+                $builder->whereRaw("LOWER(COALESCE(dr.donation_status, '')) IN ('completed', 'complete', 'done')")
+                    ->orWhere(function ($legacy): void {
+                        $legacy->whereNull('dr.donation_status')->whereNotNull('dr.donation_date');
+                    });
+            });
         }
 
-        return $query->whereNotNull('dr.donation_date');
+        $query->whereNotNull('dr.donation_date');
+        if ($this->dashboardTableHasColumns('donation_records', ['remarks'])) {
+            $query->whereRaw("LOWER(COALESCE(dr.remarks, '')) NOT LIKE '%defer%'");
+        }
+
+        return $query;
     }
 
     /**
@@ -4658,7 +4737,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function dashboardSchedulableAppointmentQuery()
     {
-        if (! $this->dashboardTableHasColumns('appointments', ['appointment_date', 'status'])) {
+        if (! $this->dashboardTableHasColumns('appointments', ['appointment_id', 'appointment_date', 'status'])) {
             return DB::query()->fromRaw('(select null as appointment_id, null as appointment_date, null as status where 1 = 0) as ap');
         }
 
@@ -4686,12 +4765,16 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
     {
         $labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         $values = array_fill(0, 12, 0);
+        $available = $this->dashboardTableHasColumns('donation_records', ['donation_date']);
 
-        if ($this->dashboardTableHasColumns('donation_records', ['donation_date'])) {
+        if ($available) {
+            $monthExpression = DB::connection()->getDriverName() === 'sqlite'
+                ? "CAST(strftime('%m', dr.donation_date) AS INTEGER)"
+                : 'MONTH(dr.donation_date)';
             $rows = $this->dashboardSuccessfulDonationQuery()
                 ->whereYear('dr.donation_date', Carbon::now()->year)
-                ->selectRaw('MONTH(dr.donation_date) as month_number, COUNT(*) as total')
-                ->groupByRaw('MONTH(dr.donation_date)')
+                ->selectRaw($monthExpression.' as month_number, COUNT(*) as total')
+                ->groupByRaw($monthExpression)
                 ->pluck('total', 'month_number');
 
             foreach ($rows as $month => $total) {
@@ -4710,6 +4793,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'values' => $values,
             'maxY' => $maxY,
             'stepY' => $stepY,
+            'available' => $available,
         ];
     }
 
@@ -5149,11 +5233,14 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             : 'DATE_SUB(CURDATE(), INTERVAL 56 DAY)';
 
         return "CASE
-            WHEN LOWER(COALESCE(es.status, '')) IN ('eligible', 'qualified', 'ready', 'approved') THEN 'eligible'
-            WHEN LOWER(COALESCE(es.status, '')) IN ('not eligible', 'not_eligible', 'temporary deferred', 'temporary_deferred', 'for review', 'for_review', 'deferred', 'ineligible', 'declined') THEN 'not_eligible'
+            WHEN LOWER(TRIM(COALESCE(es.status, ''))) IN ('eligible', 'qualified', 'ready', 'approved') THEN 'eligible'
+            WHEN LOWER(TRIM(COALESCE(es.status, ''))) IN ('not eligible', 'not_eligible', 'ineligible', 'declined', 'rejected') THEN 'not_eligible'
+            WHEN LOWER(TRIM(COALESCE(es.status, ''))) IN ('temporary deferred', 'temporary_deferred', 'temporary_defer', 'temporarily_deferred', 'deferred') THEN 'temporary_deferred'
+            WHEN LOWER(TRIM(COALESCE(es.status, ''))) IN ('for review', 'for_review', 'pending review', 'pending_review', 'pending') THEN 'for_review'
+            WHEN TRIM(COALESCE(es.status, '')) <> '' THEN 'unknown'
             WHEN drs.last_donation_date IS NULL THEN 'eligible'
             WHEN drs.last_donation_date <= {$waitingPeriodCutoff} THEN 'eligible'
-            ELSE 'not_eligible'
+            ELSE 'temporary_deferred'
         END";
     }
 
@@ -5172,6 +5259,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
         $bloodTypeVerifiedAt = Schema::hasColumn('donors', 'blood_type_verified_at')
             ? 'd.blood_type_verified_at'
             : DB::raw('NULL as blood_type_verified_at');
+        $profilePhotoPath = Schema::hasColumn('donors', 'profile_photo_path')
+            ? 'd.profile_photo_path'
+            : DB::raw('NULL as profile_photo_path');
         $accountActive = Schema::hasColumn('donors', 'is_active')
             ? 'd.is_active'
             : DB::raw('1 as is_active');
@@ -5200,6 +5290,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'd.blood_type_id',
                 $bloodTypeStatus,
                 $bloodTypeVerifiedAt,
+                $profilePhotoPath,
                 'd.location_id',
                 'd.date_registered',
                 $verificationStatus,
@@ -5268,10 +5359,10 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function userManagementStatusOptions(): array
     {
-        return [
-            ['value' => 'eligible', 'label' => 'Eligible'],
-            ['value' => 'not_eligible', 'label' => 'Not Eligible'],
-        ];
+        return array_values(array_filter(
+            EligibilityStatusValue::options(),
+            static fn (array $option): bool => $option['value'] !== EligibilityStatusValue::UNKNOWN
+        ));
     }
 
     /**
@@ -5300,10 +5391,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             $fullName = 'Donor #'.(int) ($donor->donor_id ?? 0);
         }
 
-        $status = Str::lower(trim((string) ($donor->derived_status ?? 'eligible')));
-        if (! in_array($status, ['eligible', 'not_eligible'], true)) {
-            $status = 'eligible';
-        }
+        $status = EligibilityStatusValue::normalize($donor->derived_status ?? EligibilityStatusValue::UNKNOWN);
 
         return [
             'donor_id' => (int) ($donor->donor_id ?? 0),
@@ -5334,7 +5422,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             $fullName = 'Donor #'.(int) ($donor->donor_id ?? 0);
         }
 
-        $status = $this->normalizeUserManagementStatusValue((string) ($donor->derived_status ?? 'eligible'));
+        $status = EligibilityStatusValue::normalize($donor->derived_status ?? EligibilityStatusValue::UNKNOWN);
 
         return [
             'donor_id' => (int) ($donor->donor_id ?? 0),
@@ -5354,6 +5442,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'verification_status' => $this->normalizeDonorVerificationStatus($donor->verification_status ?? null),
             'is_active' => (bool) ($donor->is_active ?? true),
             'blood_type_verified_at' => ! empty($donor->blood_type_verified_at) ? (string) $donor->blood_type_verified_at : null,
+            'profile_photo_url' => ! empty($donor->profile_photo_path)
+                ? route('admin.users.photo', ['donor' => (int) $donor->donor_id])
+                : null,
             'location_id' => isset($donor->location_id) ? (int) $donor->location_id : null,
             'street_address' => $this->userManagementNullableString($donor->street_address ?? null),
             'barangay_name' => $this->userManagementNullableString($donor->barangay_name ?? null),
@@ -5383,9 +5474,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function normalizeUserManagementStatusValue(?string $status): string
     {
-        return Str::lower(trim((string) $status)) === 'not_eligible'
-            ? 'not_eligible'
-            : 'eligible';
+        return EligibilityStatusValue::normalize($status);
     }
 
     /**
@@ -5406,9 +5495,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      */
     private function userManagementStatusDatabaseValue(string $status): string
     {
-        return $this->normalizeUserManagementStatusValue($status) === 'not_eligible'
-            ? 'not_eligible'
-            : 'eligible';
+        return $this->normalizeUserManagementStatusValue($status);
     }
 
     /**

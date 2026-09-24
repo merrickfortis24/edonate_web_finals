@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class ReportController extends Controller
 {
@@ -22,7 +23,7 @@ class ReportController extends Controller
         $filters = $this->validatedFilters($request);
 
         return view('admin.report_analytics', [
-            'reportPayload' => $this->reportService->build($filters),
+            'reportPayload' => $this->safeBuild($filters),
             'reportApi' => [
                 'dataUrl' => route('admin.report-analytics.data'),
                 'exportUrl' => route('admin.report-analytics.export'),
@@ -32,12 +33,14 @@ class ReportController extends Controller
 
     public function data(Request $request): JsonResponse
     {
-        return response()->json($this->reportService->build($this->validatedFilters($request)));
+        $payload = $this->safeBuild($this->validatedFilters($request));
+
+        return response()->json($payload, ! empty($payload['error']) ? 503 : 200);
     }
 
     public function export(Request $request): StreamedResponse
     {
-        $payload = $this->reportService->build($this->validatedFilters($request));
+        $payload = $this->safeBuild($this->validatedFilters($request));
         $period = $payload['period'] ?? [];
         $summary = $payload['summary'] ?? [];
         $trend = $payload['trend'] ?? [];
@@ -45,7 +48,10 @@ class ReportController extends Controller
         $distribution = $payload['distribution'] ?? [];
         $fileName = 'edonate-report-' . date('Ymd-His') . '.csv';
 
-        return response()->streamDownload(function () use ($period, $summary, $trend, $inventory, $distribution): void {
+        $reportError = ! empty($payload['error']);
+        $snapshotAt = (string) ($payload['inventory_snapshot_at'] ?? '');
+
+        return response()->streamDownload(function () use ($period, $summary, $trend, $inventory, $distribution, $reportError, $snapshotAt): void {
             $handle = fopen('php://output', 'wb');
             if ($handle === false) {
                 return;
@@ -55,6 +61,7 @@ class ReportController extends Controller
             fputcsv($handle, ['Period', (string) ($period['label'] ?? '')]);
             fputcsv($handle, ['Start date', (string) ($period['start'] ?? '')]);
             fputcsv($handle, ['End date', (string) ($period['end'] ?? '')]);
+            fputcsv($handle, ['Report status', $reportError ? 'Unavailable - please retry later' : 'Available']);
             fputcsv($handle, []);
 
             fputcsv($handle, ['Summary metric', 'Value']);
@@ -88,7 +95,9 @@ class ReportController extends Controller
             }
 
             fputcsv($handle, []);
-            fputcsv($handle, ['Blood type', 'Available units', 'Reserved units', 'Open request demand', 'Status']);
+            fputcsv($handle, []);
+            fputcsv($handle, ['Current inventory snapshot as of', $snapshotAt]);
+            fputcsv($handle, ['Blood type', 'Available units', 'Reserved units', 'Open request donor count (not units)', 'Status']);
             foreach ($inventory as $row) {
                 fputcsv($handle, [
                     (string) ($row['blood_type'] ?? ''),
@@ -149,5 +158,37 @@ class ReportController extends Controller
     private function labelize(string $value): string
     {
         return ucwords(str_replace('_', ' ', trim($value)));
+    }
+
+    /** @param array<string, mixed> $filters
+     *  @return array<string, mixed>
+     */
+    private function safeBuild(array $filters): array
+    {
+        try {
+            return $this->reportService->build($filters);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            $period = $this->reportService->resolvePeriod($filters);
+            $metricKeys = [
+                'total_donations', 'completed_donations', 'deferred_donations', 'failed_donations', 'success_rate',
+                'verified_donors', 'donors_in_period', 'eligible_donors', 'upcoming_appointments', 'appointments_in_period',
+                'no_shows', 'deferred_on_site', 'open_requests', 'emergency_requests', 'fulfilled_requests', 'events_in_period',
+                'low_stock_blood_types', 'out_of_stock_blood_types', 'total_inventory_units', 'pending_verification', 'verified_donor_accounts',
+            ];
+
+            return [
+                'period' => $period,
+                'summary' => array_fill_keys($metricKeys, null),
+                'availability' => ['summary' => array_fill_keys($metricKeys, false)],
+                'trend' => ['labels' => [], 'donors' => [], 'donations' => [], 'granularity' => 'day'],
+                'distribution' => ['basis' => 'verified', 'verified_total' => null, 'self_reported_total' => null, 'unknown_total' => null, 'items' => []],
+                'inventory' => [],
+                'inventory_snapshot_at' => null,
+                'error' => true,
+                'error_message' => 'Report data is temporarily unavailable. Please try again later.',
+            ];
+        }
     }
 }

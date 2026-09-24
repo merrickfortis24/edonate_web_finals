@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\BloodRequestController as AdminBloodRequestController;
 use App\Http\Controllers\Admin\DonationEventController as AdminDonationEventController;
 use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
+use App\Http\Controllers\Admin\DonorProfilePhotoController;
 use App\Http\Controllers\Admin\FacilityController as AdminFacilityController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 use App\Http\Controllers\Admin\ReportController as AdminReportController;
@@ -146,6 +147,13 @@ Route::middleware('admin.auth')->group(function () {
         Route::get('/admin/appointments/data', [AdminAuthController::class, 'listAppointmentsData'])
             ->middleware('throttle:admin-api')
             ->name('admin.appointments.data');
+        Route::get('/admin/appointments/reschedule-events', [AdminAuthController::class, 'rescheduleEventOptions'])
+            ->middleware('throttle:admin-api')
+            ->name('admin.appointments.reschedule-options');
+        Route::patch('/admin/appointments/{appointment}/reschedule', [AdminAuthController::class, 'rescheduleAppointment'])
+            ->whereNumber('appointment')
+            ->middleware('throttle:admin-write')
+            ->name('admin.appointments.reschedule');
         Route::patch('/admin/appointments/{appointment}/approve', [AdminAuthController::class, 'approveAppointment'])
             ->whereNumber('appointment')
             ->middleware('throttle:admin-write')
@@ -298,6 +306,14 @@ Route::middleware('admin.auth')->group(function () {
             ->whereNumber('donor')
             ->middleware('throttle:admin-api')
             ->name('admin.users.show');
+        Route::get('/admin/users/{donor}/photo', [DonorProfilePhotoController::class, 'show'])
+            ->whereNumber('donor')
+            ->middleware('throttle:document-access')
+            ->name('admin.users.photo');
+        Route::post('/admin/users/{donor}/photo', [DonorProfilePhotoController::class, 'store'])
+            ->whereNumber('donor')
+            ->middleware('throttle:admin-write')
+            ->name('admin.users.photo.upload');
         Route::put('/admin/users/{donor}', [AdminAuthController::class, 'updateUser'])
             ->whereNumber('donor')
             ->middleware('throttle:admin-write')
@@ -306,6 +322,10 @@ Route::middleware('admin.auth')->group(function () {
             ->whereNumber('donor')
             ->middleware('throttle:admin-write')
             ->name('admin.users.deactivate');
+        Route::patch('/admin/users/{donor}/reactivate', [AdminAuthController::class, 'reactivateUser'])
+            ->whereNumber('donor')
+            ->middleware('throttle:admin-write')
+            ->name('admin.users.reactivate');
         Route::get('/admin/donor-verifications', [AdminDonorVerificationController::class, 'index'])->name('admin.donor-verifications.index');
         Route::get('/admin/donor-verifications/{verification}/document', [AdminDonorVerificationController::class, 'document'])
             ->whereNumber('verification')
@@ -404,9 +424,6 @@ Route::middleware('admin.auth')->group(function () {
         Route::post('/admin/settings/notifications', [AdminAuthController::class, 'updateNotificationSettings'])
             ->middleware('throttle:admin-write')
             ->name('admin.settings.notifications.update');
-        Route::post('/admin/settings/general', [AdminAuthController::class, 'updateGeneralSettings'])
-            ->middleware('throttle:admin-write')
-            ->name('admin.settings.general.update');
         Route::post('/admin/settings/account', [AdminAuthController::class, 'updateAccountSettings'])
             ->middleware('throttle:admin-write')
             ->name('admin.settings.account.update');

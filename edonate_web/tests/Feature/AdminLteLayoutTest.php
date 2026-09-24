@@ -94,12 +94,12 @@ class AdminLteLayoutTest extends TestCase
     {
         $html = $this->renderPageForRole('admin.staff_dashboard', 'staff', '/staff/dashboard');
         $payloadPosition = strpos($html, 'id="adminPageData"');
-        $pageScriptPosition = strpos($html, 'var dashboardData =');
 
         $this->assertIsInt($payloadPosition);
-        $this->assertIsInt($pageScriptPosition);
-        $this->assertLessThan($pageScriptPosition, $payloadPosition);
         $this->assertStringContainsString('"page":"staff-dashboard"', $html);
+        $this->assertStringContainsString('Recent activity is unavailable.', $html);
+        $this->assertStringContainsString('N/A', $html);
+        $this->assertStringNotContainsString('3 donors marked ready for screening', $html);
         $this->assertMatchesRegularExpression('#(?:/build/assets/adminlte-|/resources/js/adminlte\.js)#', $html);
         $this->assertLessThanOrEqual(1, substr_count($html, '/@vite/client'));
     }
@@ -151,7 +151,7 @@ class AdminLteLayoutTest extends TestCase
         $this->assertTrue(Route::has('admin.users.export'));
         $this->assertStringContainsString('title="View Digital Donor ID"', $html);
         $this->assertStringContainsString('title="Edit Donor"', $html);
-        $this->assertStringContainsString('title="Deactivate Donor"', $html);
+        $this->assertStringContainsString("isActive ? 'Deactivate Donor' : 'Reactivate Donor'", $html);
         $this->assertStringContainsString('deactivateUrlTemplate', $html);
         $this->assertStringNotContainsString('data-action="delete"', $html);
         $this->assertStringNotContainsString('deleteUrlTemplate', $html);
@@ -198,10 +198,12 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('data-action="check-in"', $html);
         $this->assertStringContainsString('data-action="no-show"', $html);
         $this->assertStringContainsString('Process Donation', $html);
-        $this->assertStringNotContainsString('data-action="reschedule"', $html);
+        $this->assertStringContainsString('data-action="reschedule"', $html);
         $this->assertStringNotContainsString('id="completeModal"', $html);
-        $this->assertStringNotContainsString('id="rescheduleModal"', $html);
-        $this->assertFalse(Route::has('admin.appointments.reschedule'));
+        $this->assertStringContainsString('id="rescheduleModal"', $html);
+        $this->assertStringContainsString('rescheduleOptionsUrl', $html);
+        $this->assertTrue(Route::has('admin.appointments.reschedule'));
+        $this->assertTrue(Route::has('admin.appointments.reschedule-options'));
     }
 
     public function test_admin_settings_defaults_to_account_without_the_removed_general_tab(): void
@@ -218,7 +220,7 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('aria-selected="true">Account</button>', $html);
         $this->assertStringContainsString('id="settings-account-pane"', $html);
         $this->assertStringContainsString('admin/settings/account', $html);
-        $this->assertTrue(Route::has('admin.settings.general.update'));
+        $this->assertFalse(Route::has('admin.settings.general.update'));
         $this->assertTrue(Route::has('admin.settings.account.update'));
     }
 
@@ -280,7 +282,7 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringNotContainsString('data-action="no-show"', $html);
     }
 
-    public function test_complete_donation_page_provides_camera_and_digital_id_fields(): void
+    public function test_complete_donation_page_uses_a_saved_digital_id_photo_without_fake_camera_capture(): void
     {
         $html = view('admin.complete_donation', [
             'completionPayload' => [
@@ -296,6 +298,7 @@ class AdminLteLayoutTest extends TestCase
                     'blood_type' => 'O+',
                     'blood_type_status' => 'verified',
                     'verification_status' => 'verified',
+                    'profile_photo_url' => route('admin.users.photo', ['donor' => 7]),
                     'full_address' => 'Demo Barangay, Lipa City, Batangas',
                     'contact_number' => '09000000007',
                     'last_donation_date' => '2026-06-01',
@@ -318,8 +321,9 @@ class AdminLteLayoutTest extends TestCase
         $this->assertContains('admin.role:admin,staff', $route->gatherMiddleware());
         $this->assertContains('throttle:admin-api', $route->gatherMiddleware());
         $this->assertStringContainsString('Digital Donor ID', $html);
-        $this->assertStringContainsString('Enable Camera', $html);
-        $this->assertStringContainsString('Take Photo', $html);
+        $this->assertStringNotContainsString('Enable Camera', $html);
+        $this->assertStringNotContainsString('navigator.mediaDevices.getUserMedia', $html);
+        $this->assertStringContainsString('profile_photo_url', $html);
         $this->assertStringContainsString('completionDonorName', $html);
         $this->assertStringContainsString('Name', $html);
         $this->assertStringContainsString('Blood Type', $html);
@@ -328,7 +332,6 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('Contact Number', $html);
         $this->assertStringContainsString('Last Donation Date', $html);
         $this->assertStringContainsString('Next Eligible Donation Date', $html);
-        $this->assertStringContainsString('navigator.mediaDevices.getUserMedia', $html);
         $this->assertStringContainsString('returnToProcessing', $html);
         $this->assertStringContainsString("window.location.replace(api.returnUrl + separator + 'completed=1')", $html);
     }

@@ -64,17 +64,25 @@ class DonorSignupController extends Controller
     {
         $validated = $request->validated();
 
-        try {
-            $this->persistDonorRegistration($validated);
-
-            return redirect('/login')->with('success', 'Registration completed successfully. Please log in to continue.');
-        } catch (Throwable $exception) {
-            report($exception);
-
+        if (! app(PrivacyConsent::class)->readyForCollection()) {
             return back()
                 ->withInput($request->except(['password', 'password_confirmation']))
-                ->with('error', 'We could not complete your registration at the moment. Please try again.');
+                ->with('error', 'Registration is temporarily disabled pending the operator’s privacy review.');
         }
+
+        $response = $this->issueOtp($validated);
+        $result = $response->getData(true);
+
+        if (! $response->isSuccessful()) {
+            return back()
+                ->withInput($request->except(['password', 'password_confirmation']))
+                ->with('error', (string) ($result['message'] ?? 'We could not send the OTP right now. Please try again.'));
+        }
+
+        return redirect()->route('donor.signup')
+            ->withInput($request->except(['password', 'password_confirmation']))
+            ->with('otp_sent', true)
+            ->with('success', (string) ($result['message'] ?? 'OTP sent. Please check your email.'));
     }
 
     /**
@@ -82,6 +90,10 @@ class DonorSignupController extends Controller
      */
     public function sendOtp(Request $request): JsonResponse
     {
+        if (! app(PrivacyConsent::class)->readyForCollection()) {
+            return response()->json(['message' => 'Registration is temporarily disabled pending the operator’s privacy review.'], 503);
+        }
+
         $formRequest = new StoreDonorRegistrationRequest();
         $validator = Validator::make(
             $request->all(),
@@ -97,7 +109,16 @@ class DonorSignupController extends Controller
             ], 422);
         }
 
-        $validated = $validator->validated();
+        return $this->issueOtp($validator->validated());
+    }
+
+    /**
+     * Keep registration data pending until the email OTP is confirmed.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function issueOtp(array $validated): JsonResponse
+    {
         $otpCode = (string) random_int(100000, 999999);
         $payload = $validated;
         $payload['password'] = Crypt::encryptString($validated['password']);
@@ -204,21 +225,26 @@ class DonorSignupController extends Controller
         try {
             $donor = DB::transaction(function () use ($payload, $request) {
                 $donor = $this->persistDonorRegistration($payload);
+
+                // Registration is only persisted after the pending OTP is verified.
+                DonorAuthentication::query()
+                    ->where('donor_id', $donor->donor_id)
+                    ->update([
+                        'is_verified' => true,
+                        'verified_at' => now(),
+                        'verification_sent_at' => now(),
+                        'verification_token' => null,
+                    ]);
+
                 app(PrivacyConsent::class)->record($request, 'registration', [
                     'terms' => true, 'privacy_notice' => true, 'purpose' => true, 'email_verified' => true,
                 ], 'donor:'.$donor->donor_id);
                 return $donor;
             });
 
-            // Mark the authentication record as verified since OTP was confirmed.
-            DonorAuthentication::query()
-                ->where('donor_id', $donor->donor_id)
-                ->update([
-                    'is_verified' => true,
-                    'verified_at' => now(),
-                    'verification_sent_at' => now(),
-                    'verification_token' => null,
-                ]);
+            // External geocoding and notification delivery must not leave a partial
+            // donor registration if either integration is temporarily unavailable.
+            $this->runPostRegistrationIntegrations($donor);
 
             session()->forget('pending_donor_signup');
 
@@ -242,47 +268,54 @@ class DonorSignupController extends Controller
      */
     private function persistDonorRegistration(array $validated)
     {
-        DB::beginTransaction();
+        $bloodType = BloodType::query()
+            ->where('blood_type', $validated['blood_type'])
+            ->firstOrFail();
 
+        $location = Location::create([
+            'street_address' => $validated['street_address'],
+            'barangay_name' => $validated['barangay'],
+            'city' => $validated['city'],
+            'province' => $validated['province'],
+        ]);
+
+        $donor = Donor::create([
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'gender' => $validated['gender'],
+            'birthdate' => $validated['birthdate'],
+            'contact_number' => $validated['phone'],
+            'blood_type_id' => $bloodType->blood_type_id,
+            'blood_type_status' => 'self_reported',
+            'blood_type_verified_by_admin_id' => null,
+            'blood_type_verified_at' => null,
+            'location_id' => $location->location_id,
+            'date_registered' => now(),
+        ]);
+
+        DonorAuthentication::create([
+            'donor_id' => $donor->donor_id,
+            'email' => $validated['email'],
+            'password' => Hash::make($validated['password']),
+            'is_verified' => false,
+            'created_at' => now(),
+        ]);
+
+        return $donor->setRelation('location', $location);
+    }
+
+    private function runPostRegistrationIntegrations(Donor $donor): void
+    {
         try {
-            $bloodType = BloodType::query()
-                ->where('blood_type', $validated['blood_type'])
-                ->firstOrFail();
+            $location = $donor->relationLoaded('location')
+                ? $donor->getRelation('location')
+                : Location::query()->find($donor->location_id);
 
-            $location = Location::create([
-                'street_address' => $validated['street_address'],
-                'barangay_name' => $validated['barangay'],
-                'city' => $validated['city'],
-                'province' => $validated['province'],
-            ]);
+            if ($location) {
+                app(GeocodingService::class)->geocodeAndSave($location);
+            }
 
-            $donor = Donor::create([
-                'first_name' => $validated['first_name'],
-                'last_name' => $validated['last_name'],
-                'gender' => $validated['gender'],
-                'birthdate' => $validated['birthdate'],
-                'contact_number' => $validated['phone'],
-                'blood_type_id' => $bloodType->blood_type_id,
-                'blood_type_status' => 'self_reported',
-                'blood_type_verified_by_admin_id' => null,
-                'blood_type_verified_at' => null,
-                'location_id' => $location->location_id,
-                'date_registered' => now(),
-            ]);
-
-            DonorAuthentication::create([
-                'donor_id' => $donor->donor_id,
-                'email' => $validated['email'],
-                'password' => Hash::make($validated['password']),
-                'is_verified' => false,
-                'created_at' => now(),
-            ]);
-
-            DB::commit();
-
-            app(GeocodingService::class)->geocodeAndSave($location);
-
-            $donorName = trim($donor->first_name . ' ' . $donor->last_name);
+            $donorName = trim($donor->first_name.' '.$donor->last_name);
             app(AdminNotificationService::class)->createAdminEvent(
                 'donor_registration',
                 'New Donor Registration',
@@ -290,12 +323,8 @@ class DonorSignupController extends Controller
                 'donor',
                 (int) $donor->donor_id
             );
-
-            return $donor;
         } catch (Throwable $exception) {
-            DB::rollBack();
-
-            throw $exception;
+            report($exception);
         }
     }
 }

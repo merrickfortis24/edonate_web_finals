@@ -19,46 +19,31 @@ class EnsureAdminAuthenticated
     public function handle(Request $request, Closure $next): Response
     {
         $adminId = $request->session()->get('admin_id');
-        $role = strtolower((string) $request->session()->get('admin_role', ''));
-
-        if (!is_numeric($adminId) || !in_array($role, ['admin', 'staff'], true)) {
-            $request->session()->forget([
-                'admin_id',
-                'admin_username',
-                'admin_full_name',
-                'admin_role',
-                'pending_admin_2fa',
-                'admin_2fa_setup_secret',
-                'two_factor_recovery_codes',
-            ]);
-
-            return redirect()
-                ->route('admin.login')
-                ->with('error', 'Please log in to continue.');
+        if (! is_numeric($adminId) || ! Schema::hasTable('admins')) {
+            return $this->terminateSession($request, 'Please log in to continue.');
         }
 
-        if ($this->supportsTwoFactorStorage()) {
-            $admin = DB::table('admins')
-                ->select('admin_id', 'two_factor_enabled', 'two_factor_secret')
-                ->where('admin_id', (int) $adminId)
-                ->first();
-
-            if (!$admin) {
-                $request->session()->forget([
-                    'admin_id',
-                    'admin_username',
-                    'admin_full_name',
-                    'admin_role',
-                    'pending_admin_2fa',
-                    'admin_2fa_setup_secret',
-                    'two_factor_recovery_codes',
-                ]);
-
-                return redirect()
-                    ->route('admin.login')
-                    ->with('error', 'Your account session is no longer valid. Please log in again.');
+        $columns = ['admin_id'];
+        foreach (['role', 'username', 'full_name', 'two_factor_enabled', 'two_factor_secret', 'is_active'] as $column) {
+            if (Schema::hasColumn('admins', $column)) {
+                $columns[] = $column;
             }
+        }
 
+        $admin = DB::table('admins')->select($columns)->where('admin_id', (int) $adminId)->first();
+        $role = strtolower(trim((string) ($admin->role ?? '')));
+        if (! $admin || ! in_array($role, ['admin', 'staff'], true)
+            || (isset($admin->is_active) && ! (bool) $admin->is_active)) {
+            return $this->terminateSession($request, 'Your account session is no longer valid. Please log in again.');
+        }
+
+        $request->session()->put([
+            'admin_role' => $role,
+            'admin_username' => (string) ($admin->username ?? $request->session()->get('admin_username', '')),
+            'admin_full_name' => (string) ($admin->full_name ?? $request->session()->get('admin_full_name', '')),
+        ]);
+
+        if ($this->supportsTwoFactorStorage()) {
             $isTwoFactorEnabled = (bool) ($admin->two_factor_enabled ?? false)
                 && trim((string) ($admin->two_factor_secret ?? '')) !== '';
 
@@ -74,7 +59,49 @@ class EnsureAdminAuthenticated
             }
         }
 
-        return $next($request);
+        $now = now()->timestamp;
+        $lastActivity = (int) $request->session()->get('admin_last_activity_at', $now);
+        $timeoutMinutes = $this->sessionTimeoutMinutes();
+        if ($lastActivity > 0 && ($now - $lastActivity) >= ($timeoutMinutes * 60)) {
+            return $this->terminateSession($request, 'Session expired due to inactivity. Please log in again.', 401);
+        }
+
+        $response = $next($request);
+        if ($response->getStatusCode() < 400) {
+            $request->session()->put('admin_last_activity_at', $now);
+        }
+
+        return $response;
+    }
+
+    private function terminateSession(Request $request, string $message, int $status = 302): Response
+    {
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'code' => $status === 401 ? 'admin_session_expired' : 'admin_session_invalid',
+            ], 401);
+        }
+
+        return redirect()->route('admin.login')->with('error', $message);
+    }
+
+    private function sessionTimeoutMinutes(): int
+    {
+        if (! Schema::hasTable(self::SECURITY_SETTINGS_TABLE)
+            || ! Schema::hasColumn(self::SECURITY_SETTINGS_TABLE, 'session_timeout_minutes')) {
+            return 10;
+        }
+
+        $minutes = DB::table(self::SECURITY_SETTINGS_TABLE)
+            ->orderByDesc('admin_security_setting_id')
+            ->value('session_timeout_minutes');
+
+        return in_array((int) $minutes, [5, 10, 30], true) ? (int) $minutes : 10;
     }
 
     /**

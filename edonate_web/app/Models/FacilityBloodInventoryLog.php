@@ -21,6 +21,8 @@ class FacilityBloodInventoryLog extends Model
         'action_type',
         'reason',
         'updated_by_admin_id',
+        'related_donation_id',
+        'related_blood_request_id',
         'created_at',
     ];
 

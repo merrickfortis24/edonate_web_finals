@@ -87,7 +87,6 @@ class NotificationController extends Controller
                 'channels' => [
                     ['value' => 'system', 'label' => 'System'],
                     ['value' => 'email', 'label' => 'Email'],
-                    ['value' => 'push', 'label' => 'Push'],
                 ],
             ],
         ]);
@@ -167,7 +166,7 @@ class NotificationController extends Controller
             'title' => ['required', 'string', 'max:150'],
             'message' => ['required', 'string', 'max:1000'],
             'type' => ['required', 'string', Rule::in(array_keys(self::TYPES))],
-            'channel' => ['required', 'string', Rule::in(['system', 'email', 'push'])],
+            'channel' => ['required', 'string', Rule::in(['system', 'email'])],
         ]);
 
         $notification = $this->notificationService->create($validated);

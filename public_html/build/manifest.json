@@ -8,7 +8,7 @@
     "src": "node_modules/bootstrap-icons/font/fonts/bootstrap-icons.woff2"
   },
   "resources/css/adminlte.css": {
-    "file": "assets/adminlte-CBo4iPkb.css",
+    "file": "assets/adminlte-BP0k-dOZ.css",
     "src": "resources/css/adminlte.css",
     "isEntry": true,
     "name": "adminlte",
@@ -17,7 +17,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-3ilktiGR.css",
+    "file": "assets/app-CAf5fSFV.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "name": "app",

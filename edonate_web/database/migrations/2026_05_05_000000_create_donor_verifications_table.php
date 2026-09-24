@@ -15,7 +15,7 @@ return new class extends Migration
         if (! Schema::hasTable(self::VERIFICATIONS_TABLE)) {
             Schema::create(self::VERIFICATIONS_TABLE, function (Blueprint $table): void {
                 $table->increments('verification_id');
-                $table->integer('donor_id');
+                $table->unsignedInteger('donor_id');
                 $table->enum('document_type', [
                     'national_id',
                     'school_id',

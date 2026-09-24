@@ -74,7 +74,7 @@ class AdminNotificationService
         try {
             $notification = AdminNotification::query()->create($insert);
 
-            if ($notification !== null && $values['channel'] !== 'push') {
+            if ($notification !== null) {
                 $this->sendEmailNotifications($notification);
             }
 
@@ -125,6 +125,7 @@ class AdminNotificationService
             'donor_verification_rejected' => 'Donor Verification Rejected',
             'eligibility_auto_evaluated' => 'Eligibility Evaluated',
             'blood_request_created' => 'Blood Request Created',
+            'blood_request_expired' => 'Blood Request Expired',
             'blood_request_candidates_notified' => 'Blood Request Candidates Notified',
             'blood_request_cancelled' => 'Blood Request Cancelled',
             'blood_request_fulfilled', 'blood_request_manually_fulfilled' => 'Blood Request Fulfilled',
@@ -148,7 +149,7 @@ class AdminNotificationService
     {
         $channel = Str::of($channel)->lower()->trim()->toString();
 
-        return in_array($channel, ['system', 'email', 'push'], true) ? $channel : 'system';
+        return in_array($channel, ['system', 'email'], true) ? $channel : 'system';
     }
 
     /**

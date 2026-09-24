@@ -16,6 +16,7 @@
         'api' => [
             'listUrl' => '',
             'storeUrl' => '',
+            'facilities' => [],
         ],
     ],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
@@ -125,6 +126,13 @@
                             <input type="text" id="eventLocation" class="form-control" maxlength="150" required>
                         </div>
                         <div class="col-12 col-lg-6">
+                            <label for="eventFacility" class="form-label fw-semibold">Inventory Facility</label>
+                            <select id="eventFacility" class="form-select">
+                                <option value="">Not assigned — manual inventory reconciliation</option>
+                            </select>
+                            <div class="form-text">Assign the facility that will receive verified units from completed event donations.</div>
+                        </div>
+                        <div class="col-12 col-lg-6">
                             <label for="eventAddress" class="form-label fw-semibold">Address</label>
                             <input type="text" id="eventAddress" class="form-control">
                         </div>
@@ -162,6 +170,7 @@
         var payload = (window.AdminPageData && window.AdminPageData.donationEvents) ? window.AdminPageData.donationEvents : {};
         var listUrl = payload.api && payload.api.listUrl ? payload.api.listUrl : '';
         var storeUrl = payload.api && payload.api.storeUrl ? payload.api.storeUrl : '';
+        var facilityOptions = payload.api && Array.isArray(payload.api.facilities) ? payload.api.facilities : [];
         var csrfToken = @json(csrf_token());
         var state = { page: 1, perPage: 10, search: '', status: '', date: '' };
         var rowsById = {};
@@ -241,7 +250,7 @@
                 return ''
                     + '<tr data-event-id="' + escapeHtml(event.event_id) + '">'
                     + '<td><div class="event-title">' + escapeHtml(event.title) + '</div><div class="event-meta">EV' + String(event.event_id).padStart(3, '0') + '</div></td>'
-                    + '<td><div>' + escapeHtml(event.location_name || '-') + '</div><div class="event-meta">' + escapeHtml(event.address || '') + '</div></td>'
+                    + '<td><div>' + escapeHtml(event.location_name || '-') + '</div><div class="event-meta">' + escapeHtml(event.address || '') + '</div><div class="event-meta">Inventory: ' + escapeHtml(event.facility_name || 'Not assigned') + '</div></td>'
                     + '<td><div>' + escapeHtml(formatDate(event.event_date)) + '</div><div class="event-meta">' + escapeHtml(formatTime(event.start_time)) + ' - ' + escapeHtml(formatTime(event.end_time)) + '</div></td>'
                     + '<td><div class="fw-semibold">' + capacityLabel + '</div><div class="event-meta">' + escapeHtml(remainingLabel) + '</div></td>'
                     + '<td><span class="event-badge event-badge--' + escapeHtml(statusClass) + '">' + escapeHtml(statusClass === 'full' ? 'Full' : statusLabel(event.status)) + '</span></td>'
@@ -301,6 +310,7 @@
             document.getElementById('eventTitle').value = event ? event.title : '';
             document.getElementById('eventStatus').value = event ? event.status : 'open';
             document.getElementById('eventLocation').value = event ? event.location_name : '';
+            document.getElementById('eventFacility').value = event && event.facility_id ? String(event.facility_id) : '';
             document.getElementById('eventAddress').value = event ? event.address : '';
             document.getElementById('eventDate').value = event ? event.event_date : '';
             document.getElementById('eventStartTime').value = event && event.start_time ? String(event.start_time).slice(0, 5) : '';
@@ -316,6 +326,7 @@
                 title: document.getElementById('eventTitle').value.trim(),
                 status: document.getElementById('eventStatus').value,
                 location_name: document.getElementById('eventLocation').value.trim(),
+                facility_id: document.getElementById('eventFacility').value || null,
                 address: document.getElementById('eventAddress').value.trim(),
                 event_date: document.getElementById('eventDate').value,
                 start_time: document.getElementById('eventStartTime').value,
@@ -407,6 +418,15 @@
 
         document.getElementById('createEventBtn').addEventListener('click', function () { openModal(null); });
         form.addEventListener('submit', saveEvent);
+
+        var facilitySelect = document.getElementById('eventFacility');
+        facilityOptions.forEach(function (facility) {
+            if (!facility || !facility.id) return;
+            var option = document.createElement('option');
+            option.value = String(facility.id);
+            option.textContent = String(facility.name || ('Facility #' + facility.id));
+            facilitySelect.appendChild(option);
+        });
 
         searchInput.addEventListener('input', function () {
             clearTimeout(searchTimer);

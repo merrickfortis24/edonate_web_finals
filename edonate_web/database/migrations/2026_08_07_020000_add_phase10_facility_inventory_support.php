@@ -21,8 +21,8 @@ return new class extends Migration
         if (! Schema::hasTable('facility_blood_inventory_logs')) {
             Schema::create('facility_blood_inventory_logs', function (Blueprint $table): void {
                 $table->bigIncrements('inventory_log_id');
-                $table->integer('facility_id');
-                $table->integer('blood_type_id');
+                $table->unsignedInteger('facility_id');
+                $table->unsignedInteger('blood_type_id');
                 $table->integer('previous_units')->default(0);
                 $table->integer('new_units')->default(0);
                 $table->integer('change_amount')->default(0);

@@ -81,6 +81,55 @@ class Phase11BloodRequestTest extends TestCase
         );
     }
 
+    public function test_expiry_command_expires_only_due_open_requests_once_without_changing_inventory(): void
+    {
+        $facilityId = $this->createFacility();
+        DB::table('facility_blood_inventory')->insert([
+            'facility_id' => $facilityId,
+            'blood_type_id' => 4,
+            'available_units' => 7,
+            'low_stock_threshold' => 2,
+            'last_updated' => now(),
+        ]);
+
+        $expiredOpenId = $this->createBloodRequest([
+            'facility_id' => $facilityId,
+            'request_reference' => 'RDR-EXP-OPEN',
+            'patient_reference_code' => 'RDR-EXP-OPEN',
+            'status' => 'open',
+            'expires_at' => now()->subMinute(),
+        ]);
+        $expiredInProgressId = $this->createBloodRequest([
+            'facility_id' => $facilityId,
+            'request_reference' => 'RDR-EXP-PROGRESS',
+            'patient_reference_code' => 'RDR-EXP-PROGRESS',
+            'status' => 'in_progress',
+            'expires_at' => now()->subMinute(),
+        ]);
+        $futureId = $this->createBloodRequest([
+            'facility_id' => $facilityId,
+            'request_reference' => 'RDR-EXP-FUTURE',
+            'patient_reference_code' => 'RDR-EXP-FUTURE',
+            'status' => 'open',
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $this->artisan('blood-requests:expire')->assertSuccessful();
+
+        $this->assertSame('expired', DB::table('blood_requests')->where('request_id', $expiredOpenId)->value('status'));
+        $this->assertSame('expired', DB::table('blood_requests')->where('request_id', $expiredInProgressId)->value('status'));
+        $this->assertSame('open', DB::table('blood_requests')->where('request_id', $futureId)->value('status'));
+        $this->assertSame(2, DB::table('audit_logs')->where('action_type', 'blood_request_expired')->count());
+        $this->assertSame(2, DB::table('admin_notifications')->where('notification_type', 'blood_request_expired')->count());
+        $this->assertSame(7, DB::table('facility_blood_inventory')->where('facility_id', $facilityId)->value('available_units'));
+
+        $this->artisan('blood-requests:expire')->assertSuccessful();
+
+        $this->assertSame(2, DB::table('audit_logs')->where('action_type', 'blood_request_expired')->count());
+        $this->assertSame(2, DB::table('admin_notifications')->where('notification_type', 'blood_request_expired')->count());
+        $this->assertSame(7, DB::table('facility_blood_inventory')->where('facility_id', $facilityId)->value('available_units'));
+    }
+
     public function test_validation_rejects_missing_facility_bad_blood_type_and_too_many_specific_matches(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);

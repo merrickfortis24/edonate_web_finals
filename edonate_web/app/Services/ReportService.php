@@ -31,9 +31,11 @@ class ReportService
         return [
             'period' => $period,
             'summary' => $this->summary($period['start'], $period['end'], $facilityId, $bloodTypeId),
+            'availability' => ['summary' => $this->summaryAvailability($facilityId)],
             'trend' => $this->trend($period['start'], $period['end'], $facilityId, $bloodTypeId),
             'distribution' => $this->distribution($period['start'], $period['end'], $bloodTypeId),
             'inventory' => $this->inventory($facilityId),
+            'inventory_snapshot_at' => now()->toIso8601String(),
             'filters' => [
                 'range' => $period['range'],
                 'start_date' => $period['start'],
@@ -199,7 +201,7 @@ class ReportService
             'deferred_donations' => $deferredDonations,
             'failed_donations' => $failedDonations,
             'success_rate' => $denominator > 0 ? round(($completedDonations / $denominator) * 100, 1) : 0,
-            'active_donors' => $verifiedDonors,
+            'verified_donors' => $verifiedDonors,
             'donors_in_period' => $donorTotal,
             'eligible_donors' => $eligibleDonors,
             'upcoming_appointments' => $upcomingAppointments,
@@ -398,6 +400,8 @@ class ReportService
 
         if ($facilityId !== null && $this->hasColumn('blood_requests', 'facility_id')) {
             $base->where('br.facility_id', $facilityId);
+        } elseif ($facilityId !== null) {
+            $base->whereRaw('1 = 0');
         }
         if ($bloodTypeId !== null && $this->hasColumn('blood_requests', 'needed_blood_type_id')) {
             $base->where('br.needed_blood_type_id', $bloodTypeId);
@@ -431,6 +435,8 @@ class ReportService
 
         if ($facilityId !== null && $this->hasColumn('blood_requests', 'facility_id')) {
             $query->where('facility_id', $facilityId);
+        } elseif ($facilityId !== null) {
+            $query->whereRaw('1 = 0');
         }
 
         return $query->pluck('total', 'needed_blood_type_id')->map(static fn ($value): int => (int) $value)->all();
@@ -449,8 +455,8 @@ class ReportService
         if ($facilityId !== null) {
             if ($this->hasColumn('donation_events', 'facility_id')) {
                 $query->where('ev.facility_id', $facilityId);
-            } elseif ($this->hasColumn('donation_events', 'location_name') && ($facilityName = $this->facilityName($facilityId)) !== null) {
-                $query->where('ev.location_name', $facilityName);
+            } else {
+                $query->whereRaw('1 = 0');
             }
         }
 
@@ -526,8 +532,8 @@ class ReportService
             $query->join('donation_events as ev', 'ev.event_id', '=', 'ap.event_id');
             if ($this->hasColumn('donation_events', 'facility_id')) {
                 $query->where('ev.facility_id', $facilityId);
-            } elseif ($this->hasColumn('donation_events', 'location_name') && ($facilityName = $this->facilityName($facilityId)) !== null) {
-                $query->where('ev.location_name', $facilityName);
+            } else {
+                $query->whereRaw('1 = 0');
             }
         }
 
@@ -560,14 +566,10 @@ class ReportService
                 ->join('donation_events as ev', 'ev.event_id', '=', 'ap.event_id');
 
             if ($facilityId !== null) {
-                // Donation events currently store a public location name rather
-                // than a facility id. Keep facility filtering available when a
-                // future schema adds event facility_id, otherwise return the
-                // unfiltered operational total instead of guessing by name.
                 if ($this->hasColumn('donation_events', 'facility_id')) {
                     $query->where('ev.facility_id', $facilityId);
-                } elseif ($this->hasColumn('donation_events', 'location_name') && ($facilityName = $this->facilityName($facilityId)) !== null) {
-                    $query->where('ev.location_name', $facilityName);
+                } else {
+                    $query->whereRaw('1 = 0');
                 }
             }
         }
@@ -646,6 +648,52 @@ class ReportService
         };
     }
 
+    /**
+     * Distinguish a real zero from an unavailable metric caused by an
+     * incomplete legacy schema. Query failures are handled at the controller
+     * boundary and return the same unavailable state without leaking SQL.
+     *
+     * @return array<string, bool>
+     */
+    private function summaryAvailability(?int $facilityId): array
+    {
+        $donations = $this->hasColumns('donation_records', ['donation_id', 'donation_date']);
+        $donors = $this->hasColumns('donors', ['donor_id', 'date_registered']);
+        $appointments = $this->hasColumns('appointments', ['appointment_id', 'appointment_date', 'status']);
+        $requests = $this->hasColumns('blood_requests', ['request_id', 'status', 'created_at']);
+        $inventory = $this->hasColumns('facility_blood_inventory', ['facility_id', 'blood_type_id', 'available_units']);
+        $eligibility = $this->hasColumns('eligibility_status', ['eligibility_id', 'donor_id', 'status']);
+        $verifiedDonorField = $this->hasColumn('donors', 'verification_status')
+            || $this->hasColumn('donors', 'blood_type_status');
+        $eventFacilityAttribution = $facilityId === null || $this->hasColumn('donation_events', 'facility_id');
+        $requestFacilityAttribution = $facilityId === null || $this->hasColumn('blood_requests', 'facility_id');
+        $donorFacilityAttribution = $facilityId === null;
+
+        return [
+            'total_donations' => $donations && $eventFacilityAttribution,
+            'completed_donations' => $donations && $eventFacilityAttribution,
+            'deferred_donations' => $donations && $eventFacilityAttribution,
+            'failed_donations' => $donations && $eventFacilityAttribution,
+            'success_rate' => $donations && $eventFacilityAttribution,
+            'verified_donors' => $donors && $verifiedDonorField && $donorFacilityAttribution,
+            'donors_in_period' => $donors && $donorFacilityAttribution,
+            'eligible_donors' => $eligibility && $donorFacilityAttribution,
+            'upcoming_appointments' => $appointments && $eventFacilityAttribution,
+            'appointments_in_period' => $appointments && $eventFacilityAttribution,
+            'no_shows' => $appointments && $eventFacilityAttribution,
+            'deferred_on_site' => $appointments && $eventFacilityAttribution,
+            'open_requests' => $requests && $requestFacilityAttribution,
+            'emergency_requests' => $requests && $requestFacilityAttribution && $this->hasColumn('blood_requests', 'urgency'),
+            'fulfilled_requests' => $requests && $requestFacilityAttribution,
+            'events_in_period' => $this->hasColumns('donation_events', ['event_id', 'event_date']) && $eventFacilityAttribution,
+            'low_stock_blood_types' => $inventory,
+            'out_of_stock_blood_types' => $inventory,
+            'total_inventory_units' => $inventory,
+            'pending_verification' => $this->hasColumn('donors', 'verification_status'),
+            'verified_donor_accounts' => $this->hasColumn('donors', 'verification_status'),
+        ];
+    }
+
     private function hasTable(string $table): bool
     {
         try {
@@ -685,20 +733,4 @@ class ReportService
         return is_numeric($value) && (int) $value > 0 ? (int) $value : null;
     }
 
-    private function facilityName(?int $facilityId): ?string
-    {
-        if ($facilityId === null || ! $this->hasColumns('facilities', ['facility_id', 'facility_name'])) {
-            return null;
-        }
-
-        try {
-            $name = DB::table('facilities')->where('facility_id', $facilityId)->value('facility_name');
-
-            return $name !== null && trim((string) $name) !== '' ? trim((string) $name) : null;
-        } catch (Throwable $exception) {
-            report($exception);
-
-            return null;
-        }
-    }
 }

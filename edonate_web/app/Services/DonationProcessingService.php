@@ -57,7 +57,15 @@ class DonationProcessingService
             $normalized = $this->statuses->normalize((string) $appointment->status);
 
             if ($existingRecord && $normalized === AppointmentStatusService::COMPLETED) {
-                return ['appointment' => $appointment, 'record' => $existingRecord, 'already' => true];
+                return [
+                    'appointment' => $appointment,
+                    'record' => $existingRecord,
+                    'already' => true,
+                    'inventory_status' => ! empty($existingRecord->inventory_received_at) ? 'received' : 'manual_reconciliation',
+                    'inventory_message' => ! empty($existingRecord->inventory_received_at)
+                        ? 'Inventory was already updated for this donation.'
+                        : 'Donation is complete; facility inventory needs manual reconciliation.',
+                ];
             }
 
             $this->ensureTransition($appointment, AppointmentStatusService::COMPLETED);
@@ -146,6 +154,15 @@ class DonationProcessingService
                 }
             }
 
+            $inventoryResult = $this->receiveInventoryForDonation(
+                $appointment,
+                $donor,
+                $verifiedBloodType,
+                (int) $data['blood_units'],
+                $adminId,
+                $recordId
+            );
+
             $this->eligibility->markCompletedDonation((int) $appointment->donor_id, $donationDate);
 
             $this->donorNotification(
@@ -166,12 +183,17 @@ class DonationProcessingService
                 'blood_units' => (int) $data['blood_units'],
                 'donation_status' => 'completed',
                 'verified_blood_type_id' => $verifiedBloodType?->blood_type_id,
+                'inventory_status' => $inventoryResult['status'],
+                'inventory_facility_id' => $inventoryResult['facility_id'],
+                'inventory_blood_type_id' => $inventoryResult['blood_type_id'],
             ]);
 
             return [
                 'appointment' => $appointment->refresh(),
                 'record' => DB::table('donation_records')->where('donation_id', $recordId)->first(),
                 'already' => false,
+                'inventory_status' => $inventoryResult['status'],
+                'inventory_message' => $inventoryResult['message'],
             ];
         });
     }
@@ -440,6 +462,83 @@ class DonationProcessingService
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Inventory is only updated when both event-to-facility attribution and a
+     * verified blood type are explicit. Legacy/unmapped donations stay
+     * completed but visible for manual reconciliation rather than guessed.
+     *
+     * @return array{status: string, message: string, facility_id: int|null, blood_type_id: int|null}
+     */
+    private function receiveInventoryForDonation(
+        Appointment $appointment,
+        Donor $donor,
+        ?BloodType $verifiedBloodType,
+        int $units,
+        int $adminId,
+        int $donationId
+    ): array {
+        $manual = static fn (string $message, ?int $facilityId = null, ?int $bloodTypeId = null): array => [
+            'status' => 'manual_reconciliation',
+            'message' => $message,
+            'facility_id' => $facilityId,
+            'blood_type_id' => $bloodTypeId,
+        ];
+
+        if (! Schema::hasColumn('donation_records', 'inventory_received_at')
+            || ! Schema::hasColumn('donation_events', 'facility_id')
+            || ! Schema::hasTable('facility_blood_inventory')
+            || ! Schema::hasTable('facility_blood_inventory_logs')
+            || ! Schema::hasColumn('facility_blood_inventory_logs', 'related_donation_id')) {
+            return $manual('Inventory tracking is not fully installed; reconcile this donation manually.');
+        }
+
+        $facilityId = DB::table('donation_events')
+            ->where('event_id', $appointment->event_id)
+            ->value('facility_id');
+        if (! is_numeric($facilityId) || (int) $facilityId <= 0) {
+            return $manual('The event has no assigned facility; reconcile inventory manually.');
+        }
+        $facilityId = (int) $facilityId;
+
+        $bloodType = $verifiedBloodType;
+        if (! $bloodType
+            && strtolower(trim((string) ($donor->blood_type_status ?? ''))) === 'verified'
+            && is_numeric($donor->blood_type_id ?? null)) {
+            $bloodType = BloodType::query()
+                ->where('blood_type_id', (int) $donor->blood_type_id)
+                ->whereIn('blood_type', ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'])
+                ->first();
+        }
+
+        if (! $bloodType) {
+            return $manual('No verified blood type is available; reconcile inventory manually.', $facilityId);
+        }
+
+        if (! Schema::hasColumn('facility_blood_inventory_logs', 'related_donation_id')
+            || ! Schema::hasColumn('facility_blood_inventory_logs', 'action_type')) {
+            return $manual('Inventory history cannot link this donation; reconcile inventory manually.', $facilityId, (int) $bloodType->blood_type_id);
+        }
+
+        app(FacilityBloodInventoryService::class)->receiveDonation(
+            $facilityId,
+            (int) $bloodType->blood_type_id,
+            $units,
+            $adminId,
+            $donationId
+        );
+
+        DB::table('donation_records')->where('donation_id', $donationId)->update([
+            'inventory_received_at' => now(),
+        ]);
+
+        return [
+            'status' => 'received',
+            'message' => 'Verified units were added to the event facility inventory.',
+            'facility_id' => $facilityId,
+            'blood_type_id' => (int) $bloodType->blood_type_id,
+        ];
     }
 
     private function appointmentCode(Appointment $appointment): string

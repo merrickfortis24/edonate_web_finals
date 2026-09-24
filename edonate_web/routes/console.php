@@ -121,3 +121,8 @@ if (config('edonate.schedule_eligibility_reminders', false)) {
         ->dailyAt((string) config('edonate.reminder_time', '08:00'))
         ->withoutOverlapping();
 }
+
+// On Hostinger, configure a cron job to run `php /path/to/edonate_web/artisan schedule:run` every minute.
+Schedule::command('blood-requests:expire')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping();

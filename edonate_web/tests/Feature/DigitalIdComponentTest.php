@@ -6,7 +6,7 @@ use Tests\TestCase;
 
 class DigitalIdComponentTest extends TestCase
 {
-    public function test_digital_id_component_renders_the_donor_details_and_qr_placeholder(): void
+    public function test_digital_id_component_renders_donor_details_without_a_fake_verification_qr(): void
     {
         $donor = (object) [
             'first_name' => 'Juan',
@@ -30,7 +30,8 @@ class DigitalIdComponentTest extends TestCase
         $this->assertStringContainsString('Jan 15, 2026', $html);
         $this->assertStringContainsString('Mar 12, 2026', $html);
         $this->assertStringContainsString('text-emerald-600', $html);
-        $this->assertStringContainsString('Scan to verify donor', $html);
+        $this->assertStringContainsString('Verify this ID with an authorized eDonate administrator.', $html);
+        $this->assertStringNotContainsString('Scan to verify donor', $html);
     }
 
     public function test_digital_id_component_marks_a_future_eligible_date_as_waiting(): void

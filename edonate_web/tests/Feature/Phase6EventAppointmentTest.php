@@ -64,6 +64,71 @@ class Phase6EventAppointmentTest extends TestCase
         $response->assertJsonValidationErrors('end_time');
     }
 
+    public function test_event_management_can_assign_the_facility_that_receives_verified_inventory(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        DB::table('facilities')->insert([
+            'facility_id' => 1,
+            'facility_name' => 'Lipa City Blood Center',
+            'status' => 'active',
+        ]);
+
+        $payload = [
+            'title' => 'City Hall Blood Drive',
+            'event_date' => Carbon::today()->addDay()->toDateString(),
+            'start_time' => '09:00',
+            'end_time' => '12:00',
+            'location_name' => 'Lipa City Hall',
+            'facility_id' => 1,
+            'max_capacity' => 50,
+            'status' => 'open',
+        ];
+
+        $response = $this->withSession($this->adminSession())->postJson('/admin/donation-events', $payload);
+        $response->assertCreated()
+            ->assertJsonPath('event.facility_id', 1)
+            ->assertJsonPath('event.facility_name', 'Lipa City Blood Center');
+        $this->assertDatabaseHas('donation_events', ['event_id' => $response->json('event.event_id'), 'facility_id' => 1]);
+
+        $payload['facility_id'] = 999;
+        $this->withSession($this->adminSession())->postJson('/admin/donation-events', $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('facility_id');
+    }
+
+    public function test_admin_appointment_actions_obey_the_atomic_status_transition_rules(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $eventId = $this->createEvent();
+        $pendingId = $this->createAppointment($this->createBookableDonor(), $eventId, ['status' => 'pending']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$pendingId}/approve")
+            ->assertOk();
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $pendingId, 'status' => 'confirmed']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$pendingId}/reject")
+            ->assertUnprocessable();
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $pendingId, 'status' => 'confirmed']);
+
+        $completedId = $this->createAppointment($this->createBookableDonor(), $eventId, ['status' => 'completed']);
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$completedId}/cancel", ['cancellation_reason' => 'Duplicate request'])
+            ->assertUnprocessable();
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $completedId, 'status' => 'completed']);
+
+        $confirmedId = $this->createAppointment($this->createBookableDonor(), $eventId, ['status' => 'confirmed']);
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$confirmedId}/cancel", ['cancellation_reason' => 'Donor unavailable'])
+            ->assertOk();
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $confirmedId,
+            'status' => 'cancelled',
+            'cancellation_reason' => 'Donor unavailable',
+        ]);
+    }
+
     public function test_admin_cannot_reduce_capacity_below_confirmed_bookings(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
@@ -86,6 +151,83 @@ class Phase6EventAppointmentTest extends TestCase
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors('max_capacity');
+    }
+
+    public function test_admin_can_reschedule_an_active_appointment_to_an_open_available_event(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = $this->createBookableDonor();
+        $originalEventId = $this->createEvent(['event_date' => Carbon::today()->addDay()->toDateString()]);
+        $newEventId = $this->createEvent([
+            'title' => 'Community Center Drive',
+            'event_date' => Carbon::today()->addDays(3)->toDateString(),
+            'start_time' => '10:00:00',
+            'end_time' => '13:00:00',
+            'location_name' => 'Community Center',
+            'max_capacity' => 2,
+        ]);
+        $appointmentId = $this->createAppointment($donorId, $originalEventId, ['status' => 'confirmed']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reschedule", [
+                'event_id' => $newEventId,
+                'appointment_time' => '11:30',
+            ])
+            ->assertOk()
+            ->assertJsonPath('appointment.status', 'confirmed')
+            ->assertJsonPath('appointment.event_id', $newEventId)
+            ->assertJsonPath('appointment.appointment_time', '11:30:00');
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'event_id' => $newEventId,
+            'appointment_time' => '11:30:00',
+            'status' => 'confirmed',
+        ]);
+        $this->assertSame(
+            Carbon::today()->addDays(3)->toDateString(),
+            Carbon::parse((string) DB::table('appointments')->where('appointment_id', $appointmentId)->value('appointment_date'))->toDateString()
+        );
+        $this->assertDatabaseHas('notifications', [
+            'donor_id' => $donorId,
+            'notification_type' => 'appointment_rescheduled',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action_type' => 'appointment_rescheduled',
+            'target_id' => $appointmentId,
+        ]);
+    }
+
+    public function test_reschedule_rejects_terminal_appointments_and_times_outside_event_hours(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = $this->createBookableDonor();
+        $originalEventId = $this->createEvent();
+        $newEventId = $this->createEvent(['event_date' => Carbon::today()->addDays(4)->toDateString()]);
+        $appointmentId = $this->createAppointment($donorId, $originalEventId, ['status' => 'completed']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reschedule", [
+                'event_id' => $newEventId,
+                'appointment_time' => '09:30',
+            ])
+            ->assertUnprocessable();
+
+        DB::table('appointments')->where('appointment_id', $appointmentId)->update(['status' => 'confirmed']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reschedule", [
+                'event_id' => $newEventId,
+                'appointment_time' => '14:00',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('appointment_time');
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'event_id' => $originalEventId,
+            'status' => 'confirmed',
+        ]);
     }
 
     public function test_verified_and_eligible_donor_books_auto_confirmed_event_appointment(): void
@@ -284,7 +426,7 @@ class Phase6EventAppointmentTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['audit_logs', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'eligibility_status', 'donor_authentication', 'donors', 'admins'] as $table) {
+        foreach (['audit_logs', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'facilities', 'eligibility_status', 'donor_authentication', 'donors', 'admins'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();
@@ -341,12 +483,19 @@ class Phase6EventAppointmentTest extends TestCase
             $table->time('start_time')->nullable();
             $table->time('end_time')->nullable();
             $table->string('location_name', 150);
+            $table->integer('facility_id')->nullable();
             $table->text('address')->nullable();
             $table->integer('max_capacity')->default(100);
             $table->string('status')->default('open');
             $table->integer('created_by_admin_id')->nullable();
             $table->timestamp('created_at')->nullable();
             $table->timestamp('updated_at')->nullable();
+        });
+
+        Schema::create('facilities', function (Blueprint $table): void {
+            $table->increments('facility_id');
+            $table->string('facility_name');
+            $table->string('status')->default('active');
         });
 
         Schema::create('appointments', function (Blueprint $table): void {

@@ -28,7 +28,16 @@ class DemoDataCleanupSeeder extends Seeder
         }
 
         $protectedBefore = $this->protectedSnapshot();
-        $counts = DB::transaction(function () use ($protectedBefore): array {
+        $placeholderPaths = DB::table('donor_verifications')
+            ->where(function ($query): void {
+                $query->where('document_path', 'like', 'donor-verifications/%/demo-id-%')
+                    ->orWhere('document_path', 'like', 'demo/verifications/demo-id-%');
+            })
+            ->pluck('document_path')
+            ->map(fn ($path): string => (string) $path)
+            ->all();
+
+        $counts = DB::transaction(function () use ($protectedBefore, $placeholderPaths): array {
             $donorIds = DB::table('donor_authentication')
                 ->where('email', 'like', 'demo.donor%@example.test')
                 ->pluck('donor_id')
@@ -84,7 +93,7 @@ class DemoDataCleanupSeeder extends Seeder
             $counts['eligibility_submissions'] = $this->deleteWhereIn('eligibility_submissions', 'submission_id', $submissionIds);
             $counts['eligibility_status'] = $this->deleteWhereIn('eligibility_status', 'eligibility_id', $eligibilityIds);
             $counts['donor_verifications'] = DB::table('donor_verifications')
-                ->where('document_path', 'like', 'demo/verifications/demo-id-%')
+                ->whereIn('document_path', $placeholderPaths)
                 ->delete();
             $counts['donor_authentication'] = DB::table('donor_authentication')
                 ->where('email', 'like', 'demo.donor%@example.test')
@@ -103,7 +112,7 @@ class DemoDataCleanupSeeder extends Seeder
             return $counts;
         });
 
-        $this->deletePlaceholderFiles();
+        $this->deletePlaceholderFiles($placeholderPaths);
         $this->assertProtectedSnapshot($protectedBefore);
 
         if ($this->command) {
@@ -195,10 +204,15 @@ class DemoDataCleanupSeeder extends Seeder
         }
     }
 
-    private function deletePlaceholderFiles(): void
+    /** @param array<int, string> $paths */
+    private function deletePlaceholderFiles(array $paths): void
     {
-        for ($number = 1; $number <= 65; $number++) {
-            Storage::disk('local')->delete('demo/verifications/demo-id-' . str_pad((string) $number, 3, '0', STR_PAD_LEFT) . '.jpg');
+        foreach ($paths as $path) {
+            if (str_contains($path, '..') || (! str_starts_with($path, 'donor-verifications/') && ! str_starts_with($path, 'demo/verifications/'))) {
+                continue;
+            }
+
+            Storage::disk('local')->delete($path);
         }
     }
 }

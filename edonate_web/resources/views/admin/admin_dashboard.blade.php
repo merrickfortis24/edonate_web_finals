@@ -21,14 +21,16 @@
 @section('admin_page_data')
 {!! json_encode([
 	'page' => 'admin-dashboard',
-	'dashboard' => [
+		'dashboard' => [
 		'monthlyDonations' => data_get($dashboardPayload ?? [], 'monthly_donations', [
 			'labels' => ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
 			'values' => array_fill(0, 12, 0),
 			'maxY' => 5,
 			'stepY' => 1,
 		]),
+		'monthlyDonationsAvailable' => (bool) data_get($dashboardPayload ?? [], 'monthly_donations.available', false),
 		'bloodTypeDistribution' => data_get($dashboardPayload ?? [], 'blood_type_distribution', []),
+		'bloodTypeDistributionAvailable' => (bool) data_get($dashboardPayload ?? [], 'blood_type_distribution_available', false),
 	],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
@@ -111,7 +113,8 @@
 					<div class="col">
 						<article class="dashboard-kpi-card h-100">
 							<span class="dashboard-kpi-card__label">{{ $kpi['label'] }}</span>
-							<strong class="dashboard-kpi-card__value">{{ number_format((int) data_get($operational, $kpi['key'], 0)) }}</strong>
+										@php($kpiValue = data_get($operational, $kpi['key']))
+										<strong class="dashboard-kpi-card__value">{{ is_numeric($kpiValue) ? number_format((int) $kpiValue) : 'N/A' }}</strong>
 						</article>
 					</div>
 				@endforeach
@@ -136,6 +139,7 @@
 						<h2 class="chart-panel__title">Monthly Donations Trend</h2>
 						<div class="chart-panel__body">
 							<canvas id="lineChart" aria-label="Monthly donations trend line chart"></canvas>
+							<p class="chart-panel__unavailable d-none" id="lineChartUnavailable" role="status">Monthly donation data is unavailable.</p>
 						</div>
 					</div>
 				</div>
@@ -144,6 +148,7 @@
 						<h2 class="chart-panel__title">Blood Type Distribution</h2>
 						<div class="chart-panel__body">
 							<canvas id="pieChart" aria-label="Blood type distribution pie chart"></canvas>
+							<p class="chart-panel__unavailable d-none" id="pieChartUnavailable" role="status">Blood type distribution is unavailable.</p>
 						</div>
 					</div>
 				</div>
@@ -167,8 +172,8 @@
 							<li class="activity-item">
 								<span class="activity-item__dot activity-item__dot--blue"></span>
 								<div class="activity-item__info">
-									<p class="activity-item__name">No recent activities yet.</p>
-									<p class="activity-item__action">Activity will appear here once records are created.</p>
+								<p class="activity-item__name">{{ (bool) data_get($dashboard, 'recent_activities_available', false) ? 'No recent activities yet.' : 'Recent activities are unavailable.' }}</p>
+								<p class="activity-item__action">{{ (bool) data_get($dashboard, 'recent_activities_available', false) ? 'Activity will appear here once records are created.' : 'Unable to load activity data.' }}</p>
 								</div>
 								<span class="activity-item__time">-</span>
 							</li>
@@ -196,8 +201,8 @@
 						@empty
 							<li class="approval-item">
 								<div class="approval-item__info">
-									<p class="approval-item__name">No pending approvals at the moment.</p>
-									<p class="approval-item__type">Pending eligibility and appointment items will appear here.</p>
+									<p class="approval-item__name">{{ (bool) data_get($dashboard, 'pending_approvals_available', false) ? 'No pending approvals at the moment.' : 'Pending approvals are unavailable.' }}</p>
+									<p class="approval-item__type">{{ (bool) data_get($dashboard, 'pending_approvals_available', false) ? 'Pending eligibility and appointment items will appear here.' : 'Unable to load approval data.' }}</p>
 								</div>
 							</li>
 						@endforelse
@@ -270,6 +275,14 @@
 			if (!canvas) {
 				return;
 			}
+			var unavailable = document.getElementById('lineChartUnavailable');
+			if (dashboardData.monthlyDonationsAvailable !== true) {
+				canvas.classList.add('d-none');
+				if (unavailable) unavailable.classList.remove('d-none');
+				return;
+			}
+			canvas.classList.remove('d-none');
+			if (unavailable) unavailable.classList.add('d-none');
 
 			var setup = setupCanvas(canvas);
 			var ctx = setup.ctx;
@@ -370,6 +383,14 @@
 			if (!canvas) {
 				return;
 			}
+			var unavailable = document.getElementById('pieChartUnavailable');
+			if (dashboardData.bloodTypeDistributionAvailable !== true) {
+				canvas.classList.add('d-none');
+				if (unavailable) unavailable.classList.remove('d-none');
+				return;
+			}
+			canvas.classList.remove('d-none');
+			if (unavailable) unavailable.classList.add('d-none');
 
 			var setup = setupCanvas(canvas);
 			var ctx = setup.ctx;

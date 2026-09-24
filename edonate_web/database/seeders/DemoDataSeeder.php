@@ -938,7 +938,7 @@ class DemoDataSeeder extends Seeder
             }
 
             $status = $number <= 40 ? 'verified' : ($number <= 55 ? 'pending' : 'rejected');
-            $path = 'demo/verifications/demo-id-' . str_pad((string) $number, 3, '0', STR_PAD_LEFT) . '.jpg';
+            $path = 'donor-verifications/' . (int) $donorId . '/demo-id-' . str_pad((string) $number, 3, '0', STR_PAD_LEFT) . '.jpg';
             $payload = [
                 'donor_id' => $donorId,
                 'document_type' => $number % 3 === 0 ? 'school_id' : ($number % 3 === 1 ? 'national_id' : 'barangay_certificate'),
@@ -1277,14 +1277,17 @@ class DemoDataSeeder extends Seeder
 
     private function writeDemoPlaceholderFiles(): void
     {
-        if (! Storage::disk('local')->exists('demo/verifications')) {
-            Storage::disk('local')->makeDirectory('demo/verifications');
-        }
-
         $jpeg = base64_decode('/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AX//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z', true);
 
         for ($number = 1; $number <= 65; $number++) {
-            $path = 'demo/verifications/demo-id-' . str_pad((string) $number, 3, '0', STR_PAD_LEFT) . '.jpg';
+            $donorId = (int) ($this->donorIds[$number - 1] ?? 0);
+            if ($donorId < 1) {
+                continue;
+            }
+
+            $directory = 'donor-verifications/' . $donorId;
+            Storage::disk('local')->makeDirectory($directory);
+            $path = $directory . '/demo-id-' . str_pad((string) $number, 3, '0', STR_PAD_LEFT) . '.jpg';
             if (! Storage::disk('local')->exists($path)) {
                 Storage::disk('local')->put($path, $jpeg ?: 'DEMO placeholder document');
             }

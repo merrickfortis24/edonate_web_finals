@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AdminNotificationService;
+use App\Support\EligibilityStatus as EligibilityStatusValue;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -68,8 +69,8 @@ class EligibilityController extends Controller
         if ($searchTerm !== '') {
             $like = '%' . $searchTerm . '%';
             $base->where(function ($q) use ($like): void {
-                $q->whereRaw("CONCAT(COALESCE(d.first_name,''),' ',COALESCE(d.last_name,'')) LIKE ?", [$like])
-                    ->orWhereRaw("CONCAT('D', LPAD(d.donor_id, 3, '0')) LIKE ?", [$like])
+                $q->whereRaw($this->donorNameExpression().' LIKE ?', [$like])
+                    ->orWhereRaw($this->donorCodeExpression().' LIKE ?', [$like])
                     ->orWhere('d.contact_number', 'like', $like)
                     ->orWhere('bt.blood_type', 'like', $like)
                     ->orWhere('da.email', 'like', $like);
@@ -381,8 +382,8 @@ class EligibilityController extends Controller
         $columns = [
             'es.eligibility_id',
             'es.donor_id',
-            DB::raw("CONCAT(COALESCE(d.first_name,''),' ',COALESCE(d.last_name,'')) AS donor_name"),
-            DB::raw("CONCAT('D', LPAD(d.donor_id, 3, '0')) AS donor_code"),
+            DB::raw($this->donorNameExpression().' AS donor_name'),
+            DB::raw($this->donorCodeExpression().' AS donor_code'),
             'd.contact_number',
             'bt.blood_type',
             'es.status',
@@ -409,8 +410,8 @@ class EligibilityController extends Controller
         return [
             'es.eligibility_id',
             'es.donor_id',
-            DB::raw("CONCAT(COALESCE(d.first_name,''),' ',COALESCE(d.last_name,'')) AS donor_name"),
-            DB::raw("CONCAT('D', LPAD(d.donor_id, 3, '0')) AS donor_code"),
+            DB::raw($this->donorNameExpression().' AS donor_name'),
+            DB::raw($this->donorCodeExpression().' AS donor_code'),
             'd.contact_number',
             'bt.blood_type',
             $hasDonorAuth ? DB::raw("COALESCE(da.email, '') as donor_email") : DB::raw("'' as donor_email"),
@@ -425,6 +426,20 @@ class EligibilityController extends Controller
             Schema::hasColumn('eligibility_status', 'review_notes') ? 'es.review_notes' : DB::raw('NULL as review_notes'),
             $hasReviewer ? DB::raw("COALESCE(reviewer.full_name, reviewer.username, '') as reviewed_by_name") : DB::raw("'' as reviewed_by_name"),
         ];
+    }
+
+    private function donorNameExpression(): string
+    {
+        return DB::connection()->getDriverName() === 'sqlite'
+            ? "TRIM(COALESCE(d.first_name, '') || ' ' || COALESCE(d.last_name, ''))"
+            : "CONCAT(COALESCE(d.first_name, ''), ' ', COALESCE(d.last_name, ''))";
+    }
+
+    private function donorCodeExpression(): string
+    {
+        return DB::connection()->getDriverName() === 'sqlite'
+            ? "('D' || substr('000' || CAST(d.donor_id AS TEXT), -3, 3))"
+            : "CONCAT('D', LPAD(d.donor_id, 3, '0'))";
     }
 
     private function joinLatestDonorAuth($query)
@@ -455,22 +470,9 @@ class EligibilityController extends Controller
 
     private function normalizeStatus(string $status): string
     {
-        $value = Str::lower(trim($status));
+        $normalized = EligibilityStatusValue::normalize($status);
 
-        if (in_array($value, ['approved', 'eligible', 'qualified', 'ready'], true)) {
-            return 'eligible';
-        }
-        if (in_array($value, ['declined', 'not_eligible', 'not eligible', 'ineligible', 'rejected'], true)) {
-            return 'not_eligible';
-        }
-        if (in_array($value, ['temporary_deferred', 'temporary deferred', 'temporary_defer', 'temporarily deferred', 'deferred'], true)) {
-            return 'temporary_deferred';
-        }
-        if (in_array($value, ['for_review', 'for review', 'pending review', 'pending'], true)) {
-            return 'for_review';
-        }
-
-        return $value !== '' ? $value : 'for_review';
+        return $normalized === EligibilityStatusValue::UNKNOWN ? 'for_review' : $normalized;
     }
 
     private function normalizeSource(?string $source): string
@@ -486,12 +488,7 @@ class EligibilityController extends Controller
 
     private function statusLabel(string $status): string
     {
-        return match ($status) {
-            'eligible' => 'Eligible',
-            'not_eligible' => 'Not Eligible',
-            'temporary_deferred' => 'Temporary Deferred',
-            default => 'For Review',
-        };
+        return EligibilityStatusValue::label($status);
     }
 
     private function sourceLabel(string $source): string

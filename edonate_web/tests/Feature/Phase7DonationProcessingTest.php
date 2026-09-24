@@ -123,6 +123,80 @@ class Phase7DonationProcessingTest extends TestCase
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'donation_completed')->count());
     }
 
+    public function test_completed_donation_adds_verified_units_to_assigned_facility_exactly_once(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $facilityId = (int) DB::table('facilities')->insertGetId([
+            'facility_name' => 'Lipa Blood Center',
+            'facility_type' => 'blood_bank',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ], 'facility_id');
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $eventId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('event_id');
+        DB::table('donation_events')->where('event_id', $eventId)->update(['facility_id' => $facilityId]);
+
+        $payload = [
+            'blood_units' => 2,
+            'verified_blood_type_id' => 1,
+            'donation_date' => Carbon::today()->toDateString(),
+        ];
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", $payload)
+            ->assertOk()
+            ->assertJsonPath('inventory_status', 'received');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", $payload)
+            ->assertOk()
+            ->assertJsonPath('inventory_status', 'received');
+
+        $donationId = (int) DB::table('donation_records')->where('appointment_id', $appointmentId)->value('donation_id');
+        $this->assertDatabaseHas('facility_blood_inventory', [
+            'facility_id' => $facilityId,
+            'blood_type_id' => 1,
+            'available_units' => 2,
+        ]);
+        $this->assertDatabaseCount('facility_blood_inventory_logs', 1);
+        $this->assertDatabaseHas('facility_blood_inventory_logs', [
+            'related_donation_id' => $donationId,
+            'action_type' => 'donation_received',
+            'change_amount' => 2,
+        ]);
+        $this->assertNotNull(DB::table('donation_records')->where('donation_id', $donationId)->value('inventory_received_at'));
+    }
+
+    public function test_donation_without_verified_type_is_left_for_inventory_reconciliation(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $facilityId = (int) DB::table('facilities')->insertGetId([
+            'facility_name' => 'Lipa Blood Center',
+            'facility_type' => 'blood_bank',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ], 'facility_id');
+        $appointmentId = $this->createAppointment(['status' => 'checked_in', 'checked_in_at' => now()]);
+        $eventId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('event_id');
+        DB::table('donation_events')->where('event_id', $eventId)->update(['facility_id' => $facilityId]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", ['blood_units' => 1])
+            ->assertOk()
+            ->assertJsonPath('inventory_status', 'manual_reconciliation');
+
+        $this->assertDatabaseCount('facility_blood_inventory', 0);
+        $this->assertDatabaseCount('facility_blood_inventory_logs', 0);
+    }
+
     public function test_underage_donor_cannot_have_a_donation_recorded(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
@@ -350,7 +424,7 @@ class Phase7DonationProcessingTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['audit_logs', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'eligibility_status', 'donor_authentication', 'blood_types', 'donors', 'admins'] as $table) {
+        foreach (['audit_logs', 'facility_blood_inventory_logs', 'facility_blood_inventory', 'facilities', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'eligibility_status', 'donor_authentication', 'blood_types', 'donors', 'admins'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();
@@ -412,6 +486,7 @@ class Phase7DonationProcessingTest extends TestCase
             $table->time('start_time')->nullable();
             $table->time('end_time')->nullable();
             $table->string('location_name', 150);
+            $table->integer('facility_id')->nullable();
             $table->text('address')->nullable();
             $table->integer('max_capacity')->default(100);
             $table->string('status')->default('open');
@@ -443,6 +518,7 @@ class Phase7DonationProcessingTest extends TestCase
             $table->date('donation_date')->nullable();
             $table->string('donation_status')->default('completed');
             $table->integer('blood_units')->nullable();
+            $table->timestamp('inventory_received_at')->nullable();
             $table->integer('verified_blood_type_id')->nullable();
             $table->text('remarks')->nullable();
             $table->text('deferred_reason')->nullable();
@@ -459,6 +535,43 @@ class Phase7DonationProcessingTest extends TestCase
             $table->boolean('is_read')->default(false);
             $table->timestamp('created_at')->nullable();
             $table->boolean('push_sent')->default(false);
+        });
+
+        Schema::create('facilities', function (Blueprint $table): void {
+            $table->increments('facility_id');
+            $table->string('facility_name');
+            $table->string('facility_type');
+            $table->string('city');
+            $table->string('province');
+            $table->string('status')->default('active');
+            $table->timestamps();
+        });
+
+        Schema::create('facility_blood_inventory', function (Blueprint $table): void {
+            $table->increments('inventory_id');
+            $table->integer('facility_id');
+            $table->integer('blood_type_id');
+            $table->integer('available_units')->default(0);
+            $table->integer('reserved_units')->default(0);
+            $table->integer('low_stock_threshold')->default(5);
+            $table->dateTime('last_updated')->nullable();
+            $table->integer('updated_by_admin_id')->nullable();
+            $table->unique(['facility_id', 'blood_type_id']);
+        });
+
+        Schema::create('facility_blood_inventory_logs', function (Blueprint $table): void {
+            $table->increments('inventory_log_id');
+            $table->integer('facility_id');
+            $table->integer('blood_type_id');
+            $table->integer('previous_units');
+            $table->integer('new_units');
+            $table->integer('change_amount');
+            $table->string('action_type');
+            $table->string('reason');
+            $table->integer('updated_by_admin_id')->nullable();
+            $table->integer('related_donation_id')->nullable()->unique();
+            $table->integer('related_blood_request_id')->nullable();
+            $table->timestamp('created_at')->nullable();
         });
 
         Schema::create('admin_notifications', function (Blueprint $table): void {

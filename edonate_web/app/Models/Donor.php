@@ -26,6 +26,7 @@ class Donor extends Model
         'date_registered',
         'verification_status',
         'is_active',
+        'profile_photo_path',
     ];
 
     protected $casts = [

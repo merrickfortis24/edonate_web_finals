@@ -309,8 +309,13 @@
       }
       tableBody.innerHTML = rows.map(function (row) {
         state.rows[String(row.appointment_id)] = row;
+        var inventory = row.inventory_status === 'received'
+          ? '<span class="d-block text-success small">Inventory: Received</span>'
+          : (row.inventory_status === 'manual_reconciliation'
+            ? '<span class="d-block text-warning small">Inventory: Manual reconciliation required</span>'
+            : '');
         var record = row.donation_code
-          ? '<span class="fw-semibold">' + esc(row.donation_code) + '</span><span class="d-block text-muted small">' + esc(row.donation_status || '-') + (row.blood_units !== null ? ' · ' + esc(row.blood_units) + ' unit(s)' : '') + '</span><span class="d-block text-muted small">Verified type: ' + esc(row.verified_blood_type || 'Not yet determined') + '</span>'
+          ? '<span class="fw-semibold">' + esc(row.donation_code) + '</span><span class="d-block text-muted small">' + esc(row.donation_status || '-') + (row.blood_units !== null ? ' · ' + esc(row.blood_units) + ' unit(s)' : '') + '</span><span class="d-block text-muted small">Verified type: ' + esc(row.verified_blood_type || 'Not yet determined') + '</span>' + inventory
           : '<span class="text-muted">Not recorded</span>';
         var note = row.deferred_reason || row.remarks || '';
         return '<tr>'

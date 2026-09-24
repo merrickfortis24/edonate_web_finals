@@ -27,7 +27,7 @@
         <div class="completion-context-bar__identity">
             <span class="completion-kicker">Checked-in appointment</span>
             <h2>Finish the donation record</h2>
-            <p>Capture a clear donor photo, review the Digital ID, then save the donation outcome.</p>
+            <p>Review the donor's Digital ID and save the verified donation outcome.</p>
         </div>
         <div class="completion-context-bar__meta">
             <span class="completion-appointment-code" id="completionAppointmentCode">-</span>
@@ -38,72 +38,24 @@
     <div class="completion-steps" aria-label="Donation completion steps">
         <div class="completion-step completion-step--active">
             <span class="completion-step__number">01</span>
-            <span><small>PHOTO</small><strong>Capture</strong></span>
-        </div>
-        <div class="completion-step__line" aria-hidden="true"></div>
-        <div class="completion-step">
-            <span class="completion-step__number">02</span>
             <span><small>IDENTITY</small><strong>Review ID</strong></span>
         </div>
         <div class="completion-step__line" aria-hidden="true"></div>
         <div class="completion-step">
-            <span class="completion-step__number">03</span>
+            <span class="completion-step__number">02</span>
             <span><small>RECORD</small><strong>Complete</strong></span>
         </div>
     </div>
 
-    <div class="completion-layout">
-        <section class="completion-panel completion-camera-panel" aria-labelledby="cameraPanelTitle">
+    <div class="completion-layout completion-layout--single">
+        <section class="completion-panel completion-id-panel" aria-labelledby="digitalIdTitle">
             <div class="completion-panel__heading">
                 <div class="completion-section-heading">
                     <span class="completion-section-number">01</span>
                     <div>
-                        <span class="completion-kicker">Photo capture</span>
-                        <h2 id="cameraPanelTitle" class="h5 mb-1">Capture donor photo</h2>
-                        <p class="text-body-secondary small mb-0">Use a front-facing photo with the donor centered in the frame.</p>
-                    </div>
-                </div>
-                <span class="completion-panel-tag"><i class="bi bi-camera" aria-hidden="true"></i> Camera</span>
-            </div>
-
-            <div class="completion-camera__preview" id="donorCameraPreviewShell">
-                <div class="completion-camera__frame" aria-hidden="true"></div>
-                <video id="donorCameraVideo" class="d-none" autoplay playsinline muted aria-label="Donor camera preview"></video>
-                <img id="donorCameraImage" class="d-none" alt="Captured donor photo preview">
-                <div id="donorCameraPlaceholder" class="completion-camera__placeholder">
-                    <span class="completion-camera__placeholder-icon"><i class="bi bi-person-bounding-box" aria-hidden="true"></i></span>
-                    <strong>Ready for a donor photo</strong>
-                    <span>Enable the camera to begin</span>
-                </div>
-            </div>
-
-            <div class="completion-camera__controls" aria-label="Camera controls">
-                <button class="btn btn-danger" id="startDonorCamera" type="button">
-                    <i class="bi bi-camera-video me-1" aria-hidden="true"></i>
-                    Enable Camera
-                </button>
-                <button class="btn btn-outline-danger" id="captureDonorPhoto" type="button" disabled>
-                    <i class="bi bi-camera me-1" aria-hidden="true"></i>
-                    Take Photo
-                </button>
-                <button class="btn btn-outline-secondary d-none" id="retakeDonorPhoto" type="button">
-                    Retake Photo
-                </button>
-            </div>
-            <div class="completion-camera__status" id="cameraStatus" role="status" aria-live="polite">
-                <i class="bi bi-info-circle" aria-hidden="true"></i>
-                <span>Camera access requires permission and works on HTTPS or localhost.</span>
-            </div>
-        </section>
-
-        <section class="completion-panel completion-id-panel" aria-labelledby="digitalIdTitle">
-            <div class="completion-panel__heading">
-                <div class="completion-section-heading">
-                    <span class="completion-section-number">02</span>
-                    <div>
                         <span class="completion-kicker">Identity preview</span>
                         <h2 id="digitalIdTitle" class="h5 mb-1">Digital Donor ID</h2>
-                        <p class="text-body-secondary small mb-0">The photo and donor details appear here before saving.</p>
+                        <p class="text-body-secondary small mb-0">Verify the saved donor details before completing this record.</p>
                     </div>
                 </div>
                 <span class="completion-panel-tag"><i class="bi bi-eye" aria-hidden="true"></i> Live preview</span>
@@ -120,8 +72,11 @@
 
                 <div class="digital-donor-id-card__identity completion-id-card__identity">
                     <div class="completion-id-card__photo-frame">
-                        <div class="digital-donor-id-card__avatar edonate-user-avatar" id="completionPhotoFallback" aria-hidden="true">--</div>
-                        <img class="completion-id-card__photo d-none" id="completionPhotoCard" alt="Donor photo on Digital Donor ID">
+                        @if (!empty(data_get($completionPayload ?? [], 'donor.profile_photo_url')))
+                            <img class="completion-id-card__photo" src="{{ data_get($completionPayload, 'donor.profile_photo_url') }}" alt="Donor photo on Digital Donor ID" onerror="this.remove()">
+                        @else
+                            <div class="digital-donor-id-card__avatar edonate-user-avatar" id="completionPhotoFallback" aria-hidden="true">--</div>
+                        @endif
                     </div>
                     <div class="completion-id-card__identity-copy">
                         <span class="completion-id-card__label">Donor name</span>
@@ -233,18 +188,6 @@
         var api = config.api || {};
         var csrf = document.querySelector('meta[name="csrf-token"]');
         var token = csrf ? csrf.getAttribute('content') : '';
-        var stream = null;
-        var capturedPhoto = '';
-
-        var video = document.getElementById('donorCameraVideo');
-        var cameraImage = document.getElementById('donorCameraImage');
-        var cameraPlaceholder = document.getElementById('donorCameraPlaceholder');
-        var cameraStatus = document.getElementById('cameraStatus');
-        var startCameraButton = document.getElementById('startDonorCamera');
-        var captureButton = document.getElementById('captureDonorPhoto');
-        var retakeButton = document.getElementById('retakeDonorPhoto');
-        var cardPhoto = document.getElementById('completionPhotoCard');
-        var cardPhotoFallback = document.getElementById('completionPhotoFallback');
         var completionStatus = document.getElementById('completionStatus');
         var form = document.getElementById('completeDonationWindowForm');
         var submitButton = document.getElementById('completeDonationSubmit');
@@ -338,67 +281,6 @@
             completionStatus.classList.remove('d-none');
         }
 
-        function setCameraStatus(message) {
-            var messageElement = cameraStatus ? cameraStatus.querySelector('span') : null;
-            if (messageElement) {
-                messageElement.textContent = message;
-            } else if (cameraStatus) {
-                cameraStatus.textContent = message;
-            }
-        }
-
-        function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(function (track) { track.stop(); });
-                stream = null;
-            }
-            if (video) video.srcObject = null;
-            captureButton.disabled = true;
-        }
-
-        function startCamera() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                setCameraStatus('This browser does not support camera access. Use the initials placeholder instead.');
-                return;
-            }
-
-            stopCamera();
-            navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
-                .then(function (mediaStream) {
-                    stream = mediaStream;
-                    video.srcObject = mediaStream;
-                    video.classList.remove('d-none');
-                    cameraImage.classList.add('d-none');
-                    cameraPlaceholder.classList.add('d-none');
-                    captureButton.disabled = false;
-                    retakeButton.classList.add('d-none');
-                    startCameraButton.innerHTML = '<i class="bi bi-arrow-repeat me-1" aria-hidden="true"></i> Restart Camera';
-                    setCameraStatus('Camera is ready. Center the donor and take a photo.');
-                })
-                .catch(function () {
-                    setCameraStatus('Camera permission was unavailable. You can continue with the initials placeholder.');
-                });
-        }
-
-        function capturePhoto() {
-            if (!stream || !video.videoWidth) return;
-            var canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-            capturedPhoto = canvas.toDataURL('image/jpeg', 0.88);
-            cameraImage.src = capturedPhoto;
-            cardPhoto.src = capturedPhoto;
-            cameraImage.classList.remove('d-none');
-            cardPhoto.classList.remove('d-none');
-            cardPhotoFallback.classList.add('d-none');
-            video.classList.add('d-none');
-            cameraPlaceholder.classList.add('d-none');
-            retakeButton.classList.remove('d-none');
-            setCameraStatus('Photo captured for this Digital ID window.');
-            stopCamera();
-        }
-
         function updateBloodTypeCorrectionFields() {
             var isDifferent = bloodTypeSelect.value !== ''
                 && bloodTypeSelect.getAttribute('data-current-status') === 'verified'
@@ -464,19 +346,7 @@
                 });
         });
 
-        startCameraButton.addEventListener('click', startCamera);
-        captureButton.addEventListener('click', capturePhoto);
-        retakeButton.addEventListener('click', function () {
-            capturedPhoto = '';
-            cameraImage.removeAttribute('src');
-            cardPhoto.removeAttribute('src');
-            cameraImage.classList.add('d-none');
-            cardPhoto.classList.add('d-none');
-            cardPhotoFallback.classList.remove('d-none');
-            startCamera();
-        });
         bloodTypeSelect.addEventListener('change', updateBloodTypeCorrectionFields);
-        window.addEventListener('beforeunload', stopCamera);
 
         document.getElementById('completionDonationDate').value = dateInputValue(appointment.appointment_date);
         renderDonor();

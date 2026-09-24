@@ -3,7 +3,7 @@
 @section('title', 'eDonate - Notification Center')
 @section('admin_page_class', 'admin-notification-center-page')
 @section('header_title', 'Notification Center')
-@section('header_subtitle', 'Manage email and push notifications for confirmations and updates')
+@section('header_subtitle', 'Manage in-app notifications and optional admin email delivery')
 
 @section('header_actions')
 	<button class="btn-send btn" type="button" id="notificationSendBtn">
@@ -167,9 +167,10 @@
 								@forelse ($channels as $channel)
 									<option value="{{ data_get($channel, 'value') }}">{{ data_get($channel, 'label') }}</option>
 								@empty
-									<option value="system">System</option>
-								@endforelse
+								<option value="system">System</option>
+							@endforelse
 							</select>
+							<div class="form-text">Push delivery is unavailable until a server-side FCM sender and device-token support are configured.</div>
 						</div>
 					</div>
 				</div>

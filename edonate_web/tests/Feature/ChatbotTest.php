@@ -6,8 +6,11 @@ use App\Models\ChatMessage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Database\Schema\Blueprint;
 use Tests\TestCase;
 
 class ChatbotTest extends TestCase
@@ -22,6 +25,20 @@ class ChatbotTest extends TestCase
         $this->assertSame('sqlite', config('database.default'));
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));
         (require database_path('migrations/2026_09_03_000000_create_chat_messages_table.php'))->up();
+        Schema::create('admins', function (Blueprint $table): void {
+            $table->integer('admin_id')->primary();
+            $table->string('role');
+            $table->string('username')->nullable();
+            $table->string('full_name')->nullable();
+            $table->boolean('is_active')->default(true);
+        });
+        DB::table('admins')->insert([
+            'admin_id' => 1,
+            'role' => 'admin',
+            'username' => 'test-admin',
+            'full_name' => 'Test Admin',
+            'is_active' => true,
+        ]);
 
         config([
             'privacy.ai_enabled' => true,
@@ -236,7 +253,7 @@ class ChatbotTest extends TestCase
         Http::fake();
         $this->withSession(['admin_id' => null, 'admin_role' => null]);
         $this->postJson(route('chat.store'), ['session_id' => (string) Str::uuid(), 'message' => 'Hello.'])
-            ->assertRedirect(route('admin.login'));
+            ->assertUnauthorized();
         Http::assertNothingSent();
     }
 

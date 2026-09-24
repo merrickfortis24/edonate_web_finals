@@ -31,7 +31,8 @@ class Phase12IntegrationTest extends TestCase
             ->assertJsonPath('summary.deferred_donations', 1)
             ->assertJsonPath('summary.open_requests', 1)
             ->assertJsonPath('summary.emergency_requests', 1)
-            ->assertJsonPath('summary.active_donors', 1)
+            ->assertJsonPath('summary.verified_donors', 1)
+            ->assertJsonPath('availability.summary.verified_donors', true)
             ->assertJsonPath('distribution.basis', 'verified');
         $this->assertSame(8, count($response->json('inventory')));
 
@@ -49,6 +50,61 @@ class Phase12IntegrationTest extends TestCase
         $this->getJson('/admin/report-analytics/data?range=custom&start_date=2026-08-10&end_date=2026-08-01')
             ->assertUnprocessable()
             ->assertJsonValidationErrors('end_date');
+    }
+
+    public function test_admin_reactivation_preserves_history_and_is_idempotent(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->seedDonor(3, 'Inactive', 'Donor', ['is_active' => false]);
+        DB::table('donation_records')->insert([
+            'donation_id' => 30,
+            'donor_id' => 3,
+            'donation_date' => Carbon::today()->subMonth()->toDateString(),
+            'donation_status' => 'completed',
+            'blood_units' => 1,
+        ]);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->patchJson('/admin/users/3/reactivate')
+            ->assertOk()
+            ->assertJsonPath('donor.is_active', true);
+        $this->assertDatabaseHas('donors', ['donor_id' => 3, 'is_active' => true]);
+        $this->assertDatabaseHas('donation_records', ['donation_id' => 30, 'donor_id' => 3]);
+
+        $auditCount = DB::table('audit_logs')->where('action_type', 'reactivate')->count();
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->patchJson('/admin/users/3/reactivate')
+            ->assertOk()
+            ->assertJsonPath('message', 'This donor account is already active.');
+        $this->assertSame($auditCount, DB::table('audit_logs')->where('action_type', 'reactivate')->count());
+    }
+
+    public function test_admin_dashboard_marks_missing_inventory_unavailable_and_builds_sqlite_month_data(): void
+    {
+        $this->seedReportRows();
+        Schema::dropIfExists('facility_blood_inventory');
+
+        $method = new \ReflectionMethod(\App\Http\Controllers\AdminAuthController::class, 'buildAdminDashboardPayload');
+        $method->setAccessible(true);
+        $payload = $method->invoke(app(\App\Http\Controllers\AdminAuthController::class));
+
+        $this->assertNull($payload['stats']['operational']['low_stock']);
+        $this->assertNull($payload['stats']['operational']['out_of_stock']);
+        $this->assertTrue($payload['monthly_donations']['available']);
+        $this->assertSame(1, array_sum($payload['monthly_donations']['values']));
+    }
+
+    public function test_report_marks_missing_metrics_unavailable_and_never_guesses_facility_by_name(): void
+    {
+        $this->seedReportRows();
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        Schema::dropIfExists('facility_blood_inventory');
+
+        $this->getJson('/admin/report-analytics/data?range=year&facility_id=1')
+            ->assertOk()
+            ->assertJsonPath('availability.summary.low_stock_blood_types', false)
+            ->assertJsonPath('availability.summary.completed_donations', false)
+            ->assertJsonPath('availability.summary.events_in_period', false);
     }
 
     public function test_donation_records_endpoint_returns_processing_rows_and_stats(): void
@@ -228,6 +284,8 @@ class Phase12IntegrationTest extends TestCase
             $table->string('street_address')->nullable();
             $table->string('city')->nullable();
             $table->string('province')->nullable();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
         });
         Schema::create('admins', function (Blueprint $table): void {
             $table->increments('admin_id');
@@ -243,11 +301,15 @@ class Phase12IntegrationTest extends TestCase
             $table->increments('donor_id');
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
+            $table->string('gender')->nullable();
+            $table->date('birthdate')->nullable();
+            $table->string('contact_number')->nullable();
             $table->integer('blood_type_id')->nullable();
             $table->integer('location_id')->nullable();
             $table->string('date_registered')->nullable();
             $table->string('blood_type_status')->nullable();
             $table->string('verification_status')->nullable();
+            $table->boolean('is_active')->default(true);
             $table->integer('blood_type_verified_by_admin_id')->nullable();
             $table->timestamp('blood_type_verified_at')->nullable();
         });
@@ -383,6 +445,7 @@ class Phase12IntegrationTest extends TestCase
             'date_registered' => Carbon::today()->subDays(2)->toDateTimeString(),
             'blood_type_status' => 'verified',
             'verification_status' => 'verified',
+            'is_active' => true,
         ], $overrides));
     }
 }

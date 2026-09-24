@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureAdminRole;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -45,28 +46,15 @@ class AdminSettingsPersistenceTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_general_settings_are_saved_and_loaded_from_storage(): void
+    public function test_removed_general_settings_ui_has_no_orphaned_endpoint(): void
     {
         $adminId = $this->createAdmin();
         $this->authenticateAsAdmin($adminId);
 
-        $this->postJson('/admin/settings/general', [
-            'system_name' => 'Demo eDonate Portal',
-            'system_email' => 'settings@example.test',
-            'contact_number' => '+63 917 555 0101',
-        ])->assertOk()
-            ->assertJsonPath('general.systemName', 'Demo eDonate Portal')
-            ->assertJsonPath('general.systemEmail', 'settings@example.test');
-
-        $this->assertDatabaseHas('system_settings', [
-            'setting_key' => 'system_name',
-            'setting_value' => 'Demo eDonate Portal',
-        ]);
-
         $this->get('/admin/settings')
             ->assertOk()
-            ->assertSee('Demo eDonate Portal')
-            ->assertSee('settings@example.test');
+            ->assertDontSee('General Settings');
+        $this->assertFalse(Route::has('admin.settings.general.update'));
     }
 
     public function test_account_settings_verify_and_hash_the_current_admin_password(): void
