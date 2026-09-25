@@ -158,6 +158,7 @@ class DonorVerificationController extends Controller
         $publicPathsToTry = [
             public_path($docPath),
             public_path('api/' . ltrim($docPath, '/')),
+            public_path('api/' . str_replace('uploads/', 'upload/', ltrim($docPath, '/'))),
         ];
 
         foreach ($publicPathsToTry as $publicPath) {
