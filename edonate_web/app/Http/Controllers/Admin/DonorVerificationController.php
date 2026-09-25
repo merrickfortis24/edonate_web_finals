@@ -97,16 +97,41 @@ class DonorVerificationController extends Controller
 
     public function document(DonorVerification $verification): BinaryFileResponse
     {
-        $docPath = $verification->document_path;
-        $extension = pathinfo($docPath, PATHINFO_EXTENSION) ?: 'bin';
+        $docPath = trim((string) $verification->document_path);
+        $extension = strtolower((string) pathinfo($docPath, PATHINFO_EXTENSION));
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
+        $allowedMimes = ['image/jpeg', 'image/png', 'application/pdf'];
+
+        // Reject empty, path-traversal, or disallowed extensions
+        if ($docPath === '' || str_contains($docPath, '..') || ! in_array($extension, $allowedExtensions, true)) {
+            abort(404, 'Verification document not found.');
+        }
+
+        // Validate that path starts with one of the known prefixes
+        $knownPrefixes = ['donor-verifications/', 'uploads/verification/'];
+        $hasKnownPrefix = false;
+        foreach ($knownPrefixes as $prefix) {
+            if (str_starts_with($docPath, $prefix)) {
+                $hasKnownPrefix = true;
+                break;
+            }
+        }
+        if (! $hasKnownPrefix) {
+            abort(404, 'Verification document not found.');
+        }
+
         $filename = 'donor-verification-' . (int) $verification->verification_id . '.' . $extension;
 
         // 1. Try Laravel local disk (storage/app/) — used by the web donor portal
         if (Storage::disk('local')->exists($docPath)) {
-            $path = Storage::disk('local')->path($docPath);
+            if ((int) Storage::disk('local')->size($docPath) > 5 * 1024 * 1024) {
+                abort(413, 'Verification document exceeds the permitted size.');
+            }
             $mime = Storage::disk('local')->mimeType($docPath) ?: 'application/octet-stream';
-
-            return response()->file($path, [
+            if (! in_array($mime, $allowedMimes, true)) {
+                abort(415, 'Verification document type is not supported.');
+            }
+            return response()->file(Storage::disk('local')->path($docPath), [
                 'Content-Type'           => $mime,
                 'Content-Disposition'    => 'inline; filename="' . $filename . '"',
                 'X-Content-Type-Options' => 'nosniff',
@@ -115,21 +140,30 @@ class DonorVerificationController extends Controller
 
         // 2. Try public disk (storage/app/public/) — symlinked to public/storage/
         if (Storage::disk('public')->exists($docPath)) {
-            $path = Storage::disk('public')->path($docPath);
+            if ((int) Storage::disk('public')->size($docPath) > 5 * 1024 * 1024) {
+                abort(413, 'Verification document exceeds the permitted size.');
+            }
             $mime = Storage::disk('public')->mimeType($docPath) ?: 'application/octet-stream';
-
-            return response()->file($path, [
+            if (! in_array($mime, $allowedMimes, true)) {
+                abort(415, 'Verification document type is not supported.');
+            }
+            return response()->file(Storage::disk('public')->path($docPath), [
                 'Content-Type'           => $mime,
                 'Content-Disposition'    => 'inline; filename="' . $filename . '"',
                 'X-Content-Type-Options' => 'nosniff',
             ]);
         }
 
-        // 3. Try direct public folder path — used by mobile app (e.g. public/uploads/verification/...)
+        // 3. Try direct public/ folder — used by mobile app (public/uploads/verification/...)
         $publicPath = public_path($docPath);
-        if (file_exists($publicPath)) {
+        if (file_exists($publicPath) && is_file($publicPath)) {
+            if (filesize($publicPath) > 5 * 1024 * 1024) {
+                abort(413, 'Verification document exceeds the permitted size.');
+            }
             $mime = mime_content_type($publicPath) ?: 'application/octet-stream';
-
+            if (! in_array($mime, $allowedMimes, true)) {
+                abort(415, 'Verification document type is not supported.');
+            }
             return response()->file($publicPath, [
                 'Content-Type'           => $mime,
                 'Content-Disposition'    => 'inline; filename="' . $filename . '"',
