@@ -27,7 +27,7 @@
 
         @if (! $bookingAllowed)
             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                Identity verification and eligibility clearance are required before booking.
+                You can still view upcoming events, but booking is disabled until your account, identity, and eligibility requirements are satisfied for an event.
                 Current verification status: <span class="font-semibold">{{ $verificationStatusLabel }}</span>.
                 <a href="{{ route('donor.verification.index') }}" class="font-semibold underline">Open verification</a>
             </div>
@@ -38,8 +38,8 @@
         @endif
 
         <div>
-            <h3 class="text-base font-bold text-red-800 sm:text-lg">Available Donation Events</h3>
-            <p class="mt-1 text-sm text-slate-500">Your appointment date and donation center are copied from the selected event.</p>
+            <h3 class="text-base font-bold text-red-800 sm:text-lg">Upcoming Donation Events</h3>
+            <p class="mt-1 text-sm text-slate-500">Open, full, and closed events remain visible; booking is enabled only when the selected event and your eligibility allow it.</p>
         </div>
 
         @error('event_id')
@@ -51,16 +51,21 @@
 
         @if ($eventOptions->isEmpty())
             <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
-                No donation events are open for booking right now.
+                No upcoming donation events are currently posted.
             </div>
         @else
             <div class="grid gap-4">
                 @foreach ($eventOptions as $event)
                     @php
                         $eventId = (int) $event['event_id'];
-                        $selected = (string) old('event_id') === (string) $eventId || ($loop->first && ! old('event_id'));
+                        $eventStatus = $event['status'] ?? 'open';
+                        $eventCanBook = (bool) ($event['booking_allowed'] ?? $bookingAllowed);
+                        $preferredEventId = (int) old('event_id', $selectedEventId ?? 0);
+                        $selected = $preferredEventId > 0
+                            ? $preferredEventId === $eventId
+                            : ($loop->first && $eventCanBook);
                     @endphp
-                    <label class="block rounded-xl border border-slate-200 p-4 shadow-sm transition has-[:checked]:border-red-700 has-[:checked]:ring-2 has-[:checked]:ring-red-100">
+                    <label class="block rounded-xl border border-slate-200 p-4 shadow-sm transition has-[:checked]:border-red-700 has-[:checked]:ring-2 has-[:checked]:ring-red-100 {{ $eventCanBook ? 'bg-white' : 'bg-slate-50' }}">
                         <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div class="flex gap-3">
                                 <input
@@ -72,7 +77,7 @@
                                     data-start-time="{{ substr((string) ($event['start_time'] ?? ''), 0, 5) }}"
                                     data-end-time="{{ substr((string) ($event['end_time'] ?? ''), 0, 5) }}"
                                     @checked($selected)
-                                    {{ $bookingAllowed ? '' : 'disabled' }}
+                                    {{ $eventCanBook ? '' : 'disabled' }}
                                 >
                                 <div>
                                     <p class="text-base font-bold text-slate-900">{{ $event['title'] }}</p>
@@ -89,10 +94,23 @@
                                     @if (! empty($event['address']))
                                         <p class="mt-1 text-xs text-slate-500">{{ $event['address'] }}</p>
                                     @endif
+                                    <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{{ \Illuminate\Support\Str::headline($eventStatus) }}</p>
+                                    @if (! $eventCanBook && ! empty($event['booking_reason']))
+                                        <p class="mt-2 text-sm text-amber-800" role="status">{{ $event['booking_reason'] }}</p>
+                                        @if (! empty($event['next_eligible_date']) && str_contains(strtolower($event['booking_reason']), 'eligib'))
+                                            <p class="mt-1 text-sm text-slate-600">Next eligible date: <span class="font-semibold">{{ \Carbon\Carbon::parse($event['next_eligible_date'])->format('F j, Y') }}</span></p>
+                                        @endif
+                                    @endif
                                 </div>
                             </div>
                             <div class="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                                {{ number_format($event['remaining_slots']) }} slots left
+                                @if ($eventStatus !== 'open')
+                                    {{ \Illuminate\Support\Str::headline($eventStatus) }}
+                                @elseif (($event['availability_status'] ?? null) === 'full')
+                                    Full
+                                @else
+                                    {{ number_format($event['remaining_slots']) }} slots left
+                                @endif
                             </div>
                         </div>
                     </label>

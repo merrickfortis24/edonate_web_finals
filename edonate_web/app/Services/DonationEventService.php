@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Appointment;
 use App\Models\DonationEvent;
 use App\Models\Notification;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -21,8 +22,62 @@ class DonationEventService
         'checked in',
     ];
 
-    public function __construct(private readonly AppointmentBookingService $bookingService)
+    public function __construct(
+        private readonly AppointmentBookingService $bookingService,
+        private readonly EventPostPublisher $eventPostPublisher
+    )
     {
+    }
+
+    /**
+     * Create the source event and its donor-feed post as one atomic operation.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    public function create(array $attributes): DonationEvent
+    {
+        return DB::transaction(function () use ($attributes): DonationEvent {
+            $event = DonationEvent::query()->create($attributes);
+            $this->eventPostPublisher->sync($event);
+
+            return $event->fresh() ?? $event;
+        });
+    }
+
+    /**
+     * Update an event and its linked post without replacing either record.
+     *
+     * @param array<string, mixed> $attributes
+     */
+    public function update(DonationEvent $event, array $attributes): DonationEvent
+    {
+        return DB::transaction(function () use ($event, $attributes): DonationEvent {
+            $lockedEvent = DonationEvent::query()
+                ->where('event_id', $event->event_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $previousStatus = $this->normalizeEventStatus((string) $lockedEvent->status);
+            $targetStatus = $this->normalizeEventStatus((string) ($attributes['status'] ?? $lockedEvent->status));
+            $targetDate = $attributes['event_date'] ?? $lockedEvent->event_date;
+            $this->assertValidStatusTransition($previousStatus, $targetStatus, $targetDate);
+
+            if (isset($attributes['max_capacity'])
+                && (int) $attributes['max_capacity'] < $this->bookedSlotCount((int) $lockedEvent->event_id)) {
+                throw new \DomainException('The capacity cannot be lower than the number of currently confirmed appointments.');
+            }
+
+            $lockedEvent->fill($attributes);
+            $lockedEvent->save();
+
+            if ($targetStatus === 'cancelled') {
+                $this->cancelFutureActiveAppointments($lockedEvent, 'Donation event was cancelled.');
+            }
+
+            $this->eventPostPublisher->sync($lockedEvent);
+
+            return $lockedEvent->fresh() ?? $lockedEvent;
+        });
     }
 
     public function bookedSlotCount(int $eventId): int
@@ -40,20 +95,29 @@ class DonationEventService
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            $currentStatus = $this->normalizeEventStatus((string) $lockedEvent->status);
+            $this->assertValidStatusTransition(
+                $currentStatus,
+                $status,
+                $lockedEvent->event_date
+            );
+
             if ($status === 'cancelled') {
                 $lockedEvent->status = 'cancelled';
                 $lockedEvent->save();
                 $this->cancelFutureActiveAppointments($lockedEvent, $reason);
+                $this->eventPostPublisher->sync($lockedEvent);
 
                 return $lockedEvent->fresh() ?? $lockedEvent;
             }
 
-            if ($status === 'open' && ! $this->canReopen($lockedEvent)) {
+            if ($status === 'open' && $currentStatus !== 'open' && ! $this->canReopen($lockedEvent)) {
                 throw new \DomainException('Only future closed events can be reopened.');
             }
 
             $lockedEvent->status = $status;
             $lockedEvent->save();
+            $this->eventPostPublisher->sync($lockedEvent);
 
             return $lockedEvent->fresh() ?? $lockedEvent;
         });
@@ -79,6 +143,32 @@ class DonationEventService
             'completed', 'complete', 'done' => 'completed',
             default => 'closed',
         };
+    }
+
+    private function assertValidStatusTransition(string $current, string $target, mixed $eventDate): void
+    {
+        if ($current === $target) {
+            return;
+        }
+
+        if ($target === 'open') {
+            $isFuture = $eventDate && Carbon::parse($eventDate)->gte(Carbon::today());
+            if ($current === 'closed' && $isFuture) {
+                return;
+            }
+
+            throw new \DomainException('Only future closed events can be reopened.');
+        }
+
+        $allowed = match ($target) {
+            'closed' => $current === 'open',
+            'completed', 'cancelled' => in_array($current, ['open', 'closed'], true),
+            default => false,
+        };
+
+        if (! $allowed) {
+            throw new \DomainException("A {$current} event cannot be changed to {$target}.");
+        }
     }
 
     private function cancelFutureActiveAppointments(DonationEvent $event, ?string $reason): void

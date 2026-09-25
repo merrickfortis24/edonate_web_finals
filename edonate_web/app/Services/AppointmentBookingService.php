@@ -53,6 +53,11 @@ class AppointmentBookingService
         ];
     }
 
+    public function hasExistingEventBooking(Donor $donor, int $eventId): bool
+    {
+        return $this->hasDuplicateEventBooking((int) $donor->donor_id, $eventId);
+    }
+
     public function book(Donor $donor, int $eventId, ?Request $request = null, ?string $appointmentTime = null): Appointment
     {
         return DB::transaction(function () use ($donor, $eventId, $request, $appointmentTime): Appointment {
@@ -484,11 +489,34 @@ class AppointmentBookingService
             return false;
         }
 
-        if (! $event->event_date || Carbon::parse($event->event_date)->lt(Carbon::today())) {
+        if (! $this->eventIsUpcoming($event)) {
             return false;
         }
 
         return $this->remainingSlots($event) > 0;
+    }
+
+    private function eventIsUpcoming(DonationEvent $event): bool
+    {
+        if (! $event->event_date) {
+            return false;
+        }
+
+        $date = Carbon::parse($event->event_date);
+        if ($date->lt(Carbon::today())) {
+            return false;
+        }
+
+        if (! $date->isToday()) {
+            return true;
+        }
+
+        $lastScheduledTime = $event->end_time ?: $event->start_time;
+        if (! $lastScheduledTime) {
+            return true;
+        }
+
+        return Carbon::parse($date->toDateString() . ' ' . $lastScheduledTime)->gte(now());
     }
 
     private function hasDuplicateEventBooking(int $donorId, int $eventId): bool
@@ -562,7 +590,7 @@ class AppointmentBookingService
             return $status;
         }
 
-        if (! $event->event_date || Carbon::parse($event->event_date)->lt(Carbon::today())) {
+        if (! $this->eventIsUpcoming($event)) {
             return 'past';
         }
 

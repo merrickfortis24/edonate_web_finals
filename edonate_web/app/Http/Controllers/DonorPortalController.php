@@ -39,15 +39,48 @@ class DonorPortalController extends Controller
 
         $bookingService = app(AppointmentBookingService::class);
         $bookingReadiness = $bookingService->bookingReadiness($context['donor']);
+        $selectedEventId = (int) $request->query('event_id', old('event_id', 0));
         $eventOptions = DonationEvent::query()
             ->whereDate('event_date', '>=', Carbon::today()->toDateString())
-            ->where('status', 'open')
             ->orderBy('event_date')
             ->orderBy('start_time')
             ->get()
-            ->map(fn (DonationEvent $event): array => $bookingService->eventPayload($event))
-            ->filter(fn (array $event): bool => (bool) ($event['accepts_bookings'] ?? false))
+            ->map(function (DonationEvent $event) use ($bookingService, $context): array {
+                $payload = $bookingService->eventPayload($event);
+                $readiness = $bookingService->bookingReadiness(
+                    $context['donor'],
+                    Carbon::parse($event->event_date)
+                );
+                $alreadyBooked = $bookingService->hasExistingEventBooking(
+                    $context['donor'],
+                    (int) $event->event_id
+                );
+
+                $reason = '';
+                if (($payload['status'] ?? null) !== 'open') {
+                    $reason = 'This event is ' . ($payload['status'] ?? 'unavailable') . '; new bookings are not available.';
+                } elseif (($payload['availability_status'] ?? null) === 'full') {
+                    $reason = 'This event is full.';
+                } elseif (($payload['availability_status'] ?? null) === 'past') {
+                    $reason = 'This event has already taken place; new bookings are not available.';
+                } elseif (! ($readiness['allowed'] ?? false)) {
+                    $reason = $readiness['messages'][0] ?? 'You are not ready to book this event yet.';
+                } elseif ($alreadyBooked) {
+                    $reason = 'You already have an appointment for this event.';
+                }
+
+                $payload['booking_allowed'] = (bool) ($payload['accepts_bookings'] ?? false)
+                    && (bool) ($readiness['allowed'] ?? false)
+                    && ! $alreadyBooked;
+                $payload['booking_reason'] = $reason;
+                $payload['next_eligible_date'] = $readiness['latest_eligibility']?->next_eligible_date
+                    ? Carbon::parse($readiness['latest_eligibility']->next_eligible_date)->toDateString()
+                    : null;
+
+                return $payload;
+            })
             ->values();
+        $canBookAppointment = $eventOptions->contains(fn (array $event): bool => (bool) ($event['booking_allowed'] ?? false));
 
         $appointments = Appointment::query()
             ->with('event')
@@ -62,7 +95,8 @@ class DonorPortalController extends Controller
             'appointments' => $appointments,
             'eventOptions' => $eventOptions,
             'bookingReadiness' => $bookingReadiness,
-            'canBookAppointment' => (bool) ($bookingReadiness['allowed'] ?? false),
+            'canBookAppointment' => $canBookAppointment,
+            'selectedEventId' => $selectedEventId,
             'identityVerificationStatus' => $this->donorVerificationStatus($context['donor']),
         ]);
     }

@@ -20,6 +20,7 @@ class Phase6EventAppointmentTest extends TestCase
 
         $this->buildSchema();
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));
+        (require database_path('migrations/2026_09_25_000001_link_event_posts_to_donation_events.php'))->up();
         (require database_path('migrations/2026_09_08_000000_create_privacy_receipts_table.php'))->up();
     }
 
@@ -44,6 +45,74 @@ class Phase6EventAppointmentTest extends TestCase
             'status' => 'open',
             'created_by_admin_id' => 1,
         ]);
+
+        $eventId = (int) $response->json('event.event_id');
+        $this->assertDatabaseHas('posts', [
+            'event_id' => $eventId,
+            'type' => 'event',
+            'author' => 'eDonate',
+            'event_location' => 'Lipa City Hall',
+        ]);
+        $post = DB::table('posts')->where('event_id', $eventId)->first();
+        $this->assertNotNull($post);
+        $this->assertStringContainsString('City Hall Blood Drive', $post->content);
+        $this->assertStringContainsString('Capacity: 50 donors', $post->content);
+        $this->assertStringContainsString('Status: Open', $post->content);
+        $this->assertStringContainsString(route('donor.book-appointment', ['event_id' => $eventId]), $post->content);
+    }
+
+    public function test_edit_updates_the_linked_event_post_without_creating_a_duplicate(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $created = $this->withSession($this->adminSession())->postJson('/admin/donation-events', [
+            'title' => 'Original Drive',
+            'event_date' => Carbon::today()->addDay()->toDateString(),
+            'start_time' => '09:00',
+            'end_time' => '12:00',
+            'location_name' => 'Old Venue',
+            'address' => 'Old Address',
+            'max_capacity' => 20,
+            'status' => 'open',
+        ])->assertCreated();
+
+        $eventId = (int) $created->json('event.event_id');
+        $originalPostId = (int) DB::table('posts')->where('event_id', $eventId)->value('id');
+        $originalPostCreatedAt = DB::table('posts')->where('event_id', $eventId)->value('created_at');
+        DB::table('posts')->where('event_id', $eventId)->update(['likes' => 7]);
+
+        $this->withSession($this->adminSession())->putJson("/admin/donation-events/{$eventId}", [
+            'title' => 'Updated Community Drive',
+            'event_date' => Carbon::today()->addDays(3)->toDateString(),
+            'start_time' => '10:00',
+            'end_time' => '13:00',
+            'location_name' => 'New Venue',
+            'address' => 'New Address',
+            'max_capacity' => 35,
+            'status' => 'open',
+        ])->assertOk();
+
+        $this->assertSame(1, DB::table('posts')->where('event_id', $eventId)->count());
+        $post = DB::table('posts')->where('event_id', $eventId)->first();
+        $this->assertSame($originalPostId, (int) $post->id);
+        $this->assertSame(7, (int) $post->likes);
+        $this->assertSame($originalPostCreatedAt, $post->created_at);
+        $this->assertSame('New Venue', $post->event_location);
+        $this->assertStringContainsString('Updated Community Drive', $post->content);
+        $this->assertStringContainsString('Capacity: 35 donors', $post->content);
+        $this->assertStringNotContainsString('Original Drive', $post->content);
+
+        $this->withSession($this->adminSession())->putJson("/admin/donation-events/{$eventId}", [
+            'title' => 'Updated Community Drive',
+            'event_date' => Carbon::today()->addDays(3)->toDateString(),
+            'start_time' => '10:00',
+            'end_time' => '13:00',
+            'location_name' => 'New Venue',
+            'address' => 'New Address',
+            'max_capacity' => 35,
+            'status' => 'closed',
+        ])->assertOk();
+
+        $this->assertStringContainsString('Status: Closed', (string) DB::table('posts')->where('event_id', $eventId)->value('content'));
     }
 
     public function test_admin_cannot_create_event_with_invalid_time_range(): void
@@ -251,6 +320,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertSame('09:30:00', (string) $appointment->appointment_time);
         $this->assertSame('Lipa City Hall', (string) $appointment->donation_center);
         $this->assertSame('confirmed', (string) $appointment->status);
+        $this->assertSame(0, DB::table('donation_records')->where('donor_id', $donorId)->count());
     }
 
     public function test_underage_donor_is_not_ready_to_book_an_appointment(): void
@@ -287,6 +357,45 @@ class Phase6EventAppointmentTest extends TestCase
         $this->withSession($this->donorSession($ineligibleDonorId))
             ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
             ->assertSessionHasErrors('event_id');
+    }
+
+    public function test_unready_donor_can_view_upcoming_event_but_booking_is_disabled_with_reason(): void
+    {
+        $eventId = $this->createEvent();
+        $donorId = $this->createDonor(['verification_status' => 'pending']);
+        $this->createDonorAuthentication($donorId);
+        $this->createEligibility($donorId, ['status' => 'eligible']);
+
+        $response = $this->withSession($this->donorSession($donorId))->get(route('donor.book-appointment', [
+            'event_id' => $eventId,
+        ]));
+
+        $response->assertOk()
+            ->assertSee('City Hall Blood Drive')
+            ->assertSee('Please complete identity verification before booking a donation appointment.')
+            ->assertSee('name="event_id"', false)
+            ->assertSee('disabled', false);
+    }
+
+    public function test_donor_eligible_by_the_event_date_can_book_even_if_not_eligible_today(): void
+    {
+        $eventId = $this->createEvent(['event_date' => Carbon::today()->addDays(10)->toDateString()]);
+        $donorId = $this->createDonor(['verification_status' => 'verified']);
+        $this->createDonorAuthentication($donorId);
+        $this->createEligibility($donorId, [
+            'status' => 'eligible',
+            'next_eligible_date' => Carbon::today()->addDays(5)->toDateString(),
+        ]);
+
+        $html = $this->withSession($this->donorSession($donorId))
+            ->get(route('donor.book-appointment', ['event_id' => $eventId]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression(
+            '/<input(?=[^>]*name="event_id")(?=[^>]*value="' . $eventId . '")(?=[^>]*\sdisabled(?:\s|>|=))[^>]*>/s',
+            $html
+        );
     }
 
     public function test_temporarily_deferred_donor_cannot_book_before_next_eligible_date(): void
@@ -335,6 +444,25 @@ class Phase6EventAppointmentTest extends TestCase
             ->assertSessionHasErrors('event_id');
     }
 
+    public function test_donor_cannot_book_after_same_day_event_schedule_has_ended(): void
+    {
+        $donorId = $this->createBookableDonor();
+        $eventId = $this->createEvent([
+            'event_date' => Carbon::today()->toDateString(),
+            'start_time' => '08:00:00',
+            'end_time' => '10:00:00',
+        ]);
+        Carbon::setTestNow(Carbon::today()->setTime(12, 0));
+
+        try {
+            $this->withSession($this->donorSession($donorId))
+                ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
+                ->assertSessionHasErrors('event_id');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     public function test_cancelled_appointment_releases_capacity(): void
     {
         $eventId = $this->createEvent(['max_capacity' => 1]);
@@ -372,6 +500,26 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertDatabaseHas('donation_events', ['event_id' => $eventId, 'status' => 'cancelled']);
         $this->assertDatabaseHas('appointments', ['appointment_id' => $futureAppointmentId, 'status' => 'cancelled']);
         $this->assertDatabaseHas('appointments', ['appointment_id' => $completedAppointmentId, 'status' => 'completed']);
+        $this->assertStringContainsString('Status: Cancelled', (string) DB::table('posts')->where('event_id', $eventId)->value('content'));
+    }
+
+    public function test_closing_event_updates_its_post_and_preserves_existing_appointments(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $eventId = $this->createEvent();
+        $appointmentId = $this->createAppointment($this->createBookableDonor(), $eventId, ['status' => 'confirmed']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/donation-events/{$eventId}/close")
+            ->assertOk();
+
+        $this->assertDatabaseHas('posts', ['event_id' => $eventId, 'type' => 'event']);
+        $this->assertStringContainsString('Status: Closed', (string) DB::table('posts')->where('event_id', $eventId)->value('content'));
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $appointmentId, 'status' => 'confirmed']);
+
+        $this->withSession($this->donorSession($this->createBookableDonor()))
+            ->post('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
+            ->assertSessionHasErrors('event_id');
     }
 
     public function test_event_data_uses_compact_status_appropriate_action_menus(): void
@@ -426,7 +574,7 @@ class Phase6EventAppointmentTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['audit_logs', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'facilities', 'eligibility_status', 'donor_authentication', 'donors', 'admins'] as $table) {
+        foreach (['audit_logs', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'facilities', 'eligibility_status', 'donor_authentication', 'donors', 'admins', 'posts'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();
@@ -490,6 +638,23 @@ class Phase6EventAppointmentTest extends TestCase
             $table->integer('created_by_admin_id')->nullable();
             $table->timestamp('created_at')->nullable();
             $table->timestamp('updated_at')->nullable();
+        });
+
+        Schema::create('posts', function (Blueprint $table): void {
+            $table->increments('id');
+            $table->string('type');
+            $table->string('author', 150);
+            $table->text('author_avatar');
+            $table->string('author_badge', 100)->nullable();
+            $table->text('content');
+            $table->text('image')->nullable();
+            $table->unsignedInteger('likes')->default(0);
+            $table->string('blood_type', 10)->nullable();
+            $table->string('hospital', 150)->nullable();
+            $table->string('event_date', 100)->nullable();
+            $table->string('event_location', 150)->nullable();
+            $table->string('urgency')->nullable();
+            $table->timestamp('created_at')->nullable();
         });
 
         Schema::create('facilities', function (Blueprint $table): void {

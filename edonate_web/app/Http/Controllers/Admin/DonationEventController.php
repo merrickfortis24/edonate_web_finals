@@ -112,7 +112,7 @@ class DonationEventController extends Controller
             ? (int) $request->session()->get('admin_id')
             : null;
 
-        $event = DonationEvent::query()->create($payload);
+        $event = $this->eventService->create($payload);
 
         $this->logEventAudit($request, 'donation_event_created', "Created donation event {$event->title}.", (int) $event->event_id, [
             'event_id' => (int) $event->event_id,
@@ -147,8 +147,14 @@ class DonationEventController extends Controller
     public function update(Request $request, DonationEvent $event): JsonResponse
     {
         $before = $this->eventResponse($event);
-        $event->fill($this->validatedPayload($request, $event, false));
-        $event->save();
+        try {
+            $event = $this->eventService->update(
+                $event,
+                $this->validatedPayload($request, $event, false)
+            );
+        } catch (\DomainException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
+        }
 
         $this->logEventAudit($request, 'donation_event_updated', "Updated donation event {$event->title}.", (int) $event->event_id, [
             'event_id' => (int) $event->event_id,
