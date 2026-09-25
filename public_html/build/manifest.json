@@ -36,5 +36,11 @@
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true
+  },
+  "resources/js/google-signin.js": {
+    "file": "assets/google-signin-CyLkuS2K.js",
+    "name": "google-signin",
+    "src": "resources/js/google-signin.js",
+    "isEntry": true
   }
 }

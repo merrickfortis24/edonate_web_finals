@@ -651,8 +651,14 @@
 	@stack('admin_scripts')
 
 	@if (config('services.firebase.admin_google_login_enabled', true))
-		<script src="{{ asset('js/google-signin-loader.js') }}"></script>
-		<script>
+		@vite('resources/js/google-signin.js')
+		<script type="module">
+			if (!window.eDonateGoogle) {
+				await new Promise(function (resolve) {
+					window.addEventListener('edonate-google-sdk-ready', resolve, { once: true });
+				});
+			}
+
 			(function () {
 				const button = document.getElementById('adminGoogleSignInBtn');
 				const label = document.getElementById('adminGoogleSignInLabel');
@@ -684,8 +690,18 @@
 					return;
 				}
 
-				const redirectStateKey = 'edonate.admin.googleRedirect';
 				const originalLabel = label ? label.textContent : 'Continue with Google';
+				button.disabled = true;
+				if (label) label.textContent = 'Preparing Google...';
+				setStatus('Preparing Google sign-in...');
+				window.eDonateGoogle.prepare(firebaseConfig).then(function () {
+					button.disabled = false;
+					if (label) label.textContent = originalLabel;
+					setStatus('Ready. Select once to choose your Google account.');
+				}).catch(function (error) {
+					if (label) label.textContent = originalLabel;
+					setStatus(error && error.message ? error.message : 'Google sign-in could not be prepared. Refresh the page to retry.');
+				});
 
 				async function finishGoogleLogin(user, shouldRemember) {
 					if (!user) {
@@ -693,6 +709,7 @@
 					}
 
 					const idToken = await user.getIdToken(true);
+					await window.eDonateGoogle.signOutCurrentUser().catch(function () {});
 					const response = await fetch(@json(route('admin.login.google')), {
 						method: 'POST',
 						credentials: 'same-origin',
@@ -712,62 +729,35 @@
 					window.location.assign(data.redirect_url || @json(route('admin.login')));
 				}
 
-				async function resumeGoogleRedirect() {
-					let savedState;
-					try {
-						const serializedState = sessionStorage.getItem(redirectStateKey);
-						if (!serializedState) return;
-						sessionStorage.removeItem(redirectStateKey);
-						savedState = JSON.parse(serializedState);
-					} catch (_) {
-						setStatus('Google sign-in could not be resumed. Please try again.');
-						return;
-					}
-
-					button.disabled = true;
-					if (label) label.textContent = 'Finishing Google sign-in...';
-					setStatus('Finishing Google sign-in...');
-					try {
-						await window.eDonateGoogle.prepare(firebaseConfig);
-						const result = await firebase.auth().getRedirectResult();
-						if (!result || !result.user) {
-							setStatus('Google sign-in was cancelled. Please try again.');
-							return;
-						}
-						await finishGoogleLogin(result.user, Boolean(savedState.remember));
-					} catch (error) {
-						setStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
-						if (window.firebase?.auth && firebase.auth().currentUser) {
-							await firebase.auth().signOut().catch(function () {});
-						}
-					} finally {
-						button.disabled = false;
-						if (label) label.textContent = originalLabel;
-					}
-				}
-
-				button.addEventListener('click', async function () {
+				button.addEventListener('click', function () {
 					button.disabled = true;
 					if (label) label.textContent = 'Connecting to Google...';
 					setStatus('Opening Google so you can choose your account...');
+					const shouldRemember = Boolean(remember && remember.checked);
 
 					try {
-						await window.eDonateGoogle.prepare(firebaseConfig);
-						const provider = new firebase.auth.GoogleAuthProvider();
-						provider.setCustomParameters({ prompt: 'select_account' });
-						sessionStorage.setItem(redirectStateKey, JSON.stringify({
-							remember: Boolean(remember && remember.checked),
-						}));
-						await firebase.auth().signInWithRedirect(provider);
+						const popup = window.eDonateGoogle.signInWithGoogle();
+						popup.then(function (result) {
+							return finishGoogleLogin(result && result.user, shouldRemember);
+						}).catch(async function (error) {
+							if (error && error.code === 'auth/popup-closed-by-user') {
+								setStatus('The Google sign-in window was closed before finishing. Please try again.');
+							} else if (error && error.code === 'auth/popup-blocked') {
+								setStatus('Your browser blocked the Google sign-in popup. Allow pop-ups for this site, then try again.');
+							} else {
+								setStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
+							}
+							await window.eDonateGoogle.signOutCurrentUser().catch(function () {});
+						}).finally(function () {
+							button.disabled = false;
+							if (label) label.textContent = originalLabel;
+						});
 					} catch (error) {
-						try { sessionStorage.removeItem(redirectStateKey); } catch (_) {}
 						setStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
 						button.disabled = false;
 						if (label) label.textContent = originalLabel;
 					}
 				});
-
-				resumeGoogleRedirect();
 			})();
 		</script>
 	@endif

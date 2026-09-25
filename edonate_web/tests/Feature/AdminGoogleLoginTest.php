@@ -100,8 +100,10 @@ class AdminGoogleLoginTest extends TestCase
             ->assertSee('images/edonate-icon.png?v=', false)
             ->assertSee(str_replace('/', '\\/', route('admin.login.google')), false)
             ->assertSee('Select once to open Google and choose your account.')
-            ->assertSee('signInWithRedirect')
-            ->assertSee('getRedirectResult')
+            ->assertSee('signInWithGoogle')
+            ->assertSee('Preparing Google sign-in...')
+            ->assertDontSee('signInWithRedirect')
+            ->assertDontSee('getRedirectResult')
             ->assertDontSee('again to choose your account')
             ->assertDontSee('<script src="https://www.gstatic.com', false);
     }
