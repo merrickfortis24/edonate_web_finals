@@ -166,7 +166,7 @@
 
 @push('admin_scripts')
 <script>
-    (function () {
+    document.addEventListener('DOMContentLoaded', function () {
         var payload = (window.AdminPageData && window.AdminPageData.donationEvents) ? window.AdminPageData.donationEvents : {};
         var listUrl = payload.api && payload.api.listUrl ? payload.api.listUrl : '';
         var storeUrl = payload.api && payload.api.storeUrl ? payload.api.storeUrl : '';
@@ -470,6 +470,6 @@
         });
 
         loadEvents();
-    })();
+    }, { once: true });
 </script>
 @endpush

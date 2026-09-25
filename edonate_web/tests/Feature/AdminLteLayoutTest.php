@@ -359,6 +359,28 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringNotContainsString('Automatic', $settings);
     }
 
+    public function test_donation_event_controls_initialize_after_the_adminlte_module(): void
+    {
+        $html = $this->renderPageForRole('admin.donation_events', 'admin', '/admin/donation-events');
+        $viteAssetPosition = strpos($html, 'resources/js/adminlte.js');
+
+        if ($viteAssetPosition === false) {
+            $viteAssetPosition = strpos($html, '/build/assets/adminlte-');
+        }
+
+        $deferredInitializationPosition = strpos(
+            $html,
+            "document.addEventListener('DOMContentLoaded', function () {",
+            $viteAssetPosition === false ? 0 : $viteAssetPosition
+        );
+
+        $this->assertIsInt($viteAssetPosition);
+        $this->assertIsInt($deferredInitializationPosition);
+        $this->assertGreaterThan($viteAssetPosition, $deferredInitializationPosition);
+        $this->assertStringContainsString('bootstrap.Modal.getOrCreateInstance(modalElement)', $html);
+        $this->assertStringContainsString("document.getElementById('createEventBtn').addEventListener('click'", $html);
+    }
+
     public function test_every_configured_adminlte_menu_route_exists(): void
     {
         $inspect = function (array $items) use (&$inspect): void {
