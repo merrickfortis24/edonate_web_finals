@@ -96,20 +96,47 @@ class DonorVerificationController extends Controller
 
     public function document(DonorVerification $verification): BinaryFileResponse
     {
-        if (! Storage::disk('local')->exists($verification->document_path)) {
-            abort(404, 'Verification document not found.');
-        }
-
-        $path = Storage::disk('local')->path($verification->document_path);
-        $mime = Storage::disk('local')->mimeType($verification->document_path) ?: 'application/octet-stream';
-        $extension = pathinfo($verification->document_path, PATHINFO_EXTENSION) ?: 'bin';
+        $docPath = $verification->document_path;
+        $extension = pathinfo($docPath, PATHINFO_EXTENSION) ?: 'bin';
         $filename = 'donor-verification-' . (int) $verification->verification_id . '.' . $extension;
 
-        return response()->file($path, [
-            'Content-Type' => $mime,
-            'Content-Disposition' => 'inline; filename="' . $filename . '"',
-            'X-Content-Type-Options' => 'nosniff',
-        ]);
+        // 1. Try Laravel local disk (storage/app/) — used by the web donor portal
+        if (Storage::disk('local')->exists($docPath)) {
+            $path = Storage::disk('local')->path($docPath);
+            $mime = Storage::disk('local')->mimeType($docPath) ?: 'application/octet-stream';
+
+            return response()->file($path, [
+                'Content-Type'           => $mime,
+                'Content-Disposition'    => 'inline; filename="' . $filename . '"',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        // 2. Try public disk (storage/app/public/) — symlinked to public/storage/
+        if (Storage::disk('public')->exists($docPath)) {
+            $path = Storage::disk('public')->path($docPath);
+            $mime = Storage::disk('public')->mimeType($docPath) ?: 'application/octet-stream';
+
+            return response()->file($path, [
+                'Content-Type'           => $mime,
+                'Content-Disposition'    => 'inline; filename="' . $filename . '"',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        // 3. Try direct public folder path — used by mobile app (e.g. public/uploads/verification/...)
+        $publicPath = public_path($docPath);
+        if (file_exists($publicPath)) {
+            $mime = mime_content_type($publicPath) ?: 'application/octet-stream';
+
+            return response()->file($publicPath, [
+                'Content-Type'           => $mime,
+                'Content-Disposition'    => 'inline; filename="' . $filename . '"',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        abort(404, 'Verification document not found.');
     }
 
     public function approve(Request $request, DonorVerification $verification): RedirectResponse
