@@ -30,6 +30,10 @@ class Phase7DonationProcessingTest extends TestCase
             ->patchJson("/admin/appointments/{$appointmentId}/check-in")
             ->assertOk();
 
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/check-in")
+            ->assertUnprocessable();
+
         $this->assertDatabaseHas('appointments', [
             'appointment_id' => $appointmentId,
             'status' => 'checked_in',
@@ -41,6 +45,68 @@ class Phase7DonationProcessingTest extends TestCase
             'target_table' => 'appointments',
             'target_id' => $appointmentId,
         ]);
+        $this->assertSame(1, DB::table('audit_logs')->where('action_type', 'appointment_checked_in')->where('target_id', $appointmentId)->count());
+    }
+
+    public function test_approved_appointment_flows_from_pending_to_checked_in_to_completed_across_both_views(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $appointmentId = $this->createAppointment(['status' => 'pending']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/approve")
+            ->assertOk();
+
+        $processingPage = $this->withSession($this->adminSession())
+            ->get('/admin/donation-records')
+            ->assertOk();
+        $processingPage->assertSee('<option value="confirmed">Pending</option>', false);
+        $processingPage->assertSee('checkInUrlTemplate', false);
+        $processingPage->assertSee("confirmed: 'Pending'", false);
+        $processingPage->assertSee('data-action="check-in"', false);
+
+        $pending = $this->processingRow($appointmentId);
+        $this->assertSame('confirmed', $pending['status']);
+        $this->assertTrue($pending['actions']['can_check_in']);
+        $this->assertTrue($pending['actions']['can_defer']);
+        $this->assertFalse($pending['actions']['can_complete']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/check-in")
+            ->assertOk();
+
+        $checkedIn = $this->processingRow($appointmentId);
+        $this->assertSame('checked_in', $checkedIn['status']);
+        $this->assertFalse($checkedIn['actions']['can_check_in']);
+        $this->assertTrue($checkedIn['actions']['can_complete']);
+        $this->assertTrue($checkedIn['actions']['can_defer']);
+
+        $appointments = $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?status=checked_in')
+            ->assertOk();
+        $appointmentRow = collect($appointments->json('data'))->firstWhere('appointment_id', $appointmentId);
+        $this->assertSame('checked_in', $appointmentRow['status']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+                'remarks' => 'Successful donation.',
+            ])
+            ->assertOk();
+
+        $completed = $this->processingRow($appointmentId);
+        $this->assertSame('completed', $completed['status']);
+        $this->assertFalse($completed['actions']['can_check_in']);
+        $this->assertFalse($completed['actions']['can_complete']);
+        $this->assertFalse($completed['actions']['can_defer']);
+
+        $appointments = $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?status=completed')
+            ->assertOk();
+        $appointmentRow = collect($appointments->json('data'))->firstWhere('appointment_id', $appointmentId);
+        $this->assertSame('completed', $appointmentRow['status']);
+        $this->assertSame(1, DB::table('donation_records')->where('appointment_id', $appointmentId)->count());
     }
 
     public function test_donor_mass_assignment_cannot_set_verified_blood_type_fields(): void
@@ -76,6 +142,56 @@ class Phase7DonationProcessingTest extends TestCase
         $this->withSession($this->adminSession())
             ->patchJson("/admin/appointments/{$appointmentId}/check-in")
             ->assertUnprocessable();
+
+        $row = $this->processingRow($appointmentId);
+        $this->assertFalse($row['actions']['can_check_in']);
+        $this->assertFalse($row['actions']['can_defer']);
+        $this->assertTrue($row['actions']['awaiting_appointment_date']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/defer", [
+                'deferred_reason' => 'Blood pressure outside safe range.',
+            ])
+            ->assertUnprocessable();
+        $this->assertDatabaseMissing('donation_records', ['appointment_id' => $appointmentId]);
+    }
+
+    public function test_confirmed_appointment_can_be_deferred_on_site_once_without_check_in(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $appointmentId = $this->createAppointment(['status' => 'confirmed']);
+
+        $row = $this->processingRow($appointmentId);
+        $this->assertTrue($row['actions']['can_check_in']);
+        $this->assertTrue($row['actions']['can_defer']);
+
+        $payload = ['deferred_reason' => 'Blood pressure outside safe range.'];
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/defer", $payload)
+            ->assertOk()
+            ->assertJsonPath('message', 'Donation deferred on site.');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/defer", $payload)
+            ->assertOk()
+            ->assertJsonPath('message', 'This appointment already has a deferred donation record.');
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'status' => 'deferred_on_site',
+        ]);
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'donation_status' => 'deferred',
+            'blood_units' => 0,
+        ]);
+        $this->assertSame(1, DB::table('donation_records')->where('appointment_id', $appointmentId)->count());
+
+        $row = $this->processingRow($appointmentId);
+        $this->assertSame('deferred_on_site', $row['status']);
+        $this->assertFalse($row['actions']['can_check_in']);
+        $this->assertFalse($row['actions']['can_complete']);
+        $this->assertFalse($row['actions']['can_defer']);
     }
 
     public function test_checked_in_appointment_can_be_completed_once(): void
@@ -200,9 +316,6 @@ class Phase7DonationProcessingTest extends TestCase
     public function test_underage_donor_cannot_have_a_donation_recorded(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
-        Schema::table('donors', function (Blueprint $table): void {
-            $table->date('birthdate')->nullable();
-        });
 
         $appointmentId = $this->createAppointment([
             'status' => 'checked_in',
@@ -444,15 +557,29 @@ class Phase7DonationProcessingTest extends TestCase
             $table->string('blood_type');
         });
 
+        Schema::create('locations', function (Blueprint $table): void {
+            $table->increments('location_id');
+            $table->string('city')->nullable();
+            $table->string('province')->nullable();
+            $table->string('barangay_name')->nullable();
+            $table->string('street_address')->nullable();
+            $table->decimal('latitude', 10, 7)->nullable();
+            $table->decimal('longitude', 10, 7)->nullable();
+        });
+
         Schema::create('donors', function (Blueprint $table): void {
             $table->increments('donor_id');
             $table->string('first_name')->nullable();
             $table->string('last_name')->nullable();
+            $table->string('gender')->nullable();
+            $table->date('birthdate')->nullable();
             $table->integer('blood_type_id')->nullable();
             $table->string('blood_type_status')->default('not_yet_determined');
             $table->integer('blood_type_verified_by_admin_id')->nullable();
             $table->dateTime('blood_type_verified_at')->nullable();
+            $table->integer('location_id')->nullable();
             $table->timestamp('date_registered')->nullable();
+            $table->string('contact_number')->nullable();
             $table->string('verification_status')->default('verified');
         });
 
@@ -624,6 +751,7 @@ class Phase7DonationProcessingTest extends TestCase
         $donorId = (int) DB::table('donors')->insertGetId([
             'first_name' => 'Test',
             'last_name' => 'Donor',
+            'birthdate' => Carbon::today()->subYears(30)->toDateString(),
             'blood_type_id' => 1,
             'blood_type_status' => 'self_reported',
             'verification_status' => 'verified',
@@ -676,5 +804,18 @@ class Phase7DonationProcessingTest extends TestCase
             'admin_username' => 'admin',
             'admin_full_name' => 'Test Admin',
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function processingRow(int $appointmentId): array
+    {
+        $response = $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?appointment_id='.$appointmentId)
+            ->assertOk();
+        $row = collect($response->json('data'))->firstWhere('appointment_id', $appointmentId);
+
+        $this->assertIsArray($row);
+
+        return $row;
     }
 }

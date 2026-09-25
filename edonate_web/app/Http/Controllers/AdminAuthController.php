@@ -1579,6 +1579,7 @@ class AdminAuthController extends BaseController
                 'canVerifyBloodType' => Str::lower(trim((string) $request->session()->get('admin_role'))) === 'admin',
                 'api' => [
                     'listUrl' => route('admin.donation-records.data'),
+                    'checkInUrlTemplate' => route('admin.appointments.check-in', ['appointment' => '__ID__']),
                     'completeUrlTemplate' => route('admin.appointments.complete', ['appointment' => '__ID__']),
                     'completePageUrlTemplate' => route('admin.appointments.complete-page', ['appointment' => '__ID__']),
                     'returnUrl' => route('admin.donation-records'),
@@ -1609,7 +1610,7 @@ class AdminAuthController extends BaseController
             'center' => ['nullable', 'string', 'max:150'],
             'date' => ['nullable', 'date'],
             'appointment_id' => ['nullable', 'integer', 'min:1'],
-            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'checked_in', 'completed', 'deferred_on_site', 'no_show', 'cancelled'])],
+            'status' => ['nullable', 'string', Rule::in(['', 'confirmed', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show', 'cancelled'])],
         ]);
 
         $page = (int) ($validated['page'] ?? 1);
@@ -1723,6 +1724,7 @@ class AdminAuthController extends BaseController
                 'checked_in_today' => $checkedInToday,
                 'completed_month' => $completedThisMonth,
                 'confirmed' => (int) ($statusCounts['confirmed'] ?? 0),
+                'rescheduled' => (int) ($statusCounts['rescheduled'] ?? 0),
                 'checked_in' => (int) ($statusCounts['checked_in'] ?? 0),
                 'completed' => (int) ($statusCounts['completed'] ?? 0),
                 'deferred_on_site' => (int) ($statusCounts['deferred_on_site'] ?? 0),
@@ -4037,8 +4039,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'recorder.username as recorded_by_username',
             ])
             ->selectRaw('('.$statusExpression.') as normalized_status')
-            ->whereRaw('('.$statusExpression.') IN (?, ?, ?, ?, ?, ?)', [
+            ->whereRaw('('.$statusExpression.') IN (?, ?, ?, ?, ?, ?, ?)', [
                 'confirmed',
+                'rescheduled',
                 'checked_in',
                 'completed',
                 'deferred_on_site',
@@ -4055,6 +4058,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
         $donorName = trim((string) ($entry->first_name ?? '').' '.(string) ($entry->last_name ?? ''));
         $donorName = $donorName !== '' ? $donorName : 'Unknown Donor';
         $status = Str::lower(trim((string) ($entry->normalized_status ?? 'pending')));
+        $preCheckIn = in_array($status, ['confirmed', 'rescheduled'], true);
+        $appointmentDateReached = empty($entry->appointment_date)
+            || ! Carbon::parse((string) $entry->appointment_date)->isFuture();
         $center = trim((string) ($entry->donation_center ?? ''));
         $center = $center !== '' ? $center : trim((string) ($entry->event_location_name ?? ''));
         $recordedBy = trim((string) ($entry->recorded_by_name ?? ''));
@@ -4095,8 +4101,10 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'deferred_reason' => $entry->deferred_reason,
             'recorded_by' => $recordedBy !== '' ? $recordedBy : null,
             'actions' => [
+                'can_check_in' => $preCheckIn && $appointmentDateReached,
                 'can_complete' => $status === 'checked_in',
-                'can_defer' => $status === 'checked_in',
+                'can_defer' => ($preCheckIn && $appointmentDateReached) || $status === 'checked_in',
+                'awaiting_appointment_date' => $preCheckIn && ! $appointmentDateReached,
             ],
         ];
     }

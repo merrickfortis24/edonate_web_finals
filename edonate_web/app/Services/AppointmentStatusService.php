@@ -104,7 +104,7 @@ class AppointmentStatusService
     {
         return match ($this->normalize($from)) {
             self::PENDING => [self::CONFIRMED, self::CANCELLED],
-            self::CONFIRMED, self::RESCHEDULED => [self::CHECKED_IN, self::NO_SHOW, self::CANCELLED],
+            self::CONFIRMED, self::RESCHEDULED => [self::CHECKED_IN, self::DEFERRED_ON_SITE, self::NO_SHOW, self::CANCELLED],
             self::CHECKED_IN => [self::COMPLETED, self::DEFERRED_ON_SITE],
             default => [],
         };

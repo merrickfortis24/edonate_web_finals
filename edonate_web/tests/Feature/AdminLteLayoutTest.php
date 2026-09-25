@@ -278,7 +278,8 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringNotContainsString('window.open(', $html);
         $this->assertStringNotContainsString('id="completeDonationModal"', $html);
         $this->assertStringNotContainsString('id="completeDonationForm"', $html);
-        $this->assertStringNotContainsString('data-action="check-in"', $html);
+        $this->assertStringContainsString('data-action="check-in"', $html);
+        $this->assertStringContainsString('checkInUrlTemplate', $html);
         $this->assertStringNotContainsString('data-action="no-show"', $html);
     }
 

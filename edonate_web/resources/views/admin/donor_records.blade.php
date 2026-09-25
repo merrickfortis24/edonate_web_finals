@@ -3,7 +3,7 @@
 @section('title', 'eDonate - Donation Processing')
 @section('admin_page_class', 'admin-donor-records-page')
 @section('header_title', 'Donation Processing')
-@section('header_subtitle', 'Process checked-in donors and review completed donation records')
+@section('header_subtitle', 'Check in approved appointments, process donations, and review outcomes')
 
 @section('admin_page_data')
 {!! json_encode([
@@ -11,6 +11,7 @@
   'donationRecords' => $donationRecordsPayload ?? [
     'api' => [
       'listUrl' => '',
+      'checkInUrlTemplate' => '',
       'completeUrlTemplate' => '',
       'completePageUrlTemplate' => '',
       'returnUrl' => '',
@@ -80,7 +81,8 @@
       <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-2">
         <select id="processingStatusFilter" class="filter-bar__select form-select" aria-label="Filter by status">
           <option value="">All Status</option>
-          <option value="confirmed">Confirmed</option>
+          <option value="confirmed">Pending</option>
+          <option value="rescheduled">Rescheduled</option>
           <option value="checked_in">Checked In</option>
           <option value="completed">Completed</option>
           <option value="deferred_on_site">Deferred On Site</option>
@@ -223,7 +225,8 @@
     }
     function statusLabel(status) {
       return {
-        confirmed: 'Confirmed',
+        confirmed: 'Pending',
+        rescheduled: 'Rescheduled',
         checked_in: 'Checked In',
         completed: 'Completed',
         deferred_on_site: 'Deferred On Site',
@@ -234,6 +237,7 @@
     function statusClass(status) {
       return {
         confirmed: 'status-badge--warning',
+        rescheduled: 'status-badge--warning',
         checked_in: 'status-badge--info',
         completed: 'status-badge--success',
         deferred_on_site: 'status-badge--warning',
@@ -269,12 +273,19 @@
     }
     function renderActions(row) {
       var buttons = [];
+      if (row.actions && row.actions.can_check_in) {
+        buttons.push('<button type="button" class="btn btn-sm btn-primary" title="Check In" aria-label="Check In" data-action="check-in" data-id="' + row.appointment_id + '">Check In</button>');
+      } else if (row.actions && row.actions.awaiting_appointment_date) {
+        buttons.push('<button type="button" class="btn btn-sm btn-primary" title="Available on the appointment date" aria-label="Check In (available on the appointment date)" disabled>Check In</button>');
+      }
       if (row.actions && row.actions.can_complete) {
         var completionUrl = esc(actionUrl(api.completePageUrlTemplate, row.appointment_id));
         buttons.push('<a href="' + completionUrl + '" class="btn btn-sm btn-success" title="Complete Donation" aria-label="Complete Donation">Complete Donation</a>');
       }
       if (row.actions && row.actions.can_defer) {
         buttons.push('<button class="btn btn-sm btn-warning" title="Defer Donation On Site" aria-label="Defer Donation On Site" data-action="defer" data-id="' + row.appointment_id + '">Defer On Site</button>');
+      } else if (row.actions && row.actions.awaiting_appointment_date) {
+        buttons.push('<button type="button" class="btn btn-sm btn-warning" title="Available on the appointment date" aria-label="Defer On Site (available on the appointment date)" disabled>Defer On Site</button>');
       }
       return buttons.length ? '<div class="records-actions">' + buttons.join('') + '</div>' : '<span class="text-muted">No actions</span>';
     }
@@ -380,6 +391,14 @@
       if (!button) return;
       var id = button.getAttribute('data-id');
       var action = button.getAttribute('data-action');
+      if (action === 'check-in') {
+        button.disabled = true;
+        sendPatch(actionUrl(api.checkInUrlTemplate, id))
+          .then(function () { loadRows(); })
+          .catch(showError)
+          .then(function () { button.disabled = false; });
+        return;
+      }
       if (action !== 'defer') return;
       qs('deferAppointmentId').value = id;
       qs('deferReason').value = '';
@@ -395,6 +414,8 @@
     qs('deferDonationForm').addEventListener('submit', function (event) {
       event.preventDefault();
       var id = qs('deferAppointmentId').value;
+      var submitButton = qs('deferDonationForm').querySelector('[type="submit"]');
+      if (submitButton) submitButton.disabled = true;
       sendPatch(actionUrl(api.deferUrlTemplate, id), {
         deferred_reason: qs('deferReason').value,
         next_eligible_date: qs('deferNextEligibleDate').value,
@@ -402,7 +423,9 @@
       }).then(function () {
         deferModal ? deferModal.hide() : null;
         loadRows();
-      }).catch(showError);
+      }).catch(showError).then(function () {
+        if (submitButton) submitButton.disabled = false;
+      });
     });
     qs('processingCompletionNotice').querySelector('.btn-close').addEventListener('click', function () {
       qs('processingCompletionNotice').classList.add('d-none');

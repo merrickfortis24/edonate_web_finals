@@ -214,6 +214,7 @@ class DonationProcessingService
             }
 
             $this->ensureTransition($appointment, AppointmentStatusService::DEFERRED_ON_SITE);
+            $this->ensureAppointmentCanBeProcessedToday($appointment);
 
             if ($existingRecord) {
                 throw ValidationException::withMessages([
@@ -265,6 +266,8 @@ class DonationProcessingService
             $this->audit($request, $adminId, 'appointment_deferred_on_site', $appointment, 'Deferred appointment ' . $this->appointmentCode($appointment) . ' on site.', [
                 'donation_id' => $recordId,
                 'donation_status' => 'deferred',
+                'previous_status' => $normalized,
+                'new_status' => AppointmentStatusService::DEFERRED_ON_SITE,
                 'has_next_eligible_date' => !empty($data['next_eligible_date']),
             ]);
 
