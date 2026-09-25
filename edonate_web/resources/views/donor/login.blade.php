@@ -375,8 +375,8 @@
 
 				<div class="d-grid mb-3">
 					<p>Using Google shares connection information with Google and returns your verified account identity to eDonate. Password sign-in remains available.</p>
-<button type="button" id="googleSignInBtn" class="btn btn-google" aria-describedby="googlePrivacyStatus">Sign in with Google</button>
-<p id="googlePrivacyStatus" role="status">First select this button to enable Google, then select it again to choose your account.</p>
+					<button type="button" id="googleSignInBtn" class="btn btn-google" aria-describedby="googlePrivacyStatus">Sign in with Google</button>
+					<p id="googlePrivacyStatus" role="status">Select Sign in with Google once to choose your account.</p>
 				</div>
 
 			<div class="d-flex align-items-center justify-content-between mb-2">
@@ -434,7 +434,83 @@
 			return;
 		}
 
-		let googleReady = false;
+		const redirectStateKey = 'edonate.donor.googleRedirect';
+		const status = document.getElementById('googlePrivacyStatus');
+		const originalButtonText = button.textContent;
+
+		function setGoogleStatus(message) {
+			if (status) status.textContent = message || '';
+		}
+
+		async function finishGoogleLogin(user, state) {
+			if (!user) {
+				throw new Error('Google did not return an account.');
+			}
+
+			const idToken = await user.getIdToken(true);
+			const response = await fetch(@json(route('auth.google')), {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+					'Accept': 'application/json',
+				},
+				credentials: 'same-origin',
+				body: JSON.stringify({
+					id_token: idToken,
+					uid: user.uid,
+					email: user.email,
+					full_name: user.displayName,
+					terms_accepted: Boolean(state.termsAccepted),
+					age_confirmed: Boolean(state.ageConfirmed),
+					privacy_version: @json(config('privacy.version')),
+				}),
+			});
+
+			const data = await response.json().catch(function () { return {}; });
+			if (!response.ok) {
+				throw new Error(data.message || 'Google login failed.');
+			}
+
+			window.location.assign(data.redirect_url || @json(url('/dashboard')));
+		}
+
+		async function resumeGoogleRedirect() {
+			let state;
+			try {
+				const serializedState = sessionStorage.getItem(redirectStateKey);
+				if (!serializedState) return;
+				sessionStorage.removeItem(redirectStateKey);
+				state = JSON.parse(serializedState);
+			} catch (_) {
+				setGoogleStatus('Google sign-in could not be resumed. Please try again.');
+				return;
+			}
+
+			if (termsCheckbox) termsCheckbox.checked = Boolean(state.termsAccepted);
+			if (ageCheckbox) ageCheckbox.checked = Boolean(state.ageConfirmed);
+			button.disabled = true;
+			button.textContent = 'Finishing Google sign-in...';
+			setGoogleStatus('Finishing Google sign-in...');
+
+			try {
+				await window.eDonateGoogle.prepare(config);
+				const result = await firebase.auth().getRedirectResult();
+				if (!result || !result.user) {
+					setGoogleStatus('Google sign-in was cancelled. Please try again.');
+					return;
+				}
+				await finishGoogleLogin(result.user, state);
+			} catch (error) {
+				setGoogleStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
+				if (window.firebase?.auth && firebase.auth().currentUser) {
+					await firebase.auth().signOut().catch(function () {});
+				}
+			} finally {
+				button.disabled = false;
+				button.textContent = originalButtonText;
+			}
+		}
 
 		button.addEventListener('click', async function () {
 			if (!termsCheckbox || !termsCheckbox.checked) {
@@ -443,57 +519,27 @@
 			}
 
 			button.disabled = true;
-			const original = button.textContent;
-			button.textContent = 'Signing in...';
+			button.textContent = 'Connecting to Google...';
+			setGoogleStatus('Opening Google so you can choose your account...');
 
 			try {
-				if (!googleReady) {
-					await window.eDonateGoogle.prepare(config);
-					googleReady = true;
-					document.getElementById('googlePrivacyStatus').textContent = 'Google is ready. Select Sign in with Google again to choose your account.';
-					return;
-				}
+				await window.eDonateGoogle.prepare(config);
 				const provider = new firebase.auth.GoogleAuthProvider();
-				const result = await firebase.auth().signInWithPopup(provider);
-				const user = result.user;
-
-				if (!user) {
-					throw new Error('No Google user returned.');
-				}
-
-				const idToken = await user.getIdToken();
-				const response = await fetch(@json(route('auth.google')), {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-						'Accept': 'application/json',
-					},
-					credentials: 'same-origin',
-					body: JSON.stringify({
-						id_token: idToken,
-						uid: user.uid,
-						email: user.email,
-						full_name: user.displayName,
-						terms_accepted: true,
-						age_confirmed: Boolean(ageCheckbox && ageCheckbox.checked),
-                        privacy_version: @json(config('privacy.version')),
-					}),
-				});
-
-				const data = await response.json();
-				if (!response.ok) {
-					throw new Error(data.message || 'Google login failed.');
-				}
-
-				window.location.href = data.redirect_url;
+				provider.setCustomParameters({ prompt: 'select_account' });
+				sessionStorage.setItem(redirectStateKey, JSON.stringify({
+					termsAccepted: termsCheckbox.checked,
+					ageConfirmed: Boolean(ageCheckbox && ageCheckbox.checked),
+				}));
+				await firebase.auth().signInWithRedirect(provider);
 			} catch (error) {
-				alert(error.message || 'Google sign-in failed. Please try again.');
-			} finally {
+				try { sessionStorage.removeItem(redirectStateKey); } catch (_) {}
+				setGoogleStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
 				button.disabled = false;
-				button.textContent = original;
+				button.textContent = originalButtonText;
 			}
 		});
+
+		resumeGoogleRedirect();
 	})();
 </script>
 <x-password-toggle-script />

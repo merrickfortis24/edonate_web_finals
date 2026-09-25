@@ -636,7 +636,7 @@
 						</svg>
 						<span id="adminGoogleSignInLabel">Continue with Google</span>
 					</button>
-					<p class="form__google-help">Select once to enable Google, then again to choose your account. Google receives connection information and provides your verified identity. Password sign-in remains available.</p>
+					<p class="form__google-help">Select once to open Google and choose your account. Google receives connection information and provides your verified identity. Password sign-in remains available.</p>
 					<p class="form__google-status" id="adminGoogleSignInStatus" role="status" aria-live="polite"></p>
 				@endif
 			</section>
@@ -684,50 +684,57 @@
 					return;
 				}
 
-				let googleReady = false;
+				const redirectStateKey = 'edonate.admin.googleRedirect';
+				const originalLabel = label ? label.textContent : 'Continue with Google';
 
-				button.addEventListener('click', async function () {
-					button.disabled = true;
-					const originalLabel = label ? label.textContent : 'Continue with Google';
-					if (label) label.textContent = 'Connecting to Google...';
-					setStatus('');
+				async function finishGoogleLogin(user, shouldRemember) {
+					if (!user) {
+						throw new Error('Google did not return an account.');
+					}
 
+					const idToken = await user.getIdToken(true);
+					const response = await fetch(@json(route('admin.login.google')), {
+						method: 'POST',
+						credentials: 'same-origin',
+						headers: {
+							'Content-Type': 'application/json',
+							'Accept': 'application/json',
+							'X-Requested-With': 'XMLHttpRequest',
+							'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+						},
+						body: JSON.stringify({ id_token: idToken, remember: shouldRemember }),
+					});
+					const data = await response.json().catch(function () { return {}; });
+					if (!response.ok) {
+						throw new Error(data.message || 'This Google account cannot access the admin portal.');
+					}
+
+					window.location.assign(data.redirect_url || @json(route('admin.login')));
+				}
+
+				async function resumeGoogleRedirect() {
+					let savedState;
 					try {
-						if (!googleReady) {
-							await window.eDonateGoogle.prepare(firebaseConfig);
-							googleReady = true;
-							setStatus('Google is ready. Select Continue with Google again to choose your account.');
+						const serializedState = sessionStorage.getItem(redirectStateKey);
+						if (!serializedState) return;
+						sessionStorage.removeItem(redirectStateKey);
+						savedState = JSON.parse(serializedState);
+					} catch (_) {
+						setStatus('Google sign-in could not be resumed. Please try again.');
+						return;
+					}
+
+					button.disabled = true;
+					if (label) label.textContent = 'Finishing Google sign-in...';
+					setStatus('Finishing Google sign-in...');
+					try {
+						await window.eDonateGoogle.prepare(firebaseConfig);
+						const result = await firebase.auth().getRedirectResult();
+						if (!result || !result.user) {
+							setStatus('Google sign-in was cancelled. Please try again.');
 							return;
 						}
-						const provider = new firebase.auth.GoogleAuthProvider();
-						provider.setCustomParameters({ prompt: 'select_account' });
-						const result = await firebase.auth().signInWithPopup(provider);
-						const user = result && result.user;
-						if (!user) {
-							throw new Error('Google did not return an account.');
-						}
-
-						const idToken = await user.getIdToken(true);
-						const response = await fetch(@json(route('admin.login.google')), {
-							method: 'POST',
-							credentials: 'same-origin',
-							headers: {
-								'Content-Type': 'application/json',
-								'Accept': 'application/json',
-								'X-Requested-With': 'XMLHttpRequest',
-								'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-							},
-							body: JSON.stringify({
-								id_token: idToken,
-								remember: !!(remember && remember.checked),
-							}),
-						});
-						const data = await response.json().catch(function () { return {}; });
-						if (!response.ok) {
-							throw new Error(data.message || 'This Google account cannot access the admin portal.');
-						}
-
-						window.location.assign(data.redirect_url || @json(route('admin.login')));
+						await finishGoogleLogin(result.user, Boolean(savedState.remember));
 					} catch (error) {
 						setStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
 						if (window.firebase?.auth && firebase.auth().currentUser) {
@@ -737,7 +744,30 @@
 						button.disabled = false;
 						if (label) label.textContent = originalLabel;
 					}
+				}
+
+				button.addEventListener('click', async function () {
+					button.disabled = true;
+					if (label) label.textContent = 'Connecting to Google...';
+					setStatus('Opening Google so you can choose your account...');
+
+					try {
+						await window.eDonateGoogle.prepare(firebaseConfig);
+						const provider = new firebase.auth.GoogleAuthProvider();
+						provider.setCustomParameters({ prompt: 'select_account' });
+						sessionStorage.setItem(redirectStateKey, JSON.stringify({
+							remember: Boolean(remember && remember.checked),
+						}));
+						await firebase.auth().signInWithRedirect(provider);
+					} catch (error) {
+						try { sessionStorage.removeItem(redirectStateKey); } catch (_) {}
+						setStatus(error && error.message ? error.message : 'Google sign-in failed. Please try again.');
+						button.disabled = false;
+						if (label) label.textContent = originalLabel;
+					}
 				});
+
+				resumeGoogleRedirect();
 			})();
 		</script>
 	@endif
