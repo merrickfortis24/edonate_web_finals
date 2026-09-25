@@ -155,20 +155,26 @@ class DonorVerificationController extends Controller
         }
 
         // 3. Try direct public/ folder — used by mobile app (public/uploads/verification/...)
-        $publicPath = public_path($docPath);
-        if (file_exists($publicPath) && is_file($publicPath)) {
-            if (filesize($publicPath) > 5 * 1024 * 1024) {
-                abort(413, 'Verification document exceeds the permitted size.');
+        $publicPathsToTry = [
+            public_path($docPath),
+            public_path('api/' . ltrim($docPath, '/')),
+        ];
+
+        foreach ($publicPathsToTry as $publicPath) {
+            if (file_exists($publicPath) && is_file($publicPath)) {
+                if (filesize($publicPath) > 5 * 1024 * 1024) {
+                    abort(413, 'Verification document exceeds the permitted size.');
+                }
+                $mime = mime_content_type($publicPath) ?: 'application/octet-stream';
+                if (! in_array($mime, $allowedMimes, true)) {
+                    abort(415, 'Verification document type is not supported.');
+                }
+                return response()->file($publicPath, [
+                    'Content-Type'           => $mime,
+                    'Content-Disposition'    => 'inline; filename="' . $filename . '"',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]);
             }
-            $mime = mime_content_type($publicPath) ?: 'application/octet-stream';
-            if (! in_array($mime, $allowedMimes, true)) {
-                abort(415, 'Verification document type is not supported.');
-            }
-            return response()->file($publicPath, [
-                'Content-Type'           => $mime,
-                'Content-Disposition'    => 'inline; filename="' . $filename . '"',
-                'X-Content-Type-Options' => 'nosniff',
-            ]);
         }
 
         abort(404, 'Verification document not found.');
