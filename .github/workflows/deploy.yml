@@ -1,11 +1,116 @@
 name: Deploy to Hostinger
+
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      anonymize_underage_donors:
+        description: 'Destructively anonymize underage donor data during deployment'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edonate-production-deploy
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  quality:
+    name: Test, audit, and verify build
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: edonate_web
+
+    steps:
+      - name: Check out the release candidate
+        uses: actions/checkout@v6
+
+      - name: Block tracked database and backup artifacts
+        working-directory: .
+        shell: bash
+        run: |
+          tracked_artifacts="$(git ls-files -- '*.sql' '*.zip' '*.bak' '*.dump')"
+          if [ -n "$tracked_artifacts" ]; then
+            echo "Release blocked: database dumps or backup archives are tracked by Git." >&2
+            printf '%s\n' "$tracked_artifacts" >&2
+            exit 1
+          fi
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: edonate_web/package-lock.json
+          package-manager-cache: false
+
+      - name: Install locked PHP dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress --optimize-autoloader
+
+      - name: Validate and audit PHP dependencies
+        run: |
+          composer validate --strict
+          composer audit --locked --no-interaction
+
+      - name: Install and audit locked browser dependencies
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+      - name: Run the PHP test suite
+        run: php artisan test
+
+      - name: Export synthetic accessibility fixtures
+        run: php artisan test --filter=AccessibilityFixturesTest
+        env:
+          EDONATE_EXPORT_A11Y_FIXTURES: '1'
+
+      - name: Build production browser assets
+        run: npm run build
+
+      - name: Verify committed build output is current
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- ../public_html/build ../public_html/vendor)" ]; then
+            echo "Committed browser assets do not match the production build." >&2
+            git status --short --untracked-files=all -- ../public_html/build ../public_html/vendor
+            exit 1
+          fi
+
+      - name: Install Playwright Chromium
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Run WCAG and browser privacy checks
+        run: npx --no-install playwright test
+
+  deploy:
+    name: Deploy the verified main branch
+    needs: quality
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://edonate.online
+
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -15,19 +120,161 @@ jobs:
           password: ${{ secrets.SSH_PASSWORD }}
           port: 65002
           script: |
-            cd /home/u156729731/domains/edonate.online/public_html
+            set -e
+
+            DEPLOY_ROOT="/home/u156729731/domains/edonate.online/public_html"
+            APP_ROOT="$DEPLOY_ROOT/edonate_web"
+            FIREBASE_CREDENTIALS_PATH="$APP_ROOT/storage/app/firebase/service-account.json"
             REPO_URL="git@github.com:merrickfortis24/edonate_web_finals.git"
+            DEPLOY_SHA="${{ github.sha }}"
+
+            cd "$DEPLOY_ROOT"
             export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
-            if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git fsck --no-progress >/dev/null 2>&1; then
-              echo "Valid git repo detected."
-            else
-              echo "Git repo missing, corrupt, or incomplete. Reinitializing repository..."
-              rm -rf .git
-              git init
+
+            if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 || ! git fsck --no-progress >/dev/null 2>&1; then
+              echo "Deployment stopped: the production Git checkout is missing or corrupt. Repair it manually before deploying." >&2
+              exit 1
             fi
+            echo "Valid git repository detected."
+
             if git remote get-url origin >/dev/null 2>&1; then
               git remote remove origin
             fi
+
             git remote add origin "$REPO_URL"
             git fetch --prune origin main
-            git reset --hard origin/main
+            git cat-file -e "$DEPLOY_SHA^{commit}"
+            git reset --hard "$DEPLOY_SHA"
+            test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+
+            # Fail safely when persistent production configuration is absent.
+            # Neither .env nor the Firebase service account is stored in Git.
+            if [ ! -f "$APP_ROOT/.env" ]; then
+              echo "Production .env is missing from $APP_ROOT." >&2
+              exit 1
+            fi
+
+            # Apply the production-only security and policy flags to the
+            # persistent Hostinger environment without printing any secrets.
+            php -r '
+              $path = $argv[1];
+              $updates = [
+                  "APP_ENV" => "production",
+                  "APP_DEBUG" => "false",
+                  "SESSION_SECURE_COOKIE" => "true",
+                  "SESSION_ENCRYPT" => "true",
+                  "PRIVACY_POLICY_REVIEWED" => "true",
+              ];
+              $contents = file_get_contents($path);
+              if ($contents === false) {
+                  fwrite(STDERR, "Unable to read the production .env file.\n");
+                  exit(1);
+              }
+              foreach ($updates as $key => $value) {
+                  $pattern = "/^[ \\t]*".preg_quote($key, "/")."[ \\t]*=.*$/m";
+                  $replacement = $key."=".$value;
+                  $updated = preg_replace($pattern, $replacement, $contents, 1, $count);
+                  if ($updated === null) {
+                      fwrite(STDERR, "Unable to update the production .env file.\n");
+                      exit(1);
+                  }
+                  $contents = $count === 0
+                      ? rtrim($contents).PHP_EOL.$replacement.PHP_EOL
+                      : $updated;
+              }
+              if (file_put_contents($path, $contents, LOCK_EX) === false) {
+                  fwrite(STDERR, "Unable to write the production .env file.\n");
+                  exit(1);
+              }
+              echo "Production security and policy flags updated.\n";
+            ' "$APP_ROOT/.env"
+
+            if [ ! -f "$FIREBASE_CREDENTIALS_PATH" ]; then
+              echo "Firebase service-account file is missing from its protected server path." >&2
+              exit 1
+            fi
+
+            php -r '
+              $path = $argv[1];
+              $credentials = json_decode((string) file_get_contents($path), true);
+              if (! is_array($credentials) || ($credentials["project_id"] ?? "") !== "edonate-project") {
+                  fwrite(STDERR, "Firebase service-account project_id does not match edonate-project.\n");
+                  exit(1);
+              }
+              echo "Firebase service-account project verified.\n";
+            ' "$FIREBASE_CREDENTIALS_PATH"
+
+            # Hostinger serves DEPLOY_ROOT, while Laravel remains in APP_ROOT.
+            test -f "$DEPLOY_ROOT/public_html/index.php"
+            test -f "$DEPLOY_ROOT/public_html/.htaccess"
+
+            cd "$APP_ROOT"
+            if ! command -v composer >/dev/null 2>&1; then
+              echo "Deployment stopped: Composer is not available on the production host." >&2
+              exit 1
+            fi
+
+            # Apply the audited lock file. A successful Git update alone does not
+            # update vendor/, and can otherwise leave known-vulnerable packages live.
+            composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+
+            # The workflow clears Laravel caches explicitly below. Skip the
+            # sync script's nested cache-clear subprocess so deployment does
+            # not fail before the explicit Artisan commands run.
+            php scripts/sync-public-assets.php --web-root="$DEPLOY_ROOT" --skip-cache-clear
+
+            # Clear cached environment values before any database operation.
+            php artisan optimize:clear
+            php artisan migrate --force
+            # Every deployment performs a non-mutating dry run. Destructive
+            # anonymization is only enabled by explicitly selecting the
+            # workflow_dispatch input; normal pushes never change donor data.
+            if [ "${{ github.event.inputs.anonymize_underage_donors }}" = "true" ]; then
+              php artisan privacy:anonymize-underage-donors --confirm
+            else
+              php artisan privacy:anonymize-underage-donors
+            fi
+            php artisan config:cache
+            # Fail the deployment when the persistent production environment
+            # does not provide the Carto key used by the rendered map URL.
+            # Only the presence and length are reported; never print the key.
+            php -r '
+              require "vendor/autoload.php";
+              $app = require "bootstrap/app.php";
+              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              $key = trim((string) config("services.carto.basemap_key"));
+              if ($key === "" || $key === "YOUR_KEY") {
+                  fwrite(STDERR, "Production CARTO_BASEMAP_KEY is missing from the application .env/configuration.\n");
+                  exit(1);
+              }
+              echo "CARTO_BASEMAP_KEY loaded into cached Laravel configuration (" . strlen($key) . " characters).\n";
+            '
+            # Blocks release when legal identity/contact details, secure production
+            # settings, or the consent-receipt migration are missing. This is a
+            # technical preflight, not a substitute for counsel or a WCAG audit.
+            php artisan privacy:check
+            php artisan view:cache
+
+            # Boot the cached production configuration and resolve Firebase Auth.
+            # This validates the configured path/project without printing secrets.
+            php -r '
+              require "vendor/autoload.php";
+              $app = require "bootstrap/app.php";
+              $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+              $app->make("firebase.auth");
+              echo "Firebase Auth configuration verified.\n";
+            '
+
+            test -f "$DEPLOY_ROOT/index.php"
+            test -f "$DEPLOY_ROOT/.htaccess"
+            test -f "$APP_ROOT/vendor/autoload.php"
+            test -f "$DEPLOY_ROOT/build/manifest.json"
+            test -f "$DEPLOY_ROOT/css/privacy-accessibility.css"
+            test -f "$DEPLOY_ROOT/js/privacy-accessibility.js"
+            # The front controller resolves the application root dynamically,
+            # so do not require a hard-coded "edonate_web/" path in its source.
+            php -l "$DEPLOY_ROOT/index.php" >/dev/null
+            grep -Eq "vendor/autoload\.php" "$DEPLOY_ROOT/index.php"
+            grep -Eq "bootstrap/app\.php" "$DEPLOY_ROOT/index.php"
+            grep -Fq "RewriteRule ^ index.php" "$DEPLOY_ROOT/.htaccess"
+            php artisan route:list --path=admin/login --no-ansi | grep -Fq "admin/login"

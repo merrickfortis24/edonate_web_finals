@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reset Password | eDonate Admin</title>
+    <x-edonate-favicon />
+    <link rel="stylesheet" href="{{ asset('vendor/bootstrap/bootstrap.min.css') }}">
+    <style>
+        :root {
+            --bg-from: #750000;
+            --bg-to: #ff4e4e;
+            --panel: #ffffff;
+            --panel-muted: #f6f6f6;
+            --primary: #b60c0c;
+            --primary-dark: #850000;
+            --text-main: #1d1d1d;
+            --text-sub: #5d5d5d;
+            --input-bg: #eaeaea;
+            --shadow-card: 0 14px 28px rgba(0, 0, 0, 0.24);
+            --shadow-soft: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(160deg, var(--bg-from), var(--bg-to));
+            min-height: 100vh;
+            color: var(--text-main);
+        }
+
+        .page {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px 16px;
+        }
+
+        .module {
+            width: 100%;
+            max-width: 660px;
+            background: var(--panel);
+            border-radius: 24px;
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+        }
+
+        .module__header {
+            padding: 24px 26px;
+            background: linear-gradient(150deg, #ffefef, #ffd8d8);
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+        }
+
+        .module__brand {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 0;
+        }
+
+        .module__title {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1.15;
+            margin: 8px 0 10px;
+        }
+
+        .module__subtitle {
+            font-size: 15px;
+            line-height: 1.55;
+            color: var(--text-sub);
+            margin: 0;
+            max-width: 500px;
+        }
+
+        .module__body {
+            padding: 24px 26px 28px;
+            background: var(--panel-muted);
+        }
+
+        .form-label {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: #434343;
+        }
+
+        .form-control {
+            height: 44px;
+            border: none;
+            border-radius: 10px;
+            background: var(--input-bg);
+            box-shadow: inset 0 4px 4px rgba(0, 0, 0, 0.15);
+            font-size: 14px;
+        }
+
+        .form-control:focus {
+            box-shadow: 0 0 0 0.2rem rgba(182, 12, 12, 0.18);
+        }
+
+        .btn-reset {
+            height: 44px;
+            width: 100%;
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            background: linear-gradient(120deg, var(--primary), var(--primary-dark));
+            box-shadow: var(--shadow-soft);
+        }
+
+        .btn-reset:hover {
+            opacity: 0.92;
+        }
+
+        .module__links {
+            margin-top: 14px;
+        }
+
+        .module__links a {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .module__links a:hover {
+            text-decoration: underline;
+        }
+
+        .alert {
+            border-radius: 10px;
+            font-size: 13px;
+            margin-bottom: 14px;
+        }
+    </style>
+    <x-privacy-assets />
+</head>
+<body>
+<a class="ed-skip-link" href="#main-content">Skip to main content</a>
+<main id="main-content" tabindex="-1" class="page" role="main">
+    <section class="module" aria-label="Reset password module">
+        <header class="module__header">
+            <p class="module__brand">eDonate Admin Portal</p>
+            <h1 class="module__title">Set a new password</h1>
+            <p class="module__subtitle">Create a strong password for your admin account.</p>
+        </header>
+
+        <div class="module__body">
+            @if ($errors->any())
+                <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
+            @endif
+
+            <form method="POST" action="{{ route('admin.password.reset') }}" novalidate>
+                @csrf
+                <input type="hidden" name="email" value="{{ $email }}">
+                <input type="hidden" name="token" value="{{ $token }}">
+
+                <label for="password" class="form-label">New Password</label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    class="form-control"
+                    placeholder="Enter new password"
+                    autocomplete="new-password"
+                    required
+                >
+
+                <label for="password_confirmation" class="form-label mt-3">Confirm Password</label>
+                <input
+                    type="password"
+                    id="password_confirmation"
+                    name="password_confirmation"
+                    class="form-control"
+                    placeholder="Confirm new password"
+                    autocomplete="new-password"
+                    required
+                >
+
+                <div class="mt-3">
+                    <button type="submit" class="btn-reset btn">Update Password</button>
+                </div>
+            </form>
+
+            <div class="module__links">
+                <a href="{{ route('admin.login') }}">Back to Admin Login</a>
+            </div>
+        </div>
+    </section>
+</main>
+<script src="{{ asset('vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+    <x-privacy-controls />
+</body>
+</html>
