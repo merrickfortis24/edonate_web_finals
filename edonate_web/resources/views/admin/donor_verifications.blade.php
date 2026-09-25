@@ -123,11 +123,11 @@
                             <td class="text-nowrap">{{ $verification->reviewed_at ? \Carbon\Carbon::parse($verification->reviewed_at)->format('M j, Y g:i A') : '-' }}</td>
                             <td>
                                 <div class="table-actions d-flex flex-wrap gap-2">
-                                    <a href="{{ route('admin.donor-verifications.document', $verification->verification_id) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">View Document</a>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#documentModal{{ $verification->verification_id }}">View Document</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#historyModal{{ $verification->verification_id }}">History</button>
 
                                     @if ($verification->status === 'pending')
-                                        <form method="POST" action="{{ route('admin.donor-verifications.approve', $verification->verification_id) }}" onsubmit="return confirm('Approve this donor verification?');">
+                                        <form method="POST" action="{{ route('admin.donor-verifications.approve', $verification->verification_id) }}" class="approve-form">
                                             @csrf
                                             @method('PATCH')
                                             <button type="submit" class="btn btn-sm btn-success">Approve</button>
@@ -154,6 +154,24 @@
     @php
         $historyItems = $histories[(int) $verification->donor_id] ?? collect();
     @endphp
+
+    <div class="modal fade" id="documentModal{{ $verification->verification_id }}" tabindex="-1" aria-labelledby="documentModalLabel{{ $verification->verification_id }}" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="documentModalLabel{{ $verification->verification_id }}">Verification Document - {{ trim($verification->donor_name) ?: 'Unknown Donor' }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body text-center p-0" style="background: #f8f9fa;">
+                    <iframe src="{{ route('admin.donor-verifications.document', $verification->verification_id) }}" style="width: 100%; height: 70vh; border: none; display: block;"></iframe>
+                </div>
+                <div class="modal-footer">
+                    <a href="{{ route('admin.donor-verifications.document', $verification->verification_id) }}" target="_blank" rel="noopener" class="btn btn-outline-primary">Open in New Tab</a>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="modal fade" id="rejectModal{{ $verification->verification_id }}" tabindex="-1" aria-labelledby="rejectModalLabel{{ $verification->verification_id }}" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -222,4 +240,32 @@
         </div>
     </div>
 @endforeach
+
+@push('admin_scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const approveForms = document.querySelectorAll('.approve-form');
+        approveForms.forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                Swal.fire({
+                    title: 'Approve Donor Verification?',
+                    text: 'Are you sure you want to approve this donor?',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#28a745',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Yes, Approve',
+                    cancelButtonText: 'Cancel'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        form.submit();
+                    }
+                });
+            });
+        });
+    });
+</script>
+@endpush
+
 @endsection
