@@ -75,8 +75,10 @@ class LegalIdentityAndMinimumAgeTest extends TestCase
             ->assertOk()
             ->assertSee('id="googleAgeConfirmed"', false)
             ->assertSee('Select Sign in with Google once to choose your account.')
-            ->assertSee('signInWithRedirect')
-            ->assertSee('getRedirectResult')
+            ->assertSee('signInWithGoogle')
+            ->assertSee('Preparing Google sign-in...')
+            ->assertDontSee('signInWithRedirect')
+            ->assertDontSee('getRedirectResult')
             ->assertSeeText('If Google creates a new eDonate account, I confirm that I am at least 18 years old.');
     }
 
