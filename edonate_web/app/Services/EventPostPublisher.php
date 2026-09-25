@@ -19,7 +19,7 @@ class EventPostPublisher
         $requiredColumns = [
             'id', 'type', 'author', 'author_avatar', 'author_badge', 'content',
             'image', 'likes', 'blood_type', 'hospital', 'event_date',
-            'event_location', 'created_at', 'event_id',
+            'event_location', 'created_at', 'event_id', 'is_donation',
         ];
 
         if (! Schema::hasTable('posts') || ! Schema::hasColumns('posts', $requiredColumns)) {
@@ -49,13 +49,13 @@ class EventPostPublisher
             $address !== '' ? 'Address: ' . $address : null,
             '👥 Capacity: ' . number_format($capacity) . ' donor' . ($capacity === 1 ? '' : 's'),
             'Status: ' . $statusLabel,
-            'Book appointment: ' . route('donor.book-appointment', ['event_id' => (int) $event->event_id]),
-            'Booking is available only to eligible donors while this event is open and has capacity.',
+            'Only eligible donors may donate while this event is open and has capacity.',
         ]));
 
         $post = [
             'event_id' => (int) $event->event_id,
             'type' => 'event',
+            'is_donation' => true,
             'author' => 'eDonate',
             'author_avatar' => url('/images/edonate-logo.png'),
             'author_badge' => 'Official Event',

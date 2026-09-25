@@ -21,6 +21,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->buildSchema();
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));
         (require database_path('migrations/2026_09_25_000001_link_event_posts_to_donation_events.php'))->up();
+        (require database_path('migrations/2026_09_25_000002_add_is_donation_to_posts_table.php'))->up();
         (require database_path('migrations/2026_09_08_000000_create_privacy_receipts_table.php'))->up();
     }
 
@@ -50,6 +51,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertDatabaseHas('posts', [
             'event_id' => $eventId,
             'type' => 'event',
+            'is_donation' => true,
             'author' => 'eDonate',
             'event_location' => 'Lipa City Hall',
         ]);
@@ -58,7 +60,28 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertStringContainsString('City Hall Blood Drive', $post->content);
         $this->assertStringContainsString('Capacity: 50 donors', $post->content);
         $this->assertStringContainsString('Status: Open', $post->content);
-        $this->assertStringContainsString(route('donor.book-appointment', ['event_id' => $eventId]), $post->content);
+        $this->assertStringNotContainsString('Book appointment:', $post->content);
+        $this->assertStringContainsString('Only eligible donors may donate', $post->content);
+    }
+
+    public function test_posts_migration_marks_legacy_event_posts_and_removes_the_inline_booking_link(): void
+    {
+        $postId = DB::table('posts')->insertGetId([
+            'type' => 'event',
+            'author' => 'eDonate',
+            'author_avatar' => 'logo.png',
+            'content' => "Legacy blood drive\nBook appointment: https://edonate.online/appointments/book?event_id=18\nBooking guidance stays here.",
+            'created_at' => now(),
+        ]);
+        DB::table('posts')->where('id', $postId)->update(['is_donation' => false]);
+
+        (require database_path('migrations/2026_09_25_000002_add_is_donation_to_posts_table.php'))->up();
+
+        $post = DB::table('posts')->where('id', $postId)->first();
+        $this->assertSame(1, (int) $post->is_donation);
+        $this->assertStringContainsString('Legacy blood drive', $post->content);
+        $this->assertStringContainsString('Booking guidance stays here.', $post->content);
+        $this->assertStringNotContainsString('Book appointment:', $post->content);
     }
 
     public function test_edit_updates_the_linked_event_post_without_creating_a_duplicate(): void
@@ -97,6 +120,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertSame(7, (int) $post->likes);
         $this->assertSame($originalPostCreatedAt, $post->created_at);
         $this->assertSame('New Venue', $post->event_location);
+        $this->assertSame(1, (int) $post->is_donation);
         $this->assertStringContainsString('Updated Community Drive', $post->content);
         $this->assertStringContainsString('Capacity: 35 donors', $post->content);
         $this->assertStringNotContainsString('Original Drive', $post->content);
