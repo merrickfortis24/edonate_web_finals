@@ -13,11 +13,15 @@ return new class extends Migration
             throw new RuntimeException('The donors, appointments, and admins tables must exist before appointment restrictions are installed.');
         }
 
-        // Legacy production databases may have a signed donors.donor_id even
-        // though newer Laravel schemas use an unsigned incrementing key.
-        $donorIdColumnType = $this->matchingIntegerColumnMethod('donors', 'donor_id');
+        // Legacy production keys can differ in signedness from fresh Laravel
+        // migrations. Match new foreign-key columns to the deployed schema.
+        $foreignKeyColumnTypes = [
+            'donor_id' => $this->matchingIntegerColumnMethod('donors', 'donor_id'),
+            'appointment_id' => $this->matchingIntegerColumnMethod('appointments', 'appointment_id'),
+            'admin_id' => $this->matchingIntegerColumnMethod('admins', 'admin_id'),
+        ];
 
-        Schema::table('donors', function (Blueprint $table): void {
+        Schema::table('donors', function (Blueprint $table) use ($foreignKeyColumnTypes): void {
             if (! Schema::hasColumn('donors', 'appointment_restricted')) {
                 $table->boolean('appointment_restricted')->default(false);
             }
@@ -34,7 +38,7 @@ return new class extends Migration
                 $table->dateTime('restricted_at')->nullable();
             }
             if (! Schema::hasColumn('donors', 'restricted_by')) {
-                $table->integer('restricted_by')->nullable();
+                $table->{$foreignKeyColumnTypes['admin_id']}('restricted_by')->nullable();
                 $table->foreign('restricted_by', 'fk_donors_appointment_restricted_by')
                     ->references('admin_id')->on('admins')->nullOnDelete();
             }
@@ -42,17 +46,17 @@ return new class extends Migration
                 $table->dateTime('restriction_lifted_at')->nullable();
             }
             if (! Schema::hasColumn('donors', 'restriction_lifted_by')) {
-                $table->integer('restriction_lifted_by')->nullable();
+                $table->{$foreignKeyColumnTypes['admin_id']}('restriction_lifted_by')->nullable();
                 $table->foreign('restriction_lifted_by', 'fk_donors_appointment_restriction_lifted_by')
                     ->references('admin_id')->on('admins')->nullOnDelete();
             }
         });
 
         if (! Schema::hasTable('appointment_cancellations')) {
-            Schema::create('appointment_cancellations', function (Blueprint $table) use ($donorIdColumnType): void {
+            Schema::create('appointment_cancellations', function (Blueprint $table) use ($foreignKeyColumnTypes): void {
                 $table->increments('cancellation_id');
-                $table->{$donorIdColumnType}('donor_id');
-                $table->unsignedInteger('appointment_id');
+                $table->{$foreignKeyColumnTypes['donor_id']}('donor_id');
+                $table->{$foreignKeyColumnTypes['appointment_id']}('appointment_id');
                 $table->dateTime('cancelled_at');
                 $table->text('reason');
                 $table->string('cancelled_by', 20);
@@ -68,15 +72,15 @@ return new class extends Migration
         }
 
         if (! Schema::hasTable('appointment_restrictions')) {
-            Schema::create('appointment_restrictions', function (Blueprint $table) use ($donorIdColumnType): void {
+            Schema::create('appointment_restrictions', function (Blueprint $table) use ($foreignKeyColumnTypes): void {
                 $table->increments('restriction_id');
-                $table->{$donorIdColumnType}('donor_id');
+                $table->{$foreignKeyColumnTypes['donor_id']}('donor_id');
                 $table->string('status', 20)->default('active');
                 $table->text('restriction_reason');
                 $table->dateTime('restricted_at');
-                $table->integer('restricted_by')->nullable();
+                $table->{$foreignKeyColumnTypes['admin_id']}('restricted_by')->nullable();
                 $table->dateTime('lifted_at')->nullable();
-                $table->integer('lifted_by')->nullable();
+                $table->{$foreignKeyColumnTypes['admin_id']}('lifted_by')->nullable();
                 $table->text('admin_notes')->nullable();
                 $table->timestamps();
 
@@ -91,15 +95,15 @@ return new class extends Migration
         }
 
         if (! Schema::hasTable('appointment_restriction_appeals')) {
-            Schema::create('appointment_restriction_appeals', function (Blueprint $table) use ($donorIdColumnType): void {
+            Schema::create('appointment_restriction_appeals', function (Blueprint $table) use ($foreignKeyColumnTypes): void {
                 $table->increments('appeal_id');
-                $table->{$donorIdColumnType}('donor_id');
+                $table->{$foreignKeyColumnTypes['donor_id']}('donor_id');
                 $table->unsignedInteger('restriction_id');
                 $table->text('justification');
                 $table->string('status', 20)->default('pending');
                 $table->dateTime('submitted_at');
                 $table->dateTime('reviewed_at')->nullable();
-                $table->integer('reviewed_by')->nullable();
+                $table->{$foreignKeyColumnTypes['admin_id']}('reviewed_by')->nullable();
                 $table->text('admin_notes')->nullable();
                 $table->timestamps();
 
@@ -115,11 +119,11 @@ return new class extends Migration
         }
 
         if (! Schema::hasTable('appointment_restriction_reviews')) {
-            Schema::create('appointment_restriction_reviews', function (Blueprint $table): void {
+            Schema::create('appointment_restriction_reviews', function (Blueprint $table) use ($foreignKeyColumnTypes): void {
                 $table->increments('review_id');
                 $table->unsignedInteger('restriction_id');
                 $table->unsignedInteger('appeal_id')->nullable();
-                $table->integer('admin_id')->nullable();
+                $table->{$foreignKeyColumnTypes['admin_id']}('admin_id')->nullable();
                 $table->string('action', 30);
                 $table->text('notes')->nullable();
                 $table->dateTime('reviewed_at');
@@ -138,8 +142,9 @@ return new class extends Migration
         // A failed MySQL ALTER TABLE can leave the just-created table in place
         // without its foreign keys. Repair such partial installs in place so a
         // retry never needs to drop tables or discard cancellation history.
-        $this->matchExistingDonorKeyTypes();
-        $this->ensureMysqlForeignKeys([
+        $foreignKeys = [
+            ['donors', 'restricted_by', 'admins', 'admin_id', 'fk_donors_appointment_restricted_by', 'null'],
+            ['donors', 'restriction_lifted_by', 'admins', 'admin_id', 'fk_donors_appointment_restriction_lifted_by', 'null'],
             ['appointment_cancellations', 'donor_id', 'donors', 'donor_id', 'fk_appointment_cancellations_donor', 'restrict'],
             ['appointment_cancellations', 'appointment_id', 'appointments', 'appointment_id', 'fk_appointment_cancellations_appointment', 'restrict'],
             ['appointment_restrictions', 'donor_id', 'donors', 'donor_id', 'fk_appointment_restrictions_donor', 'restrict'],
@@ -151,7 +156,10 @@ return new class extends Migration
             ['appointment_restriction_reviews', 'restriction_id', 'appointment_restrictions', 'restriction_id', 'fk_appointment_reviews_restriction', 'restrict'],
             ['appointment_restriction_reviews', 'appeal_id', 'appointment_restriction_appeals', 'appeal_id', 'fk_appointment_reviews_appeal', 'null'],
             ['appointment_restriction_reviews', 'admin_id', 'admins', 'admin_id', 'fk_appointment_reviews_admin', 'null'],
-        ]);
+        ];
+
+        $this->matchExistingForeignKeyTypes($foreignKeys);
+        $this->ensureMysqlForeignKeys($foreignKeys);
 
         $this->ensureMysqlIndexes([
             ['appointment_cancellations', ['donor_id', 'cancelled_at'], 'idx_appointment_cancellations_donor_date'],
@@ -204,15 +212,15 @@ return new class extends Migration
         return $metadata;
     }
 
-    private function matchExistingDonorKeyTypes(): void
+    private function matchExistingForeignKeyTypes(array $foreignKeys): void
     {
         if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
             return;
         }
 
-        foreach (['appointment_cancellations', 'appointment_restrictions', 'appointment_restriction_appeals'] as $table) {
-            $parent = $this->mysqlColumnMetadata('donors', 'donor_id');
-            $child = $this->mysqlColumnMetadata($table, 'donor_id');
+        foreach ($foreignKeys as [$table, $column, $referencedTable, $referencedColumn]) {
+            $parent = $this->mysqlColumnMetadata($referencedTable, $referencedColumn);
+            $child = $this->mysqlColumnMetadata($table, $column);
             $parentType = $this->normalizedMysqlIntegerType($parent);
             $childType = $this->normalizedMysqlIntegerType($child);
 
@@ -221,7 +229,7 @@ return new class extends Migration
             }
 
             $nullable = strtoupper((string) $child->is_nullable) === 'YES' ? 'NULL' : 'NOT NULL';
-            DB::statement("ALTER TABLE `{$table}` MODIFY COLUMN `donor_id` {$parentType} {$nullable}");
+            DB::statement("ALTER TABLE `{$table}` MODIFY COLUMN `{$column}` {$parentType} {$nullable}");
         }
     }
 
