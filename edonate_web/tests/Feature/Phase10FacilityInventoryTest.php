@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureAdminAuthenticated;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Models\Facility;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -15,28 +18,28 @@ class Phase10FacilityInventoryTest extends TestCase
     {
         parent::setUp();
         $this->buildSchema();
+        Http::preventStrayRequests();
     }
 
     public function test_admin_can_create_a_valid_facility_and_invalid_type_is_rejected(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class]);
 
-        $this->withSession($this->adminSession())->postJson('/admin/facilities', [
+        $this->withSession($this->adminSession())->postJson('/admin/facilities', array_merge($this->validFacility(), [
             'facility_name' => 'Lipa Community Blood Bank',
             'facility_type' => 'blood_bank',
             'address' => 'P. Torres Street',
             'barangay_name' => 'Poblacion',
             'city' => 'Lipa City',
             'province' => 'Batangas',
-            'latitude' => 13.9419,
-            'longitude' => 121.1644,
             'contact_number' => '09170000000',
-            'status' => 'active',
-        ])->assertCreated();
+        ]))->assertCreated()->assertJsonPath('facility.mapped', true);
 
         $this->assertDatabaseHas('facilities', [
             'facility_name' => 'Lipa Community Blood Bank',
             'facility_type' => 'blood_bank',
+            'latitude' => 13.9419,
+            'longitude' => 121.1644,
         ]);
         $this->assertDatabaseHas('audit_logs', ['action_type' => 'facility_created']);
 
@@ -53,6 +56,7 @@ class Phase10FacilityInventoryTest extends TestCase
             'facility_type' => 'clinic',
             'city' => 'Lipa City',
             'province' => 'Batangas',
+            'location_pin_selected' => '1',
             'latitude' => 91,
             'longitude' => 181,
             'status' => 'active',
@@ -218,6 +222,128 @@ class Phase10FacilityInventoryTest extends TestCase
             ->assertJsonCount(1, 'facilities');
     }
 
+    public function test_facility_creation_requires_a_manual_pin_and_saves_address_and_coordinates(): void
+    {
+        $this->withoutMiddleware(EnsureAdminAuthenticated::class);
+        $session = $this->adminSession();
+        $this->withSession($session)->postJson('/admin/facilities', array_merge($this->validFacility(), [
+            'location_pin_selected' => '0', 'latitude' => '', 'longitude' => '',
+        ]))->assertUnprocessable()->assertJsonValidationErrors('location_pin_selected');
+        $this->assertDatabaseCount('facilities', 0);
+
+        $payload = array_merge($this->validFacility(), [
+            'facility_name' => 'Manual Pin Blood Bank', 'address' => '45 P. Torres Street',
+            'barangay_name' => 'Poblacion', 'city' => 'Lipa City', 'province' => 'Batangas',
+            'latitude' => '14.1200000', 'longitude' => '121.2500000',
+        ]);
+        $this->withSession($session)->postJson('/admin/facilities', $payload)
+            ->assertCreated()->assertJsonPath('facility.mapped', true)
+            ->assertJsonPath('facility.latitude', 14.12)->assertJsonPath('facility.longitude', 121.25);
+
+        $this->assertDatabaseHas('facilities', [
+            'facility_name' => 'Manual Pin Blood Bank', 'address' => '45 P. Torres Street',
+            'barangay_name' => 'Poblacion', 'city' => 'Lipa City', 'province' => 'Batangas',
+            'latitude' => 14.12, 'longitude' => 121.25,
+        ]);
+        $this->getJson('/admin/blood-availability/facilities')
+            ->assertJsonPath('map_points.0.latitude', 14.12)->assertJsonPath('map_points.0.longitude', 121.25);
+        Http::assertNothingSent();
+    }
+
+    public function test_manual_location_fields_require_a_valid_address_and_map_coordinate_pair(): void
+    {
+        $this->withoutMiddleware(EnsureAdminAuthenticated::class);
+        $payload = array_merge($this->validFacility(), ['city' => '', 'province' => '']);
+        $this->withSession($this->adminSession())->postJson('/admin/facilities', $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors(['city', 'province']);
+        $this->postJson('/admin/facilities', array_merge($this->validFacility(), [
+            'latitude' => '', 'longitude' => '121.2',
+        ]))->assertUnprocessable()->assertJsonValidationErrors('latitude');
+        $this->postJson('/admin/facilities', array_merge($this->validFacility(), [
+            'latitude' => '0', 'longitude' => '0',
+        ]))->assertUnprocessable()->assertJsonValidationErrors('location_pin_selected');
+        $this->assertDatabaseCount('facilities', 0);
+    }
+
+    public function test_edit_saves_manual_address_and_adjusted_pin_used_by_facility_map(): void
+    {
+        $id = $this->createFacility();
+        $this->withoutMiddleware(EnsureAdminAuthenticated::class);
+        $payload = array_merge($this->validFacility(), [
+            'facility_name' => 'Updated Hospital', 'address' => 'New Main Road', 'barangay_name' => 'Barangay 2',
+            'city' => 'Lipa City', 'province' => 'Batangas', 'latitude' => '14.12', 'longitude' => '121.25',
+        ]);
+        $this->withSession($this->adminSession())->putJson("/admin/facilities/{$id}", $payload)
+            ->assertOk()->assertJsonPath('facility.latitude', 14.12)->assertJsonPath('facility.longitude', 121.25);
+        $this->assertDatabaseHas('facilities', [
+            'facility_id' => $id, 'address' => 'New Main Road', 'barangay_name' => 'Barangay 2',
+            'latitude' => 14.12, 'longitude' => 121.25,
+        ]);
+        $this->getJson('/admin/blood-availability/facilities')
+            ->assertJsonPath('map_points.0.latitude', 14.12)->assertJsonPath('map_points.0.longitude', 121.25);
+        $this->assertDatabaseCount('facilities', 1);
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'facility_updated']);
+    }
+
+    public function test_staff_cannot_create_a_facility_and_google_lookup_routes_are_gone(): void
+    {
+        $this->withoutMiddleware(EnsureAdminAuthenticated::class);
+        $this->withSession($this->adminSession('staff', 2))->postJson('/admin/facilities', $this->validFacility())
+            ->assertRedirect(route('admin.unauthorized'));
+        $this->withSession($this->adminSession())->postJson('/admin/facilities/places/autocomplete', [])
+            ->assertNotFound();
+        $this->withSession($this->adminSession())->postJson('/admin/facilities/places/select', [])
+            ->assertNotFound();
+        Http::assertNothingSent();
+    }
+
+    public function test_database_failure_does_not_expose_internal_exception_and_pin_payload_can_be_retried(): void
+    {
+        $this->withoutMiddleware(EnsureAdminAuthenticated::class);
+        Facility::creating(function (): void {
+            throw new QueryException('sqlite', 'PRIVATE SQL', [], new \PDOException('PRIVATE DATABASE ERROR'));
+        });
+        try {
+            $this->withSession($this->adminSession())->postJson('/admin/facilities', $this->validFacility())
+                ->assertStatus(500)->assertDontSee('PRIVATE SQL')->assertDontSee('PRIVATE DATABASE ERROR');
+        } finally {
+            Facility::flushEventListeners();
+        }
+        $this->postJson('/admin/facilities', $this->validFacility())->assertCreated();
+        $this->assertDatabaseCount('facilities', 1);
+    }
+
+    public function test_status_toggles_map_visibility_without_losing_the_saved_pin(): void
+    {
+        $id = $this->createFacility();
+        $this->withoutMiddleware(EnsureAdminAuthenticated::class);
+        $this->withSession($this->adminSession())->patchJson("/admin/facilities/{$id}/status", ['status' => 'inactive'])->assertOk();
+        $this->getJson('/admin/facilities/data?status=inactive')->assertJsonPath('summary.inactive', 1)->assertJsonPath('data.0.status', 'inactive');
+        $this->getJson('/admin/blood-availability/facilities')->assertJsonCount(0, 'map_points');
+        $this->patchJson("/admin/facilities/{$id}/status", ['status' => 'active'])->assertOk();
+        $this->getJson('/admin/blood-availability/facilities')->assertJsonCount(1, 'map_points');
+        $this->assertDatabaseHas('facilities', ['facility_id' => $id, 'latitude' => 13.9419, 'longitude' => 121.1644]);
+        Http::assertNothingSent();
+    }
+
+    public function test_location_migration_is_additive_and_reentrant(): void
+    {
+        $id = $this->createFacility();
+        $migration = require database_path('migrations/2026_09_28_160000_repair_facility_identity.php');
+        $migration->up();
+        $migration->up();
+        $migration->down();
+        $this->assertDatabaseHas('facilities', ['facility_id' => $id, 'latitude' => 13.9419]);
+        $this->assertTrue(Schema::hasColumn('facilities', 'latitude'));
+    }
+
+    private function validFacility(): array
+    {
+        return ['facility_name' => 'Test Facility', 'facility_type' => 'clinic', 'address' => 'Test address',
+            'barangay_name' => 'Barangay 1', 'city' => 'Lipa City', 'province' => 'Batangas', 'status' => 'active',
+            'location_pin_selected' => '1', 'latitude' => '13.9419', 'longitude' => '121.1644', 'location_confirmed' => true];
+    }
+
     /** @return array<string, mixed> */
     private function adminSession(string $role = 'admin', int $id = 1): array
     {
@@ -225,7 +351,7 @@ class Phase10FacilityInventoryTest extends TestCase
             'admin_id' => $id,
             'admin_role' => $role,
             'admin_username' => $role,
-            'admin_full_name' => ucfirst($role) . ' User',
+            'admin_full_name' => ucfirst($role).' User',
         ];
     }
 

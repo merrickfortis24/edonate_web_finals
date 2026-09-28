@@ -16,7 +16,7 @@
 @section('header_subtitle', 'Database-backed operational summaries with privacy-safe exports')
 
 @section('header_actions')
-    <a class="report-header-export btn" id="reportHeaderExport" href="{{ $reportApi['exportUrl'] ?? '#' }}" aria-label="Export aggregate reports">
+    <a class="report-header-export btn" id="reportHeaderExport" href="{{ $reportApi['initialExportUrl'] ?? $reportApi['exportUrl'] ?? '#' }}" aria-label="Export aggregate reports">
         <i class="bi bi-download me-2" aria-hidden="true"></i>
         Export Reports
     </a>
@@ -86,8 +86,13 @@
                 </div>
             </section>
 
+            <div class="alert alert-danger mt-3 d-none" id="reportFilterError" role="alert" aria-live="polite"></div>
+
             <div class="report-period-note small text-muted mt-3" id="reportPeriodNote">
                 Showing aggregate data for {{ data_get($period, 'label', 'the selected period') }}.
+            </div>
+            <div class="alert alert-info mt-2 d-none" id="reportEmptyState" role="status" aria-live="polite">
+                No matching activity was found for this date range and the selected filters. The inventory below is a current snapshot.
             </div>
 
             <section class="report-stats row g-3 mt-1" aria-label="Report summary metrics">
@@ -116,11 +121,12 @@
                 <div class="col-12 col-xl-6">
                     <article class="report-chart-card h-100">
                         <h2 class="report-chart-card__title">Donors and Completed Donations</h2>
+                        <p class="report-chart-card__caption" id="reportTrendCaption">Both series use the selected period and filters.</p>
                         <div class="report-chart-card__canvas-wrap">
                             <canvas id="reportsLineChart" aria-label="Donors and completed donations trend chart"></canvas>
                         </div>
                         <div class="report-chart-card__legend" aria-label="Trend chart legend">
-                            <span class="report-chart-card__legend-item"><span class="report-chart-card__dot report-chart-card__dot--red" aria-hidden="true"></span>Donors registered</span>
+                            <span class="report-chart-card__legend-item" id="reportDonorTrendLegend"><span class="report-chart-card__dot report-chart-card__dot--red" aria-hidden="true"></span>Donors registered</span>
                             <span class="report-chart-card__legend-item"><span class="report-chart-card__dot report-chart-card__dot--pink" aria-hidden="true"></span>Completed donations</span>
                         </div>
                     </article>
@@ -184,6 +190,10 @@
         var inventoryBody = document.getElementById('reportInventoryBody');
         var periodNote = document.getElementById('reportPeriodNote');
         var distributionCaption = document.getElementById('reportDistributionCaption');
+        var trendCaption = document.getElementById('reportTrendCaption');
+        var donorTrendLegend = document.getElementById('reportDonorTrendLegend');
+        var filterError = document.getElementById('reportFilterError');
+        var emptyState = document.getElementById('reportEmptyState');
 
         function escapeHtml(value) {
             return String(value === null || typeof value === 'undefined' ? '' : value)
@@ -213,8 +223,64 @@
 
         function updateExportLink() {
             if (headerExport && exportUrl) {
+                var customRangeInvalid = rangeFilter && rangeFilter.value === 'custom'
+                    && (!startDate || !endDate || !startDate.value || !endDate.value || endDate.value < startDate.value);
+                if (customRangeInvalid) {
+                    headerExport.href = '#';
+                    headerExport.setAttribute('aria-disabled', 'true');
+                    headerExport.setAttribute('tabindex', '-1');
+                    headerExport.classList.add('disabled');
+                    return;
+                }
                 var query = queryParams().toString();
                 headerExport.href = exportUrl + (query ? '?' + query : '');
+                headerExport.removeAttribute('aria-disabled');
+                headerExport.classList.remove('disabled');
+                headerExport.removeAttribute('tabindex');
+            }
+        }
+
+        if (headerExport) {
+            headerExport.addEventListener('click', function (event) {
+                if (headerExport.getAttribute('aria-disabled') === 'true') event.preventDefault();
+            });
+        }
+
+        function showFilterError(message) {
+            if (!filterError) return;
+            filterError.textContent = message;
+            filterError.classList.toggle('d-none', !message);
+        }
+
+        function validateFilters() {
+            if (rangeFilter && rangeFilter.value === 'custom') {
+                if (!startDate || !startDate.value) {
+                    showFilterError('Choose a start date for the custom report range.');
+                    if (startDate) startDate.focus();
+                    return false;
+                }
+                if (!endDate || !endDate.value) {
+                    showFilterError('Choose an end date for the custom report range.');
+                    if (endDate) endDate.focus();
+                    return false;
+                }
+                if (endDate.value < startDate.value) {
+                    showFilterError('The end date must be on or after the start date.');
+                    endDate.focus();
+                    return false;
+                }
+            }
+            showFilterError('');
+            return true;
+        }
+
+        function syncPageUrl(query, fromHistory) {
+            var nextUrl = window.location.pathname + (query ? '?' + query : '');
+            if (window.location.pathname + window.location.search === nextUrl) return;
+            if (fromHistory) {
+                window.history.replaceState({ reportFilters: true }, '', nextUrl);
+            } else {
+                window.history.pushState({ reportFilters: true }, '', nextUrl);
             }
         }
 
@@ -272,7 +338,7 @@
                 ctx.fillText(label, x, h - bottom + 8);
             });
             function series(values, color) {
-                if (!labels.length) return;
+                if (!labels.length || !values.length) return;
                 var points = values.map(function (value, index) {
                     return { x: left + (chartW / Math.max(1, labels.length - 1)) * index, y: top + chartH - ((Number(value) || 0) / maxValue) * chartH };
                 });
@@ -320,7 +386,7 @@
             document.querySelectorAll('[data-report-metric]').forEach(function (element) {
                 var key = element.getAttribute('data-report-metric');
                 var metricAvailability = reportPayload.availability && reportPayload.availability.summary;
-                element.textContent = metricAvailability && metricAvailability[key] === false
+                element.textContent = reportPayload.error || (metricAvailability && metricAvailability[key] === false)
                     ? 'N/A'
                     : number(summary[key], key === 'success_rate' ? 1 : 0) + (key === 'success_rate' ? '%' : '');
             });
@@ -331,12 +397,22 @@
                     : 'Selected period';
             });
             var period = reportPayload.period || {};
+            var trend = reportPayload.trend || {};
+            if (trendCaption) trendCaption.textContent = reportPayload.error
+                ? 'Trend data is temporarily unavailable.'
+                : (trend.donors_available === false
+                    ? (trend.donors_message || 'Donor trend is unavailable for the selected filters.')
+                    : 'Both series use the selected period and filters.');
+            if (donorTrendLegend) donorTrendLegend.classList.toggle('d-none', reportPayload.error || trend.donors_available === false);
             if (periodNote) periodNote.textContent = reportPayload.error
                 ? (reportPayload.error_message || 'Report data is temporarily unavailable.')
                 : 'Showing aggregate data for ' + (period.label || 'the selected period') + '.';
             if (reportPayload.error) {
                 if (distributionCaption) distributionCaption.textContent = 'Distribution data is temporarily unavailable.';
+                if (emptyState) emptyState.classList.add('d-none');
                 renderInventory();
+                drawTrend();
+                drawDistribution();
                 updateExportLink();
                 return;
             }
@@ -346,30 +422,69 @@
                 snapshotNote.textContent = 'Current inventory snapshot as of ' + (Number.isNaN(snapshotTime.getTime()) ? reportPayload.inventory_snapshot_at : snapshotTime.toLocaleString()) + '. Open request demand is donor count, not blood units.';
             }
             var distribution = reportPayload.distribution || {};
-            if (distributionCaption) distributionCaption.textContent = 'Verified records: ' + number(distribution.verified_total) + '. Self-reported: ' + number(distribution.self_reported_total) + '. Unknown: ' + number(distribution.unknown_total) + '.';
+            if (distributionCaption) distributionCaption.textContent = distribution.available === false
+                ? (distribution.message || 'Distribution data is unavailable for the selected filters.')
+                : 'Verified records: ' + number(distribution.verified_total) + '. Self-reported: ' + number(distribution.self_reported_total) + '. Unknown: ' + number(distribution.unknown_total) + '.';
+            if (emptyState) {
+                var activityKeys = ['total_donations', 'donors_in_period', 'appointments_in_period', 'open_requests', 'fulfilled_requests', 'events_in_period'];
+                var availability = reportPayload.availability && reportPayload.availability.summary || {};
+                var hasAvailableActivity = activityKeys.some(function (key) {
+                    return availability[key] !== false && summary[key] !== null && typeof summary[key] !== 'undefined';
+                });
+                var hasActivity = activityKeys.some(function (key) {
+                    return availability[key] !== false && Number(summary[key] || 0) > 0;
+                });
+                emptyState.classList.toggle('d-none', !hasAvailableActivity || hasActivity);
+            }
             renderInventory(); drawTrend(); drawDistribution(); updateExportLink();
         }
 
-        function fetchReport() {
-            if (!dataUrl) return;
+        function fetchReport(fromHistory) {
+            if (!dataUrl || !validateFilters()) return;
             var query = queryParams().toString();
+            syncPageUrl(query, Boolean(fromHistory));
             document.body.classList.add('report-loading');
             fetch(dataUrl + (query ? '?' + query : ''), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
-                .then(function (response) { return response.json().then(function (body) { if (!response.ok) throw new Error(body.message || 'Unable to load report data.'); return body; }); })
-                .then(function (body) { reportPayload = body; render(); })
-                .catch(function () {
-                    document.querySelectorAll('[data-report-metric]').forEach(function (element) { element.textContent = 'N/A'; });
-                    document.querySelectorAll('[data-report-note]').forEach(function (element) { element.textContent = 'Unable to load'; });
-                    if (periodNote) periodNote.textContent = 'Report data is temporarily unavailable. Please try again later.';
-                    if (inventoryBody) inventoryBody.innerHTML = '<tr><td colspan="5" class="text-center text-warning py-4">Inventory data is temporarily unavailable.</td></tr>';
+                .then(function (response) { return response.json().then(function (body) {
+                    if (!response.ok) {
+                        var validationMessage = body.errors ? Object.values(body.errors).flat()[0] : null;
+                        var error = new Error(validationMessage || body.message || 'Unable to load report data.');
+                        error.isValidation = response.status === 422;
+                        throw error;
+                    }
+                    return body;
+                }); })
+                .then(function (body) { showFilterError(''); reportPayload = body; render(); })
+                .catch(function (error) {
+                    if (error && error.isValidation) showFilterError(error.message);
+                    else if (periodNote) periodNote.textContent = 'Report data is temporarily unavailable. Please try again later.';
+                    reportPayload = Object.assign({}, reportPayload, {
+                        error: true,
+                        trend: { labels: [], donors: [], donations: [], granularity: 'day' },
+                        distribution: { available: false, items: [] },
+                    });
+                    render();
                 })
                 .finally(function () { document.body.classList.remove('report-loading'); });
         }
 
-        if (rangeFilter) rangeFilter.addEventListener('change', toggleCustomDates);
-        [startDate, endDate, facilityFilter, bloodTypeFilter].forEach(function (element) { if (element) element.addEventListener('change', updateExportLink); });
-        if (applyButton) applyButton.addEventListener('click', fetchReport);
+        if (rangeFilter) rangeFilter.addEventListener('change', function () { showFilterError(''); toggleCustomDates(); });
+        [startDate, endDate, facilityFilter, bloodTypeFilter].forEach(function (element) {
+            if (element) element.addEventListener('change', function () { showFilterError(''); updateExportLink(); });
+        });
+        if (applyButton) applyButton.addEventListener('click', function () { fetchReport(false); });
         if (resetButton) resetButton.addEventListener('click', function () { rangeFilter.value = 'year'; startDate.value = ''; endDate.value = ''; facilityFilter.value = ''; bloodTypeFilter.value = ''; toggleCustomDates(); fetchReport(); });
+        window.addEventListener('popstate', function () {
+            var params = new URLSearchParams(window.location.search);
+            rangeFilter.value = ['today', 'week', 'month', 'year', 'custom'].includes(params.get('range')) ? params.get('range') : 'year';
+            startDate.value = params.get('start_date') || '';
+            endDate.value = params.get('end_date') || '';
+            facilityFilter.value = params.get('facility_id') || '';
+            bloodTypeFilter.value = params.get('blood_type_id') || '';
+            showFilterError('');
+            toggleCustomDates();
+            fetchReport(true);
+        });
         window.addEventListener('resize', function () { if (resizeTimer) window.clearTimeout(resizeTimer); resizeTimer = window.setTimeout(function () { drawTrend(); drawDistribution(); }, 120); });
         window.addEventListener('edonate:themechange', function () { drawTrend(); drawDistribution(); });
         toggleCustomDates(); render();

@@ -31,10 +31,10 @@ class ReportService
         return [
             'period' => $period,
             'summary' => $this->summary($period['start'], $period['end'], $facilityId, $bloodTypeId),
-            'availability' => ['summary' => $this->summaryAvailability($facilityId)],
+            'availability' => ['summary' => $this->summaryAvailability($facilityId, $bloodTypeId)],
             'trend' => $this->trend($period['start'], $period['end'], $facilityId, $bloodTypeId),
-            'distribution' => $this->distribution($period['start'], $period['end'], $bloodTypeId),
-            'inventory' => $this->inventory($facilityId),
+            'distribution' => $this->distribution($period['start'], $period['end'], $bloodTypeId, $facilityId),
+            'inventory' => $this->inventory($facilityId, $bloodTypeId),
             'inventory_snapshot_at' => now()->toIso8601String(),
             'filters' => [
                 'range' => $period['range'],
@@ -181,7 +181,21 @@ class ReportService
         }
         $verifiedDonors = $verifiedDonorQuery->count();
         $donorTotal = $donorQuery->count();
-        $eligibleDonors = $this->latestEligibilityQuery('eligible')->count();
+        $eligibleQuery = $this->latestEligibilityQuery('eligible');
+        if ($this->hasColumns('eligibility_status', ['eligibility_id', 'donor_id', 'status'])
+            && $this->hasColumns('donors', ['donor_id', 'date_registered'])) {
+            $eligibleQuery->join('donors as d', 'd.donor_id', '=', 'es.donor_id')
+                ->whereDate('d.date_registered', '>=', $start)
+                ->whereDate('d.date_registered', '<=', $end);
+            if ($bloodTypeId !== null) {
+                if ($this->hasColumn('donors', 'blood_type_id')) {
+                    $eligibleQuery->where('d.blood_type_id', $bloodTypeId);
+                } else {
+                    $eligibleQuery->whereRaw('1 = 0');
+                }
+            }
+        }
+        $eligibleDonors = $eligibleQuery->count();
 
         $appointments = $this->appointmentQuery($start, $end, $facilityId, $bloodTypeId);
         $upcomingAppointments = $this->appointmentQuery($start, $end, $facilityId, $bloodTypeId, ['confirmed', 'pending'])
@@ -191,7 +205,7 @@ class ReportService
         $onSiteDeferred = $this->appointmentQuery($start, $end, $facilityId, $bloodTypeId, ['deferred_on_site'])->count();
 
         $requestSummary = $this->requestSummary($start, $end, $facilityId, $bloodTypeId);
-        $inventorySummary = $this->inventorySummary($facilityId);
+        $inventorySummary = $this->inventorySummary($facilityId, $bloodTypeId);
 
         $denominator = $completedDonations + $deferredDonations + $failedDonations;
 
@@ -211,12 +225,12 @@ class ReportService
             'open_requests' => $requestSummary['open'],
             'emergency_requests' => $requestSummary['emergency'],
             'fulfilled_requests' => $requestSummary['fulfilled'],
-            'events_in_period' => $this->eventCount($start, $end, $facilityId),
+            'events_in_period' => $this->eventCount($start, $end, $facilityId, $bloodTypeId),
             'low_stock_blood_types' => $inventorySummary['low'],
             'out_of_stock_blood_types' => $inventorySummary['out_of_stock'],
             'total_inventory_units' => $inventorySummary['units'],
-            'pending_verification' => $this->countDonorsByVerification('pending'),
-            'verified_donor_accounts' => $this->countDonorsByVerification('verified'),
+            'pending_verification' => $this->countDonorsByVerification('pending', $start, $end, $bloodTypeId),
+            'verified_donor_accounts' => $this->countDonorsByVerification('verified', $start, $end, $bloodTypeId),
         ];
     }
 
@@ -239,7 +253,10 @@ class ReportService
             $daily ? $cursor->addDay() : $cursor->addMonthNoOverflow();
         }
 
-        if ($this->hasColumns('donors', ['date_registered'])) {
+        $donorTrendAvailable = $facilityId === null
+            && $this->hasColumns('donors', ['donor_id', 'date_registered'])
+            && ($bloodTypeId === null || $this->hasColumn('donors', 'blood_type_id'));
+        if ($donorTrendAvailable) {
             $this->donorQuery($start, $end, $bloodTypeId)
                 ->get(['d.date_registered'])
                 ->each(function (object $row) use (&$buckets, $daily): void {
@@ -271,7 +288,15 @@ class ReportService
 
         return [
             'labels' => $labels,
-            'donors' => array_values(array_map(static fn (array $bucket): int => $bucket['donors'], $buckets)),
+            'donors' => $donorTrendAvailable
+                ? array_values(array_map(static fn (array $bucket): int => $bucket['donors'], $buckets))
+                : [],
+            'donors_available' => $donorTrendAvailable,
+            'donors_message' => $donorTrendAvailable
+                ? null
+                : ($facilityId !== null
+                    ? 'Donor profiles are not associated with facilities, so their trend cannot be filtered by facility.'
+                    : 'Donor trend data is unavailable for the selected filters.'),
             'donations' => array_values(array_map(static fn (array $bucket): int => $bucket['donations'], $buckets)),
             'granularity' => $daily ? 'day' : 'month',
         ];
@@ -280,10 +305,31 @@ class ReportService
     /**
      * @return array<string, mixed>
      */
-    private function distribution(string $start, string $end, ?int $bloodTypeId): array
+    private function distribution(string $start, string $end, ?int $bloodTypeId, ?int $facilityId): array
     {
-        if (! $this->hasColumns('donors', ['donor_id', 'blood_type_id']) || ! $this->hasColumns('blood_types', ['blood_type_id', 'blood_type'])) {
-            return ['basis' => 'verified', 'verified_total' => 0, 'self_reported_total' => 0, 'unknown_total' => 0, 'items' => []];
+        if ($facilityId !== null) {
+            return [
+                'available' => false,
+                'message' => 'Donor profiles are not associated with facilities, so distribution cannot be filtered by facility.',
+                'basis' => 'verified',
+                'verified_total' => null,
+                'self_reported_total' => null,
+                'unknown_total' => null,
+                'items' => [],
+            ];
+        }
+
+        if (! $this->hasColumns('donors', ['donor_id', 'date_registered', 'blood_type_id'])
+            || ! $this->hasColumns('blood_types', ['blood_type_id', 'blood_type'])) {
+            return [
+                'available' => false,
+                'message' => 'Donor or blood-type records are unavailable for the selected report.',
+                'basis' => 'verified',
+                'verified_total' => null,
+                'self_reported_total' => null,
+                'unknown_total' => null,
+                'items' => [],
+            ];
         }
 
         $verified = $this->donorQuery($start, $end, $bloodTypeId, true)
@@ -303,9 +349,11 @@ class ReportService
                 }
             });
         $selfReported = $selfReportedQuery->whereNotNull('d.blood_type_id')->select(['d.blood_type_id'])->get()->groupBy('blood_type_id')->map->count();
-        $unknown = $this->donorQuery($start, $end, null)
-            ->whereNull('d.blood_type_id')
-            ->count();
+        $unknown = $bloodTypeId === null
+            ? $this->donorQuery($start, $end)
+                ->whereNull('d.blood_type_id')
+                ->count()
+            : 0;
 
         $typeNames = DB::table('blood_types')->pluck('blood_type', 'blood_type_id');
         $verifiedTotal = (int) $verified->sum();
@@ -325,6 +373,7 @@ class ReportService
             ->all();
 
         return [
+            'available' => true,
             'basis' => 'verified',
             'verified_total' => $verifiedTotal,
             'self_reported_total' => (int) $selfReported->sum(),
@@ -336,7 +385,7 @@ class ReportService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function inventory(?int $facilityId): array
+    private function inventory(?int $facilityId, ?int $bloodTypeId): array
     {
         $types = $this->bloodTypeOptions();
         if ($types === [] || ! $this->hasColumns('facility_blood_inventory', ['facility_id', 'blood_type_id', 'available_units'])) {
@@ -356,6 +405,10 @@ class ReportService
 
         if ($facilityId !== null) {
             $query->where('i.facility_id', $facilityId);
+        }
+        if ($bloodTypeId !== null) {
+            $query->where('i.blood_type_id', $bloodTypeId);
+            $types = array_values(array_filter($types, static fn (array $type): bool => $type['value'] === $bloodTypeId));
         }
 
         $rows = $query->get()->keyBy('blood_type_id');
@@ -405,6 +458,8 @@ class ReportService
         }
         if ($bloodTypeId !== null && $this->hasColumn('blood_requests', 'needed_blood_type_id')) {
             $base->where('br.needed_blood_type_id', $bloodTypeId);
+        } elseif ($bloodTypeId !== null) {
+            $base->whereRaw('1 = 0');
         }
 
         $openQuery = clone $base;
@@ -442,9 +497,9 @@ class ReportService
         return $query->pluck('total', 'needed_blood_type_id')->map(static fn ($value): int => (int) $value)->all();
     }
 
-    private function eventCount(string $start, string $end, ?int $facilityId): int
+    private function eventCount(string $start, string $end, ?int $facilityId, ?int $bloodTypeId): int
     {
-        if (! $this->hasColumns('donation_events', ['event_id', 'event_date'])) {
+        if ($bloodTypeId !== null || ! $this->hasColumns('donation_events', ['event_id', 'event_date'])) {
             return 0;
         }
 
@@ -463,13 +518,16 @@ class ReportService
         return (int) $query->count();
     }
 
-    private function countDonorsByVerification(string $status): int
+    private function countDonorsByVerification(string $status, string $start, string $end, ?int $bloodTypeId): int
     {
-        if (! $this->hasColumns('donors', ['verification_status'])) {
+        if (! $this->hasColumns('donors', ['donor_id', 'date_registered', 'verification_status'])
+            || ($bloodTypeId !== null && ! $this->hasColumn('donors', 'blood_type_id'))) {
             return 0;
         }
 
-        return (int) DB::table('donors')->whereRaw("LOWER(COALESCE(verification_status, '')) = ?", [strtolower($status)])->count();
+        return (int) $this->donorQuery($start, $end, $bloodTypeId)
+            ->whereRaw("LOWER(COALESCE(d.verification_status, '')) = ?", [strtolower($status)])
+            ->count();
     }
 
     private function latestEligibilityQuery(?string $status = null)
@@ -503,7 +561,11 @@ class ReportService
             ->whereDate('d.date_registered', '<=', $end);
 
         if ($bloodTypeId !== null) {
-            $query->where('d.blood_type_id', $bloodTypeId);
+            if ($this->hasColumn('donors', 'blood_type_id')) {
+                $query->where('d.blood_type_id', $bloodTypeId);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
         }
 
         if ($verifiedType === true && $this->hasColumn('donors', 'blood_type_status')) {
@@ -540,6 +602,8 @@ class ReportService
         if ($bloodTypeId !== null && $this->hasColumns('donors', ['donor_id', 'blood_type_id'])) {
             $query->join('donors as d', 'd.donor_id', '=', 'ap.donor_id')
                 ->where('d.blood_type_id', $bloodTypeId);
+        } elseif ($bloodTypeId !== null) {
+            $query->whereRaw('1 = 0');
         }
 
         return $query;
@@ -583,6 +647,8 @@ class ReportService
                 $query->join('donors as d', 'd.donor_id', '=', 'dr.donor_id');
                 $query->whereRaw('COALESCE(dr.verified_blood_type_id, d.blood_type_id) = ?', [$bloodTypeId]);
             }
+        } elseif ($bloodTypeId !== null) {
+            $query->whereRaw('1 = 0');
         }
 
         return $query;
@@ -602,7 +668,7 @@ class ReportService
     /**
      * @return array{units:int,low:int,out_of_stock:int}
      */
-    private function inventorySummary(?int $facilityId): array
+    private function inventorySummary(?int $facilityId, ?int $bloodTypeId): array
     {
         if (! $this->hasColumns('facility_blood_inventory', ['facility_id', 'blood_type_id', 'available_units'])) {
             return ['units' => 0, 'low' => 0, 'out_of_stock' => 0];
@@ -613,6 +679,9 @@ class ReportService
 
         if ($facilityId !== null) {
             $query->where('facility_id', $facilityId);
+        }
+        if ($bloodTypeId !== null) {
+            $query->where('blood_type_id', $bloodTypeId);
         }
 
         $rows = $query->get();
@@ -655,10 +724,11 @@ class ReportService
      *
      * @return array<string, bool>
      */
-    private function summaryAvailability(?int $facilityId): array
+    private function summaryAvailability(?int $facilityId, ?int $bloodTypeId): array
     {
         $donations = $this->hasColumns('donation_records', ['donation_id', 'donation_date']);
-        $donors = $this->hasColumns('donors', ['donor_id', 'date_registered']);
+        $donors = $this->hasColumns('donors', ['donor_id', 'date_registered'])
+            && ($bloodTypeId === null || $this->hasColumn('donors', 'blood_type_id'));
         $appointments = $this->hasColumns('appointments', ['appointment_id', 'appointment_date', 'status']);
         $requests = $this->hasColumns('blood_requests', ['request_id', 'status', 'created_at']);
         $inventory = $this->hasColumns('facility_blood_inventory', ['facility_id', 'blood_type_id', 'available_units']);
@@ -667,30 +737,34 @@ class ReportService
             || $this->hasColumn('donors', 'blood_type_status');
         $eventFacilityAttribution = $facilityId === null || $this->hasColumn('donation_events', 'facility_id');
         $requestFacilityAttribution = $facilityId === null || $this->hasColumn('blood_requests', 'facility_id');
+        $donorBloodTypeAttribution = $bloodTypeId === null || $this->hasColumns('donors', ['donor_id', 'blood_type_id']);
+        $requestBloodTypeAttribution = $bloodTypeId === null || $this->hasColumn('blood_requests', 'needed_blood_type_id');
+        $appointmentBloodTypeAttribution = $bloodTypeId === null || $this->hasColumns('donors', ['donor_id', 'blood_type_id']);
+        $eventBloodTypeAttribution = $bloodTypeId === null;
         $donorFacilityAttribution = $facilityId === null;
 
         return [
-            'total_donations' => $donations && $eventFacilityAttribution,
-            'completed_donations' => $donations && $eventFacilityAttribution,
-            'deferred_donations' => $donations && $eventFacilityAttribution,
-            'failed_donations' => $donations && $eventFacilityAttribution,
-            'success_rate' => $donations && $eventFacilityAttribution,
+            'total_donations' => $donations && $eventFacilityAttribution && $donorBloodTypeAttribution,
+            'completed_donations' => $donations && $eventFacilityAttribution && $donorBloodTypeAttribution,
+            'deferred_donations' => $donations && $eventFacilityAttribution && $donorBloodTypeAttribution,
+            'failed_donations' => $donations && $eventFacilityAttribution && $donorBloodTypeAttribution,
+            'success_rate' => $donations && $eventFacilityAttribution && $donorBloodTypeAttribution,
             'verified_donors' => $donors && $verifiedDonorField && $donorFacilityAttribution,
             'donors_in_period' => $donors && $donorFacilityAttribution,
-            'eligible_donors' => $eligibility && $donorFacilityAttribution,
-            'upcoming_appointments' => $appointments && $eventFacilityAttribution,
-            'appointments_in_period' => $appointments && $eventFacilityAttribution,
-            'no_shows' => $appointments && $eventFacilityAttribution,
-            'deferred_on_site' => $appointments && $eventFacilityAttribution,
-            'open_requests' => $requests && $requestFacilityAttribution,
-            'emergency_requests' => $requests && $requestFacilityAttribution && $this->hasColumn('blood_requests', 'urgency'),
-            'fulfilled_requests' => $requests && $requestFacilityAttribution,
-            'events_in_period' => $this->hasColumns('donation_events', ['event_id', 'event_date']) && $eventFacilityAttribution,
+            'eligible_donors' => $eligibility && $donors && $donorFacilityAttribution,
+            'upcoming_appointments' => $appointments && $eventFacilityAttribution && $appointmentBloodTypeAttribution,
+            'appointments_in_period' => $appointments && $eventFacilityAttribution && $appointmentBloodTypeAttribution,
+            'no_shows' => $appointments && $eventFacilityAttribution && $appointmentBloodTypeAttribution,
+            'deferred_on_site' => $appointments && $eventFacilityAttribution && $appointmentBloodTypeAttribution,
+            'open_requests' => $requests && $requestFacilityAttribution && $requestBloodTypeAttribution,
+            'emergency_requests' => $requests && $requestFacilityAttribution && $requestBloodTypeAttribution && $this->hasColumn('blood_requests', 'urgency'),
+            'fulfilled_requests' => $requests && $requestFacilityAttribution && $requestBloodTypeAttribution,
+            'events_in_period' => $this->hasColumns('donation_events', ['event_id', 'event_date']) && $eventFacilityAttribution && $eventBloodTypeAttribution,
             'low_stock_blood_types' => $inventory,
             'out_of_stock_blood_types' => $inventory,
             'total_inventory_units' => $inventory,
-            'pending_verification' => $this->hasColumn('donors', 'verification_status'),
-            'verified_donor_accounts' => $this->hasColumn('donors', 'verification_status'),
+            'pending_verification' => $this->hasColumn('donors', 'verification_status') && $donors && $donorFacilityAttribution,
+            'verified_donor_accounts' => $this->hasColumn('donors', 'verification_status') && $donors && $donorFacilityAttribution,
         ];
     }
 

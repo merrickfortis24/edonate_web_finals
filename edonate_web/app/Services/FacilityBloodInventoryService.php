@@ -322,6 +322,7 @@ class FacilityBloodInventoryService
                 'province' => (string) $facility->province,
                 'latitude' => $facility->latitude,
                 'longitude' => $facility->longitude,
+                'status' => (string) ($facility->status ?? 'active'),
                 'mapped' => $this->validCoordinate($facility->latitude, $facility->longitude),
                 'blood_types' => $types,
                 'last_updated' => $lastUpdated?->toIso8601String(),

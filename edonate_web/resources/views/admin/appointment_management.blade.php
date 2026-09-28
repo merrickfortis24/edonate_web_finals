@@ -15,12 +15,13 @@
 {!! json_encode([
     'page' => 'appointment-management',
         'appointmentManagement' => $appointmentManagementPayload ?? [
-            'api' => [
-                'listUrl' => '',
-                'donationProcessingUrl' => '',
-                'rescheduleOptionsUrl' => '',
-            ],
-        'filters' => [
+    'api' => [
+        'listUrl' => '',
+        'donationProcessingUrl' => '',
+        'rescheduleOptionsUrl' => '',
+    ],
+    'initialStatus' => '',
+    'filters' => [
             'centers' => [],
         ],
     ],
@@ -30,6 +31,7 @@
 @section('main_content')
 @php
     $centerOptions = data_get($appointmentManagementPayload ?? [], 'filters.centers', []);
+    $initialStatus = data_get($appointmentManagementPayload ?? [], 'initialStatus', '');
 @endphp
 <main class="appointment-main container-fluid px-0">
     <section class="appointment-content container-fluid py-3" aria-label="Appointments content">
@@ -96,15 +98,16 @@
                     </svg>
                 </span>
                 <select id="appointmentStatusFilter" class="appointment-filter__select form-select" aria-label="Filter by status" name="status">
-                    <option value="">All Status</option>
-                    <option value="confirmed">Confirmed</option>
-                    <option value="pending">Pending</option>
-                    <option value="cancelled">Cancelled</option>
-                    <option value="rescheduled">Rescheduled</option>
-                    <option value="checked_in">Checked In</option>
-                    <option value="completed">Completed</option>
-                    <option value="deferred_on_site">Deferred On Site</option>
-                    <option value="no_show">No Show</option>
+                    <option value="" @selected($initialStatus === '')>All Status</option>
+                    <option value="upcoming" @selected($initialStatus === 'upcoming')>Upcoming (Pending + Confirmed)</option>
+                    <option value="confirmed" @selected($initialStatus === 'confirmed')>Confirmed</option>
+                    <option value="pending" @selected($initialStatus === 'pending')>Pending</option>
+                    <option value="cancelled" @selected($initialStatus === 'cancelled')>Cancelled</option>
+                    <option value="rescheduled" @selected($initialStatus === 'rescheduled')>Rescheduled</option>
+                    <option value="checked_in" @selected($initialStatus === 'checked_in')>Checked In</option>
+                    <option value="completed" @selected($initialStatus === 'completed')>Completed</option>
+                    <option value="deferred_on_site" @selected($initialStatus === 'deferred_on_site')>Deferred On Site</option>
+                    <option value="no_show" @selected($initialStatus === 'no_show')>No Show</option>
                 </select>
                 <span class="appointment-filter__chevron" aria-hidden="true">
                     <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -348,7 +351,7 @@
             perPage: 10,
             search: '',
             center: '',
-            status: ''
+            status: statusFilter ? String(statusFilter.value || '') : ''
         };
 
         var searchDebounceTimer = null;

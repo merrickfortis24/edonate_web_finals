@@ -43,6 +43,134 @@ class Phase12IntegrationTest extends TestCase
         $this->assertStringNotContainsString('private@example.test', $export->streamedContent());
     }
 
+    public function test_report_date_and_blood_type_filters_match_metrics_charts_inventory_and_export(): void
+    {
+        $this->seedReportRows();
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $today = Carbon::today()->toDateString();
+        $startDate = Carbon::today()->subDays(3)->toDateString();
+        $query = http_build_query([
+            'range' => 'custom',
+            'start_date' => $startDate,
+            'end_date' => $today,
+            'blood_type_id' => 1,
+        ]);
+
+        $response = $this->getJson('/admin/report-analytics/data?'.$query);
+        $response->assertOk()
+            ->assertJsonPath('filters.range', 'custom')
+            ->assertJsonPath('filters.blood_type_id', 1)
+            ->assertJsonPath('summary.total_donations', 1)
+            ->assertJsonPath('summary.completed_donations', 1)
+            ->assertJsonPath('summary.deferred_donations', 0)
+            ->assertJsonPath('summary.eligible_donors', 1)
+            ->assertJsonPath('summary.pending_verification', 0)
+            ->assertJsonPath('summary.verified_donor_accounts', 1)
+            ->assertJsonPath('summary.total_inventory_units', 0)
+            ->assertJsonPath('summary.out_of_stock_blood_types', 1)
+            ->assertJsonPath('distribution.available', true)
+            ->assertJsonPath('distribution.verified_total', 1)
+            ->assertJsonPath('distribution.unknown_total', 0)
+            ->assertJsonPath('distribution.items.0.label', 'A+')
+            ->assertJsonPath('inventory.0.blood_type', 'A+')
+            ->assertJsonPath('inventory.0.status', 'out_of_stock');
+        $this->assertSame(1, array_sum($response->json('trend.donations')));
+        $this->assertCount(1, $response->json('inventory'));
+
+        $export = $this->get('/admin/report-analytics/export?'.$query);
+        $export->assertOk();
+        $csv = $export->streamedContent();
+        $this->assertStringContainsString('"Blood type filter",A+', $csv);
+        $this->assertStringContainsString('"Blood-type distribution status",Available', $csv);
+        $this->assertStringContainsString('A+,0,0,2,"Out of stock"', $csv);
+        $this->assertStringNotContainsString('A-,10,0,', $csv);
+    }
+
+    public function test_each_report_date_preset_and_custom_range_returns_its_selected_period(): void
+    {
+        $this->seedReportRows();
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $today = Carbon::today();
+        $expected = [
+            'today' => [$today->toDateString(), $today->toDateString()],
+            'week' => [$today->copy()->startOfWeek(Carbon::MONDAY)->toDateString(), $today->copy()->endOfWeek(Carbon::SUNDAY)->toDateString()],
+            'month' => [$today->copy()->startOfMonth()->toDateString(), $today->copy()->endOfMonth()->toDateString()],
+            'year' => [$today->copy()->startOfYear()->toDateString(), $today->copy()->endOfYear()->toDateString()],
+        ];
+
+        foreach ($expected as $range => [$start, $end]) {
+            $response = $this->getJson('/admin/report-analytics/data?range='.$range);
+            $response->assertOk()
+                ->assertJsonPath('filters.range', $range)
+                ->assertJsonPath('filters.start_date', $start)
+                ->assertJsonPath('filters.end_date', $end)
+                ->assertJsonPath('summary.total_donations', 2);
+        }
+
+        $customStart = $today->copy()->subDays(3)->toDateString();
+        $custom = $this->getJson('/admin/report-analytics/data?'.http_build_query([
+            'range' => 'custom',
+            'start_date' => $customStart,
+            'end_date' => $today->toDateString(),
+        ]));
+        $custom->assertOk()
+            ->assertJsonPath('filters.range', 'custom')
+            ->assertJsonPath('filters.start_date', $customStart)
+            ->assertJsonPath('filters.end_date', $today->toDateString())
+            ->assertJsonPath('summary.total_donations', 2);
+    }
+
+    public function test_facility_filter_does_not_show_unfiltered_donor_distribution_and_empty_period_is_zeroed(): void
+    {
+        $this->seedReportRows();
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $facilityResponse = $this->getJson('/admin/report-analytics/data?range=year&facility_id=1&blood_type_id=2');
+        $facilityResponse->assertOk()
+            ->assertJsonPath('filters.facility_id', 1)
+            ->assertJsonPath('filters.blood_type_id', 2)
+            ->assertJsonPath('distribution.available', false)
+            ->assertJsonPath('distribution.verified_total', null)
+            ->assertJsonPath('distribution.items', [])
+            ->assertJsonPath('trend.donors_available', false)
+            ->assertJsonPath('trend.donors', [])
+            ->assertJsonPath('inventory.0.blood_type', 'A-')
+            ->assertJsonPath('summary.total_inventory_units', 10);
+
+        $facilityExport = $this->get('/admin/report-analytics/export?range=year&facility_id=1&blood_type_id=2');
+        $this->assertStringContainsString('"Facility filter","Demo Facility"', $facilityExport->streamedContent());
+        $this->assertStringContainsString('"Blood-type distribution status",Unavailable', $facilityExport->streamedContent());
+        $this->assertStringContainsString('Donor profiles are not associated with facilities', $facilityExport->streamedContent());
+        $this->assertStringContainsString('"Verified Donors",N/A', $facilityExport->streamedContent());
+        $this->assertStringContainsString('"Donor trend status",Unavailable', $facilityExport->streamedContent());
+
+        $empty = $this->getJson('/admin/report-analytics/data?range=custom&start_date=2019-01-01&end_date=2019-01-31&blood_type_id=2');
+        $empty->assertOk()
+            ->assertJsonPath('summary.total_donations', 0)
+            ->assertJsonPath('summary.donors_in_period', 0)
+            ->assertJsonPath('distribution.verified_total', 0)
+            ->assertJsonPath('distribution.items', [])
+            ->assertJsonPath('inventory.0.blood_type', 'A-');
+        $this->assertSame(0, array_sum($empty->json('trend.donations')));
+    }
+
+    public function test_report_page_preserves_applied_filters_in_controls_and_export_link(): void
+    {
+        $this->seedReportRows();
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin']);
+
+        $response = $this->get('/admin/report-analytics?range=custom&start_date=2026-09-01&end_date=2026-09-28&facility_id=1&blood_type_id=2');
+        $response->assertOk()
+            ->assertSee('value="custom" selected', false)
+            ->assertSee('value="2026-09-01"', false)
+            ->assertSee('value="2026-09-28"', false)
+            ->assertSee('value="1" selected', false)
+            ->assertSee('value="2" selected', false)
+            ->assertSee('start_date=2026-09-01', false)
+            ->assertSee('blood_type_id=2', false);
+    }
+
     public function test_custom_report_dates_are_validated_server_side(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
@@ -77,6 +205,79 @@ class Phase12IntegrationTest extends TestCase
             ->assertOk()
             ->assertJsonPath('message', 'This donor account is already active.');
         $this->assertSame($auditCount, DB::table('audit_logs')->where('action_type', 'reactivate')->count());
+    }
+
+    public function test_user_management_separates_accounts_and_moves_them_after_deactivate_and_reactivate(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->seedDonor(1, 'Active', 'One');
+        $this->seedDonor(2, 'Active', 'Two');
+        $this->seedDonor(3, 'Deactivated', 'One', ['is_active' => false]);
+        DB::table('donation_records')->insert([
+            'donation_id' => 31,
+            'donor_id' => 1,
+            'donation_date' => Carbon::today()->subMonth()->toDateString(),
+            'donation_status' => 'completed',
+            'blood_units' => 1,
+        ]);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->get('/admin/users?account_status=deactivated')
+            ->assertOk()
+            ->assertSee('Deactivated Accounts')
+            ->assertSee('aria-selected="true"', false)
+            ->assertSee('id="userManagementActiveCount">2</span>', false)
+            ->assertSee('id="userManagementDeactivatedCount">1</span>', false)
+            ->assertSee('userManagementDeactivatedTab');
+
+        $this->getJson('/admin/users/data?per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.donor_id', 2)
+            ->assertJsonPath('account_counts.active', 2)
+            ->assertJsonPath('account_counts.deactivated', 1);
+
+        $this->getJson('/admin/users/data?account_status=active&per_page=1&page=2')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.donor_id', 1);
+
+        $this->getJson('/admin/users/data?account_status=deactivated&search=Deactivated')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.donor_id', 3);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->patchJson('/admin/users/1/deactivate')
+            ->assertOk()
+            ->assertJsonPath('donor.is_active', false);
+
+        $this->getJson('/admin/users/data?account_status=active')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('account_counts.active', 1)
+            ->assertJsonPath('account_counts.deactivated', 2);
+        $this->getJson('/admin/users/data?account_status=deactivated')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('data.0.donor_id', 3);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->patchJson('/admin/users/1/reactivate')
+            ->assertOk()
+            ->assertJsonPath('donor.is_active', true);
+
+        $this->getJson('/admin/users/data?account_status=active')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('account_counts.active', 2)
+            ->assertJsonPath('account_counts.deactivated', 1);
+        $this->getJson('/admin/users/data?account_status=deactivated')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.donor_id', 3);
+
+        $this->assertDatabaseHas('donation_records', ['donation_id' => 31, 'donor_id' => 1]);
     }
 
     public function test_admin_dashboard_marks_missing_inventory_unavailable_and_builds_sqlite_month_data(): void

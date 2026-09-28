@@ -49,6 +49,97 @@ class Phase7DonationProcessingTest extends TestCase
         $this->assertSame(1, DB::table('audit_logs')->where('action_type', 'appointment_checked_in')->where('target_id', $appointmentId)->count());
     }
 
+    public function test_dashboard_summary_cards_open_matching_lists_with_matching_counts(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $confirmedUpcomingId = $this->createAppointment([
+            'status' => 'confirmed',
+            'appointment_date' => Carbon::tomorrow()->toDateString(),
+        ]);
+        $pendingUpcomingId = $this->createAppointment([
+            'status' => 'pending',
+            'appointment_date' => Carbon::tomorrow()->toDateString(),
+        ]);
+        $completedId = $this->createAppointment(['status' => 'completed']);
+        $cancelledId = $this->createAppointment(['status' => 'cancelled']);
+        $this->createAppointment([
+            'status' => 'confirmed',
+            'appointment_date' => Carbon::yesterday()->toDateString(),
+        ]);
+
+        DB::table('donation_records')->insert([
+            'donor_id' => DB::table('appointments')->where('appointment_id', $completedId)->value('donor_id'),
+            'appointment_id' => $completedId,
+            'donation_date' => Carbon::today()->toDateString(),
+            'donation_status' => 'completed',
+            'blood_units' => 1,
+            'created_at' => now(),
+        ]);
+
+        $dashboard = $this->withSession($this->adminSession())
+            ->get('/admin/dashboard')
+            ->assertOk();
+        $html = $dashboard->getContent();
+
+        $cardLinks = [
+            'total_donors' => route('admin.users'),
+            'successful_donations' => route('admin.donation-records', ['status' => 'completed']),
+            'upcoming_appointments' => route('admin.appointments', ['status' => 'upcoming']),
+            'donation_records' => route('admin.donation-records'),
+        ];
+        foreach ($cardLinks as $key => $url) {
+            $this->assertStringContainsString('href="'.$url.'"', $html);
+            $this->assertMatchesRegularExpression(
+                '/data-dashboard-count="'.preg_quote($key, '/').'">[0-9,]+</',
+                $html
+            );
+        }
+
+        $countFromDashboard = static function (string $key) use ($html): int {
+            preg_match('/data-dashboard-count="'.preg_quote($key, '/').'">([0-9,]+)</', $html, $matches);
+
+            return (int) str_replace(',', '', $matches[1] ?? '0');
+        };
+
+        $donors = $this->withSession($this->adminSession())
+            ->getJson('/admin/users/data?per_page=100')
+            ->assertOk();
+        $successful = $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?status=completed&per_page=100')
+            ->assertOk();
+        $upcoming = $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?status=upcoming&per_page=100')
+            ->assertOk();
+        $allProcessingRows = $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?per_page=100')
+            ->assertOk();
+
+        $this->assertSame($donors->json('meta.total'), $countFromDashboard('total_donors'));
+        $this->assertSame($successful->json('meta.total'), $countFromDashboard('successful_donations'));
+        $this->assertSame($upcoming->json('meta.total'), $countFromDashboard('upcoming_appointments'));
+        $this->assertSame($allProcessingRows->json('meta.total'), $countFromDashboard('donation_records'));
+        $this->assertSame(2, $upcoming->json('meta.total'));
+        $this->assertEqualsCanonicalizing(
+            [$confirmedUpcomingId, $pendingUpcomingId],
+            collect($upcoming->json('data'))->pluck('appointment_id')->all()
+        );
+        $this->assertSame(1, $successful->json('meta.total'));
+        $this->assertSame(4, $allProcessingRows->json('meta.total'));
+
+        $this->withSession($this->adminSession())
+            ->get('/admin/appointments?status=upcoming')
+            ->assertOk()
+            ->assertSee('option value="upcoming" selected', false);
+        $this->withSession($this->adminSession())
+            ->get('/admin/donation-records?status=completed')
+            ->assertOk()
+            ->assertSee('option value="completed" selected', false);
+
+        $this->assertStringContainsString(':focus-visible', file_get_contents(resource_path('css/admin.css')));
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $cancelledId, 'status' => 'cancelled']);
+    }
+
     public function test_approved_appointment_flows_from_pending_to_checked_in_to_completed_across_both_views(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
@@ -61,7 +152,8 @@ class Phase7DonationProcessingTest extends TestCase
         $processingPage = $this->withSession($this->adminSession())
             ->get('/admin/donation-records')
             ->assertOk();
-        $processingPage->assertSee('<option value="confirmed">Pending</option>', false);
+        $processingPage->assertSee('value="confirmed"', false);
+        $processingPage->assertSee('>Pending</option>', false);
         $processingPage->assertSee('checkInUrlTemplate', false);
         $processingPage->assertSee("confirmed: 'Pending'", false);
         $processingPage->assertSee('data-action="check-in"', false);

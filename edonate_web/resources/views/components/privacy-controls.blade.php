@@ -17,7 +17,7 @@
     <form id="ed-privacy-form">
         <fieldset>
             <legend>Optional services</legend>
-            <label><input type="checkbox" name="maps"> External maps — OpenStreetMap receives your IP address and requested map area.</label>
+            <label><input type="checkbox" name="maps"> External maps — CARTO receives connection information and requested map areas.</label>
             @if(config('privacy.analytics_enabled'))
                 <label><input type="checkbox" name="analytics"> Usage analytics (optional).</label>
             @else

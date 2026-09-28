@@ -31,6 +31,8 @@
         'filters' => [
             'bloodTypes' => [],
         ],
+        'initialAccountStatus' => 'active',
+        'accountCounts' => ['active' => 0, 'deactivated' => 0],
     ],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
 @endsection
@@ -38,6 +40,11 @@
 @section('main_content')
 @php
     $bloodTypeOptions = data_get($userManagementPayload ?? [], 'filters.bloodTypes', []);
+    $requestedAccountStatus = data_get($userManagementPayload ?? [], 'initialAccountStatus', 'active');
+    $initialAccountStatus = in_array($requestedAccountStatus, ['active', 'deactivated'], true)
+        ? $requestedAccountStatus
+        : 'active';
+    $accountCounts = data_get($userManagementPayload ?? [], 'accountCounts', ['active' => 0, 'deactivated' => 0]);
 @endphp
 <main class="main container-fluid px-0">
     <div class="content container-fluid py-3">
@@ -80,6 +87,43 @@
             </div>
         </section>
 
+        <nav aria-label="Donor account status">
+            <div class="nav nav-tabs user-account-tabs mb-3" id="userManagementAccountTabs" role="tablist">
+                <button
+                    class="nav-link {{ $initialAccountStatus === 'active' ? 'active' : '' }}"
+                    id="userManagementActiveTab"
+                    type="button"
+                    role="tab"
+                    aria-controls="userManagementAccountPanel"
+                    aria-selected="{{ $initialAccountStatus === 'active' ? 'true' : 'false' }}"
+                    tabindex="{{ $initialAccountStatus === 'active' ? '0' : '-1' }}"
+                    data-account-status="active"
+                >
+                    Active Accounts
+                    <span class="badge rounded-pill bg-success account-status-count" id="userManagementActiveCount">{{ number_format((int) data_get($accountCounts, 'active', 0)) }}</span>
+                </button>
+                <button
+                    class="nav-link {{ $initialAccountStatus === 'deactivated' ? 'active' : '' }}"
+                    id="userManagementDeactivatedTab"
+                    type="button"
+                    role="tab"
+                    aria-controls="userManagementAccountPanel"
+                    aria-selected="{{ $initialAccountStatus === 'deactivated' ? 'true' : 'false' }}"
+                    tabindex="{{ $initialAccountStatus === 'deactivated' ? '0' : '-1' }}"
+                    data-account-status="deactivated"
+                >
+                    Deactivated Accounts
+                    <span class="badge rounded-pill bg-danger account-status-count" id="userManagementDeactivatedCount">{{ number_format((int) data_get($accountCounts, 'deactivated', 0)) }}</span>
+                </button>
+            </div>
+        </nav>
+
+        <div
+            id="userManagementAccountPanel"
+            role="tabpanel"
+            aria-labelledby="{{ $initialAccountStatus === 'active' ? 'userManagementActiveTab' : 'userManagementDeactivatedTab' }}"
+            tabindex="0"
+        >
         <div class="filter-bar row g-3 align-items-center" role="search">
             <div class="filter-bar__search col-12 col-lg">
                 <span class="filter-bar__search-icon" aria-hidden="true">
@@ -139,7 +183,7 @@
 
         <div id="userManagementAlertHost" class="mb-3" aria-live="polite"></div>
 
-        <section class="table-wrap" aria-label="Donor list">
+        <section class="table-wrap" aria-label="Donor account list">
             <div class="donor-table-wrapper table-responsive" tabindex="0" aria-label="Scrollable donor records table">
                 <div class="table-inner">
                     <div class="table-grid table-thead">
@@ -173,6 +217,7 @@
                 <nav class="admin-pagination__links" id="userManagementPaginationControls" aria-label="Pagination links"></nav>
             </div>
         </section>
+        </div>
     </div>
 
     <div class="modal fade" id="userManagementViewModal" tabindex="-1" aria-labelledby="userManagementViewModalLabel" aria-hidden="true">
@@ -431,6 +476,8 @@
         var searchInput = document.getElementById('userManagementSearchInput');
         var bloodTypeFilter = document.getElementById('userManagementBloodTypeFilter');
         var statusFilter = document.getElementById('userManagementStatusFilter');
+        var accountStatusTabs = document.querySelectorAll('#userManagementAccountTabs [data-account-status]');
+        var accountPanel = document.getElementById('userManagementAccountPanel');
         var tableBody = document.getElementById('userManagementTableBody');
         var paginationInfo = document.getElementById('userManagementPaginationInfo');
         var paginationControls = document.getElementById('userManagementPaginationControls');
@@ -444,6 +491,8 @@
         var deferredDonorsEl = document.getElementById('userStatDeferredDonors');
         var reviewDonorsEl = document.getElementById('userStatReviewDonors');
         var totalDonationsEl = document.getElementById('userStatTotalDonations');
+        var activeAccountCountEl = document.getElementById('userManagementActiveCount');
+        var deactivatedAccountCountEl = document.getElementById('userManagementDeactivatedCount');
 
         var viewModalElement = document.getElementById('userManagementViewModal');
         var editModalElement = document.getElementById('userManagementEditModal');
@@ -525,12 +574,16 @@
         var deactivatePrompt = document.getElementById('userManagementDeactivatePrompt');
         var deactivateConfirmButton = document.getElementById('userManagementDeactivateConfirmBtn');
 
+        var initialAccountStatus = String(payload.initialAccountStatus || 'active');
+        if (initialAccountStatus !== 'deactivated') initialAccountStatus = 'active';
+
         var state = {
             page: 1,
             perPage: 10,
             search: '',
             bloodType: '',
             status: '',
+            accountStatus: initialAccountStatus,
             meta: {
                 current_page: 1,
                 last_page: 1,
@@ -903,6 +956,7 @@
             if (state.status) {
                 url.searchParams.set('status', state.status);
             }
+            url.searchParams.set('account_status', state.accountStatus);
 
             return url.toString();
         }
@@ -933,7 +987,7 @@
                 tableBody.innerHTML = ''
                     + '<div class="table-grid table-row">'
                     + '<div class="table-td">No records</div>'
-                    + '<div class="table-td">No donor data found for the selected filters.</div>'
+                    + '<div class="table-td">No ' + (state.accountStatus === 'deactivated' ? 'deactivated accounts' : 'active accounts') + ' match the selected filters.</div>'
                     + '<div class="table-td">-</div>'
                     + '<div class="table-td">-</div>'
                     + '<div class="table-td">-</div>'
@@ -1011,6 +1065,39 @@
             }
         }
 
+        function updateAccountCounts(counts) {
+            if (activeAccountCountEl) {
+                activeAccountCountEl.textContent = formatNumber(counts.active || 0);
+            }
+            if (deactivatedAccountCountEl) {
+                deactivatedAccountCountEl.textContent = formatNumber(counts.deactivated || 0);
+            }
+        }
+
+        function selectAccountStatusTab(tab, shouldLoad) {
+            if (!tab) return;
+
+            accountStatusTabs.forEach(function (candidate) {
+                var selected = candidate === tab;
+                candidate.classList.toggle('active', selected);
+                candidate.setAttribute('aria-selected', selected ? 'true' : 'false');
+                candidate.setAttribute('tabindex', selected ? '0' : '-1');
+            });
+
+            state.accountStatus = tab.getAttribute('data-account-status') === 'deactivated'
+                ? 'deactivated'
+                : 'active';
+            if (accountPanel) accountPanel.setAttribute('aria-labelledby', tab.id);
+
+            if (shouldLoad) {
+                state.page = 1;
+                var pageUrl = new URL(window.location.href);
+                pageUrl.searchParams.set('account_status', state.accountStatus);
+                window.history.replaceState({}, '', pageUrl.toString());
+                loadUsers();
+            }
+        }
+
         function renderPagination(meta) {
             if (!paginationInfo || !paginationControls) {
                 return;
@@ -1047,6 +1134,7 @@
             if (state.status !== '') {
                 params.set('status', state.status);
             }
+            params.set('account_status', state.accountStatus);
 
             return url.toString();
         }
@@ -1349,6 +1437,7 @@
             })
                 .then(function (responsePayload) {
                     updateStats(responsePayload.stats || {});
+                    updateAccountCounts(responsePayload.account_counts || {});
                     hydrateBloodTypeFilter((responsePayload.filters && responsePayload.filters.blood_types) || []);
                     renderRows(responsePayload.data || []);
                     renderPagination(responsePayload.meta || {});
@@ -1359,6 +1448,34 @@
                         paginationInfo.textContent = 'Unable to load donor data right now.';
                     }
                 });
+        }
+
+        if (accountStatusTabs.length) {
+            accountStatusTabs.forEach(function (tab) {
+                tab.addEventListener('click', function () {
+                    selectAccountStatusTab(tab, true);
+                });
+                tab.addEventListener('keydown', function (event) {
+                    var tabList = Array.prototype.slice.call(accountStatusTabs);
+                    var currentIndex = tabList.indexOf(tab);
+                    var nextIndex = currentIndex;
+                    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                        nextIndex = (currentIndex + 1) % tabList.length;
+                    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                        nextIndex = (currentIndex - 1 + tabList.length) % tabList.length;
+                    } else if (event.key === 'Home') {
+                        nextIndex = 0;
+                    } else if (event.key === 'End') {
+                        nextIndex = tabList.length - 1;
+                    } else {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    tabList[nextIndex].focus();
+                    selectAccountStatusTab(tabList[nextIndex], true);
+                });
+            });
         }
 
         if (searchInput) {
@@ -1571,6 +1688,7 @@
 
                         showAlert('success', responsePayload.message || (isReactivate ? 'Donor account reactivated.' : 'Donor account deactivated.'));
                         state.deactivateTarget = null;
+                        state.page = 1;
                         loadUsers();
                     })
                     .catch(function (error) {

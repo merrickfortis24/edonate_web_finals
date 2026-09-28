@@ -7,10 +7,14 @@ use App\Models\BloodRequest;
 use App\Models\BloodType;
 use App\Models\Facility;
 use App\Services\BloodRequestService;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class BloodRequestController extends Controller
 {
@@ -108,7 +112,47 @@ class BloodRequestController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $this->validatedRequest($request);
-        $bloodRequest = $this->service->create($validated, $request);
+
+        $submissionKey = $validated['submission_key'] ?? null;
+        if ($submissionKey !== null) {
+            $existing = BloodRequest::query()->where('submission_key', $submissionKey)->first();
+            if ($existing) {
+                return response()->json([
+                    'message' => 'Blood request was already received.',
+                    'request' => $this->service->transform($existing->loadMissing(['facility', 'bloodType'])),
+                ]);
+            }
+        }
+
+        try {
+            $bloodRequest = $this->service->create($validated, $request);
+        } catch (QueryException $exception) {
+            // The unique submission key also protects against near-simultaneous duplicate POSTs.
+            $existing = $submissionKey !== null
+                ? BloodRequest::query()->where('submission_key', $submissionKey)->first()
+                : null;
+
+            if ($existing) {
+                return response()->json([
+                    'message' => 'Blood request was already received.',
+                    'request' => $this->service->transform($existing->loadMissing(['facility', 'bloodType'])),
+                ]);
+            }
+
+            Log::error('Blood request creation failed.', [
+                'admin_id' => $request->session()->get('admin_id'),
+                'exception' => $exception,
+            ]);
+
+            return $this->saveFailureResponse();
+        } catch (Throwable $exception) {
+            Log::error('Blood request creation failed.', [
+                'admin_id' => $request->session()->get('admin_id'),
+                'exception' => $exception,
+            ]);
+
+            return $this->saveFailureResponse();
+        }
 
         return response()->json([
             'message' => 'Blood request created.',
@@ -198,6 +242,7 @@ class BloodRequestController extends Controller
     {
         $validated = $request->validate([
             'facility_id' => ['required', 'integer', 'exists:facilities,facility_id'],
+            'submission_key' => ['required', 'uuid'],
             'request_type' => ['required', Rule::in(BloodRequest::REQUEST_TYPES)],
             'needed_blood_type_id' => ['required', 'integer', 'exists:blood_types,blood_type_id'],
             'required_donors' => ['required', 'integer', 'min:1', 'max:1000'],
@@ -218,6 +263,19 @@ class BloodRequestController extends Controller
 
         $validated['allow_other_blood_types'] = (bool) ($validated['allow_other_blood_types'] ?? false);
 
+        if (! empty($validated['expires_at'])) {
+            $validated['expires_at'] = CarbonImmutable::parse($validated['expires_at'])
+                ->setTimezone(config('app.timezone'))
+                ->format('Y-m-d H:i:s');
+        }
+
         return $validated;
+    }
+
+    private function saveFailureResponse(): JsonResponse
+    {
+        return response()->json([
+            'message' => 'We could not save this blood request due to a temporary server issue. Please try again; if the problem continues, contact an administrator.',
+        ], 500);
     }
 }

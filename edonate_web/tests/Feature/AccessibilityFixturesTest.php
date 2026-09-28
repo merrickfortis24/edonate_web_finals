@@ -28,6 +28,30 @@ class AccessibilityFixturesTest extends TestCase
         $donor = ['navLinks' => [['key' => 'home', 'href' => '/donor/dashboard', 'label' => 'Dashboard']],
             'activeNav' => 'home', 'user' => (object) ['first_name' => 'Test Donor', 'blood_type' => 'O+'],
             'totalDonations' => 0, 'latestEligibility' => null];
+        $reportMetrics = [
+            'total_donations', 'verified_donors', 'completed_donations', 'deferred_donations', 'failed_donations', 'success_rate',
+            'donors_in_period', 'eligible_donors', 'upcoming_appointments', 'appointments_in_period', 'no_shows', 'deferred_on_site',
+            'open_requests', 'emergency_requests', 'fulfilled_requests', 'events_in_period', 'low_stock_blood_types',
+            'out_of_stock_blood_types', 'total_inventory_units', 'pending_verification', 'verified_donor_accounts',
+        ];
+        $reportSummary = array_fill_keys($reportMetrics, 0);
+        $reportSummary['total_donations'] = 2;
+        $reportSummary['completed_donations'] = 1;
+        $reportSummary['donors_in_period'] = 1;
+        $reportSummary['total_inventory_units'] = 10;
+        $reportAvailability = array_fill_keys($reportMetrics, true);
+        $reportFixturePayload = [
+            'period' => ['range' => 'year', 'start' => '2026-01-01', 'end' => '2026-12-31', 'label' => 'This year'],
+            'summary' => $reportSummary,
+            'availability' => ['summary' => $reportAvailability],
+            'trend' => ['labels' => ['Sep 2026'], 'donors' => [1], 'donors_available' => true, 'donors_message' => null, 'donations' => [1], 'granularity' => 'month'],
+            'distribution' => ['available' => true, 'basis' => 'verified', 'verified_total' => 1, 'self_reported_total' => 0, 'unknown_total' => 0, 'items' => [['label' => 'A+', 'count' => 1, 'self_reported_count' => 0]]],
+            'inventory' => [['blood_type_id' => 1, 'blood_type' => 'A+', 'available_units' => 10, 'reserved_units' => 1, 'open_request_demand' => 2, 'status' => 'available', 'status_label' => 'Available']],
+            'inventory_snapshot_at' => now()->toIso8601String(),
+            'filters' => ['range' => 'year', 'start_date' => '2026-01-01', 'end_date' => '2026-12-31', 'facility_id' => null, 'blood_type_id' => null,
+                'facilities' => [['value' => 1, 'label' => 'Test Facility'], ['value' => 2, 'label' => 'Other Facility']],
+                'blood_types' => [['value' => 1, 'label' => 'A+'], ['value' => 2, 'label' => 'A-']]],
+        ];
         $cases = [
             'privacy' => ['donor.privacy', []],
             'terms' => ['donor.terms', []],
@@ -37,7 +61,11 @@ class AccessibilityFixturesTest extends TestCase
             'admin-login' => ['admin.admin_login', []],
             'admin-dashboard' => ['admin.admin_dashboard', []],
             'admin-users' => ['admin.user_management', []],
-            'admin-facilities' => ['admin.facilities', ['canManage' => true, 'facilityTypes' => ['hospital', 'clinic']]],
+            'admin-report-analytics' => ['admin.report_analytics', [
+                'reportPayload' => $reportFixturePayload,
+                'reportApi' => ['dataUrl' => '/admin/report-analytics/data', 'exportUrl' => '/admin/report-analytics/export', 'initialExportUrl' => '/admin/report-analytics/export?range=year'],
+            ]],
+            'admin-facilities' => ['admin.facilities', ['canManage' => true, 'placesConfigured' => true, 'facilityTypes' => ['hospital', 'clinic']]],
             'admin-map' => ['admin.blood_availability_mapping', ['bloodTypes' => ['A+', 'O-'], 'facilityTypes' => ['hospital']]],
             'admin-blood-requests' => ['admin.blood_requests', ['canManage' => true, 'bloodTypes' => collect(), 'facilities' => collect()]],
             'donor-screening' => ['portal.check-eligibility', $donor + [
@@ -65,9 +93,14 @@ class AccessibilityFixturesTest extends TestCase
             $this->assertStringContainsString('ed-privacy-panel', $html, $name);
             $this->assertStringContainsString('Skip to main content', $html, $name);
             $this->assertStringNotContainsString('<script src="https://www.gstatic.com', $html, $name);
-            if (getenv('EDONATE_EXPORT_A11Y_FIXTURES') === '1') {
-                File::ensureDirectoryExists(base_path('tests/browser/fixtures'));
-                File::put(base_path('tests/browser/fixtures/'.$name.'.html'), $html);
+            if (getenv('EDONATE_EXPORT_A11Y_FIXTURES') === '1'
+                || (getenv('EDONATE_EXPORT_REPORT_FIXTURE') === '1' && $name === 'admin-report-analytics')
+                || (getenv('EDONATE_EXPORT_BLOOD_REQUEST_FIXTURE') === '1' && $name === 'admin-blood-requests')) {
+                $fixturePath = $name === 'admin-report-analytics'
+                    ? base_path('tests/browser/report-analytics.html')
+                    : base_path('tests/browser/fixtures/'.$name.'.html');
+                File::ensureDirectoryExists(dirname($fixturePath));
+                File::put($fixturePath, $html);
             }
         }
     }

@@ -365,9 +365,11 @@ Route::middleware('admin.auth')->group(function () {
             ->middleware('throttle:admin-write')
             ->name('admin.donation-events.store');
         Route::post('/admin/facilities', [AdminFacilityController::class, 'store'])
+            ->block(10, 10)
             ->middleware('throttle:admin-write')
             ->name('admin.facilities.store');
         Route::put('/admin/facilities/{facility}', [AdminFacilityController::class, 'update'])
+            ->block(10, 10)
             ->whereNumber('facility')
             ->middleware('throttle:admin-write')
             ->name('admin.facilities.update');

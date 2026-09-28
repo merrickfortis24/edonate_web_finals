@@ -21,12 +21,14 @@ class ReportController extends Controller
     public function index(Request $request)
     {
         $filters = $this->validatedFilters($request);
+        $exportFilters = array_filter($filters, static fn ($value): bool => $value !== null);
 
         return view('admin.report_analytics', [
             'reportPayload' => $this->safeBuild($filters),
             'reportApi' => [
                 'dataUrl' => route('admin.report-analytics.data'),
                 'exportUrl' => route('admin.report-analytics.export'),
+                'initialExportUrl' => route('admin.report-analytics.export', $exportFilters),
             ],
         ]);
     }
@@ -46,12 +48,18 @@ class ReportController extends Controller
         $trend = $payload['trend'] ?? [];
         $inventory = $payload['inventory'] ?? [];
         $distribution = $payload['distribution'] ?? [];
+        $summaryAvailability = $payload['availability']['summary'] ?? [];
+        $filters = $payload['filters'] ?? [];
+        $facility = collect($filters['facilities'] ?? [])->firstWhere('value', (int) ($filters['facility_id'] ?? 0));
+        $bloodType = collect($filters['blood_types'] ?? [])->firstWhere('value', (int) ($filters['blood_type_id'] ?? 0));
+        $facilityLabel = $facility['label'] ?? 'All facilities';
+        $bloodTypeLabel = $bloodType['label'] ?? 'All blood types';
         $fileName = 'edonate-report-' . date('Ymd-His') . '.csv';
 
         $reportError = ! empty($payload['error']);
         $snapshotAt = (string) ($payload['inventory_snapshot_at'] ?? '');
 
-        return response()->streamDownload(function () use ($period, $summary, $trend, $inventory, $distribution, $reportError, $snapshotAt): void {
+        return response()->streamDownload(function () use ($period, $summary, $trend, $inventory, $distribution, $summaryAvailability, $reportError, $snapshotAt, $facilityLabel, $bloodTypeLabel): void {
             $handle = fopen('php://output', 'wb');
             if ($handle === false) {
                 return;
@@ -61,17 +69,25 @@ class ReportController extends Controller
             fputcsv($handle, ['Period', (string) ($period['label'] ?? '')]);
             fputcsv($handle, ['Start date', (string) ($period['start'] ?? '')]);
             fputcsv($handle, ['End date', (string) ($period['end'] ?? '')]);
+            fputcsv($handle, ['Facility filter', $facilityLabel]);
+            fputcsv($handle, ['Blood type filter', $bloodTypeLabel]);
             fputcsv($handle, ['Report status', $reportError ? 'Unavailable - please retry later' : 'Available']);
             fputcsv($handle, []);
 
             fputcsv($handle, ['Summary metric', 'Value']);
             foreach ($summary as $metric => $value) {
                 if (is_scalar($value)) {
-                    fputcsv($handle, [$this->labelize((string) $metric), $value]);
+                    $available = $summaryAvailability[$metric] ?? true;
+                    fputcsv($handle, [$this->labelize((string) $metric), $available ? $value : 'N/A']);
                 }
             }
 
             fputcsv($handle, []);
+            $donorTrendAvailable = ! empty($trend['donors_available']);
+            fputcsv($handle, ['Donor trend status', $donorTrendAvailable ? 'Available' : 'Unavailable']);
+            if (! $donorTrendAvailable && ! empty($trend['donors_message'])) {
+                fputcsv($handle, ['Donor trend note', (string) $trend['donors_message']]);
+            }
             fputcsv($handle, ['Trend period', 'Donors registered', 'Completed donations']);
             $labels = is_array($trend['labels'] ?? null) ? $trend['labels'] : [];
             $donors = is_array($trend['donors'] ?? null) ? $trend['donors'] : [];
@@ -79,12 +95,16 @@ class ReportController extends Controller
             foreach ($labels as $index => $label) {
                 fputcsv($handle, [
                     (string) $label,
-                    (int) ($donors[$index] ?? 0),
+                    $donorTrendAvailable ? (int) ($donors[$index] ?? 0) : 'N/A',
                     (int) ($donations[$index] ?? 0),
                 ]);
             }
 
             fputcsv($handle, []);
+            fputcsv($handle, ['Blood-type distribution status', ! empty($distribution['available']) ? 'Available' : 'Unavailable']);
+            if (empty($distribution['available']) && ! empty($distribution['message'])) {
+                fputcsv($handle, ['Blood-type distribution note', (string) $distribution['message']]);
+            }
             fputcsv($handle, ['Blood type', 'Verified donor count', 'Self-reported count']);
             foreach ((array) ($distribution['items'] ?? []) as $item) {
                 fputcsv($handle, [
@@ -182,10 +202,19 @@ class ReportController extends Controller
                 'period' => $period,
                 'summary' => array_fill_keys($metricKeys, null),
                 'availability' => ['summary' => array_fill_keys($metricKeys, false)],
-                'trend' => ['labels' => [], 'donors' => [], 'donations' => [], 'granularity' => 'day'],
-                'distribution' => ['basis' => 'verified', 'verified_total' => null, 'self_reported_total' => null, 'unknown_total' => null, 'items' => []],
+                'trend' => ['labels' => [], 'donors' => [], 'donors_available' => false, 'donors_message' => 'Report data is temporarily unavailable.', 'donations' => [], 'granularity' => 'day'],
+                'distribution' => ['available' => false, 'message' => 'Report data is temporarily unavailable.', 'basis' => 'verified', 'verified_total' => null, 'self_reported_total' => null, 'unknown_total' => null, 'items' => []],
                 'inventory' => [],
                 'inventory_snapshot_at' => null,
+                'filters' => [
+                    'range' => $period['range'],
+                    'start_date' => $period['start'],
+                    'end_date' => $period['end'],
+                    'facility_id' => $filters['facility_id'] ?? null,
+                    'blood_type_id' => $filters['blood_type_id'] ?? null,
+                    'facilities' => $this->reportService->facilityOptions(),
+                    'blood_types' => $this->reportService->bloodTypeOptions(),
+                ],
                 'error' => true,
                 'error_message' => 'Report data is temporarily unavailable. Please try again later.',
             ];

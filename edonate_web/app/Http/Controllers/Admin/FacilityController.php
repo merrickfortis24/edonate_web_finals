@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Facility;
 use App\Services\AdminNotificationService;
 use App\Services\FacilityBloodInventoryService;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,9 +20,7 @@ class FacilityController extends Controller
     public function __construct(
         private readonly FacilityBloodInventoryService $inventoryService,
         private readonly AdminNotificationService $adminNotificationService
-    )
-    {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -45,7 +44,7 @@ class FacilityController extends Controller
         $search = trim((string) ($validated['search'] ?? ''));
 
         if ($search !== '') {
-            $like = '%' . $search . '%';
+            $like = '%'.$search.'%';
             $query->where(function ($builder) use ($like): void {
                 $builder->where('facility_name', 'like', $like)
                     ->orWhere('barangay_name', 'like', $like)
@@ -104,15 +103,22 @@ class FacilityController extends Controller
                 'total' => Facility::query()->count(),
                 'active' => Facility::query()->where('status', 'active')->count(),
                 'inactive' => Facility::query()->where('status', 'inactive')->count(),
-                'mapped' => Facility::query()->whereNotNull('latitude')->whereNotNull('longitude')->count(),
+                'mapped' => Facility::query()->get()->filter(fn (Facility $facility): bool => $this->inventoryService->facilityData($facility)['mapped'])->count(),
             ],
         ]);
     }
 
     public function store(Request $request): JsonResponse
     {
-        $facility = Facility::query()->create($this->validatedFacility($request));
-        $this->audit($request, 'facility_created', 'Created facility ' . $facility->facility_name . '.', $facility, [
+        $attributes = $this->validatedFacility($request);
+        try {
+            $facility = DB::transaction(fn () => Facility::query()->create($attributes));
+        } catch (QueryException $exception) {
+            report($exception);
+
+            return $this->saveFailure();
+        }
+        $this->audit($request, 'facility_created', 'Created facility '.$facility->facility_name.'.', $facility, [
             'facility_type' => $facility->facility_type,
             'status' => $facility->status,
         ]);
@@ -126,10 +132,15 @@ class FacilityController extends Controller
     public function update(Request $request, Facility $facility): JsonResponse
     {
         $before = $this->inventoryService->facilityData($facility);
-        $facility->fill($this->validatedFacility($request));
-        $facility->save();
+        $attributes = $this->validatedFacility($request);
+        try {
+            DB::transaction(fn () => $facility->fill($attributes)->save());
+        } catch (QueryException $exception) {
+            report($exception);
 
-        $this->audit($request, 'facility_updated', 'Updated facility ' . $facility->facility_name . '.', $facility, [
+            return $this->saveFailure();
+        }
+        $this->audit($request, 'facility_updated', 'Updated facility '.$facility->facility_name.'.', $facility, [
             'before' => $before,
             'after' => $this->inventoryService->facilityData($facility),
         ]);
@@ -147,7 +158,7 @@ class FacilityController extends Controller
         $facility->status = $validated['status'];
         $facility->save();
 
-        $this->audit($request, 'facility_status_changed', 'Changed facility status to ' . $facility->status . '.', $facility, [
+        $this->audit($request, 'facility_status_changed', 'Changed facility status to '.$facility->status.'.', $facility, [
             'previous_status' => $previous,
             'new_status' => $facility->status,
         ]);
@@ -186,7 +197,7 @@ class FacilityController extends Controller
         );
 
         if ($changes !== []) {
-            $this->audit($request, 'blood_inventory_updated', 'Updated blood inventory for ' . $facility->facility_name . '.', $facility, [
+            $this->audit($request, 'blood_inventory_updated', 'Updated blood inventory for '.$facility->facility_name.'.', $facility, [
                 'changes' => $changes,
                 'reason' => trim($validated['reason']),
             ], 'facility_blood_inventory');
@@ -215,18 +226,43 @@ class FacilityController extends Controller
     /** @return array<string, mixed> */
     private function validatedFacility(Request $request): array
     {
-        return $request->validate([
+        $input = $request->validate([
             'facility_name' => ['required', 'string', 'max:150'],
             'facility_type' => ['required', Rule::in($this->inventoryService->facilityTypes())],
             'address' => ['nullable', 'string', 'max:5000'],
             'barangay_name' => ['nullable', 'string', 'max:100'],
             'city' => ['required', 'string', 'max:100'],
             'province' => ['required', 'string', 'max:100'],
-            'latitude' => ['nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
+            'location_pin_selected' => ['accepted'],
+            'latitude' => ['required_if:location_pin_selected,1', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['required_if:location_pin_selected,1', 'nullable', 'numeric', 'between:-180,180'],
+            'location_confirmed' => ['accepted'],
             'contact_number' => ['nullable', 'string', 'max:30'],
             'status' => ['required', Rule::in(['active', 'inactive'])],
+        ], [
+            'location_confirmed.accepted' => 'Confirm that you have reviewed the facility address and its components.',
+            'location_pin_selected.accepted' => 'Choose a position by clicking the map or dragging the facility pin.',
+            'latitude.required_if' => 'Choose a facility position on the map before saving.',
+            'longitude.required_if' => 'Choose a facility position on the map before saving.',
+            'city.required' => 'Enter the city or municipality.',
+            'province.required' => 'Enter the province.',
         ]);
+        $attributes = collect($input)->only([
+            'facility_name', 'facility_type', 'address', 'barangay_name', 'city', 'province', 'latitude', 'longitude', 'contact_number', 'status',
+        ])->all();
+
+        if ((float) ($input['latitude'] ?? 0) === 0.0 && (float) ($input['longitude'] ?? 0) === 0.0) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'location_pin_selected' => 'Choose a valid position on the map before saving.',
+            ]);
+        }
+
+        return $attributes;
+    }
+
+    private function saveFailure(): JsonResponse
+    {
+        return response()->json(['message' => 'The facility could not be saved. Please contact the system administrator if this continues.'], 500);
     }
 
     private function isAdmin(Request $request): bool
@@ -238,7 +274,7 @@ class FacilityController extends Controller
      * Create one admin notification only when an inventory status changes.
      * Re-saving the same low/out-of-stock value therefore does not spam staff.
      *
-     * @param array<int, array<string, mixed>> $changes
+     * @param  array<int, array<string, mixed>>  $changes
      */
     private function notifyInventoryStateChanges(Facility $facility, array $changes): void
     {
@@ -273,7 +309,7 @@ class FacilityController extends Controller
             $this->adminNotificationService->createAdminEvent(
                 $type,
                 $this->adminNotificationService->titleFromType($type),
-                $bloodType . ' stock at ' . $facility->facility_name . ' changed from ' . str_replace('_', ' ', $previous) . ' to ' . $statusLabel . '.',
+                $bloodType.' stock at '.$facility->facility_name.' changed from '.str_replace('_', ' ', $previous).' to '.$statusLabel.'.',
                 'facility',
                 (int) $facility->facility_id
             );

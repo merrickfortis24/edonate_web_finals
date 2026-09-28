@@ -18,6 +18,7 @@
       'deferUrlTemplate' => '',
       'initialAppointmentId' => null,
     ],
+    'initialStatus' => '',
     'filters' => [
       'bloodTypes' => [],
       'events' => [],
@@ -34,6 +35,7 @@
   $canVerifyBloodType = (bool) data_get($donationRecordsPayload ?? [], 'canVerifyBloodType', false);
   $eventOptions = data_get($donationRecordsPayload ?? [], 'filters.events', []);
   $centerOptions = data_get($donationRecordsPayload ?? [], 'filters.centers', []);
+  $initialStatus = data_get($donationRecordsPayload ?? [], 'initialStatus', '');
 @endphp
 
 <div class="main container-fluid px-0">
@@ -80,14 +82,14 @@
       </div>
       <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-2">
         <select id="processingStatusFilter" class="filter-bar__select form-select" aria-label="Filter by status">
-          <option value="">All Status</option>
-          <option value="confirmed">Pending</option>
-          <option value="rescheduled">Rescheduled</option>
-          <option value="checked_in">Checked In</option>
-          <option value="completed">Completed</option>
-          <option value="deferred_on_site">Deferred On Site</option>
-          <option value="no_show">No-show</option>
-          <option value="cancelled">Cancelled</option>
+          <option value="" @selected($initialStatus === '')>All Status</option>
+          <option value="confirmed" @selected($initialStatus === 'confirmed')>Pending</option>
+          <option value="rescheduled" @selected($initialStatus === 'rescheduled')>Rescheduled</option>
+          <option value="checked_in" @selected($initialStatus === 'checked_in')>Checked In</option>
+          <option value="completed" @selected($initialStatus === 'completed')>Completed</option>
+          <option value="deferred_on_site" @selected($initialStatus === 'deferred_on_site')>Deferred On Site</option>
+          <option value="no_show" @selected($initialStatus === 'no_show')>No-show</option>
+          <option value="cancelled" @selected($initialStatus === 'cancelled')>Cancelled</option>
         </select>
       </div>
       <div class="filter-bar__select-wrap col-12 col-md-6 col-xl-2">

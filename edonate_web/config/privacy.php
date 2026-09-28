@@ -3,7 +3,7 @@
 return [
     // Publication details supplied by the operator. "reviewed" remains a separate
     // release gate for the substantive legal-basis and retention approval.
-    'version' => '2026-09-08-v2',
+    'version' => '2026-09-28-v3',
     'reviewed' => (bool) env('PRIVACY_POLICY_REVIEWED', false),
     'controller' => env('PRIVACY_CONTROLLER_NAME', 'City Health Office of Lipa City'),
     'address' => env('PRIVACY_CONTROLLER_ADDRESS', 'City Hall Compound, Lipa City, Batangas, Philippines'),

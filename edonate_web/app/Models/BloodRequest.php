@@ -17,6 +17,7 @@ class BloodRequest extends Model
     protected $fillable = [
         'facility_id',
         'request_reference',
+        'submission_key',
         'patient_reference_code',
         'request_type',
         'needed_blood_type_id',

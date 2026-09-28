@@ -52,51 +52,59 @@
 			@endif
 			<section class="dashboard-stats row" aria-label="Dashboard statistics">
 				<div class="col-6 col-lg-3">
+					<a class="dashboard-summary-card-link" href="{{ route('admin.users') }}" aria-label="View all donors in User Management">
 					<div class="stat-card stat-card--red h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#128101;</span>
 							<span class="stat-card__icon-aux" aria-hidden="true">&#8599;</span>
 						</div>
 						<p class="stat-card__label stat-card__label--white">Total Donors</p>
-						<p class="stat-card__value stat-card__value--white">{{ data_get($stats, 'total_donors.value', '0') }}</p>
+						<p class="stat-card__value stat-card__value--white" data-dashboard-count="total_donors">{{ data_get($stats, 'total_donors.value', '0') }}</p>
 						<p class="stat-card__change stat-card__change--white">{{ data_get($stats, 'total_donors.change', '0% this month') }}</p>
 					</div>
+					</a>
 				</div>
 
 				<div class="col-6 col-lg-3">
+					<a class="dashboard-summary-card-link" href="{{ route('admin.donation-records', ['status' => 'completed']) }}" aria-label="View successful donations in Donation Processing">
 					<div class="stat-card stat-card--green h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#10004;</span>
 							<span class="stat-card__icon-aux" aria-hidden="true">&#128202;</span>
 						</div>
 						<p class="stat-card__label">Successful Donations</p>
-						<p class="stat-card__value">{{ data_get($stats, 'successful_donations.value', '0') }}</p>
+						<p class="stat-card__value" data-dashboard-count="successful_donations">{{ data_get($stats, 'successful_donations.value', '0') }}</p>
 						<p class="stat-card__change stat-card__change--green">{{ data_get($stats, 'successful_donations.change', '0% this month') }}</p>
 					</div>
+					</a>
 				</div>
 
 				<div class="col-6 col-lg-3">
+					<a class="dashboard-summary-card-link" href="{{ route('admin.appointments', ['status' => 'upcoming']) }}" aria-label="View upcoming appointments in Appointment Management">
 					<div class="stat-card stat-card--blue h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#128197;</span>
 							<span class="stat-card__icon-aux" aria-hidden="true">&#128339;</span>
 						</div>
 						<p class="stat-card__label">Upcoming Appointments</p>
-						<p class="stat-card__value">{{ data_get($stats, 'upcoming_appointments.value', '0') }}</p>
+						<p class="stat-card__value" data-dashboard-count="upcoming_appointments">{{ data_get($stats, 'upcoming_appointments.value', '0') }}</p>
 						<p class="stat-card__change stat-card__change--blue">{{ data_get($stats, 'upcoming_appointments.change', '0% this month') }}</p>
 					</div>
+					</a>
 				</div>
 
 				<div class="col-6 col-lg-3">
+					<a class="dashboard-summary-card-link" href="{{ route('admin.donation-records') }}" aria-label="View all donation records in Donation Processing">
 					<div class="stat-card stat-card--gold h-100">
 						<div class="stat-card__icons">
 							<span class="stat-card__icon-main" aria-hidden="true">&#129656;</span>
 							<span class="stat-card__icon-aux" aria-hidden="true">&#128204;</span>
 						</div>
 						<p class="stat-card__label">Donation Records</p>
-						<p class="stat-card__value">{{ data_get($stats, 'donation_records.value', '0') }}</p>
+						<p class="stat-card__value" data-dashboard-count="donation_records">{{ data_get($stats, 'donation_records.value', '0') }}</p>
 						<p class="stat-card__change stat-card__change--gold">{{ data_get($stats, 'donation_records.change', '0% this month') }}</p>
 					</div>
+					</a>
 				</div>
 			</section>
 

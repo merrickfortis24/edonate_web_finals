@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Http\Middleware\EnsureAdminAuthenticated;
 use App\Http\Middleware\EnsureAdminRole;
+use App\Services\BloodRequestService;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -32,14 +33,17 @@ class Phase11BloodRequestTest extends TestCase
             'last_updated' => now(),
         ]);
 
+        $expiresAt = now()->addDay()->toIso8601String();
         $response = $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
             'facility_id' => $facilityId,
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
             'request_type' => 'replacement_donor',
             'needed_blood_type_id' => 4,
             'required_donors' => 5,
             'specific_match_required' => 1,
             'allow_other_blood_types' => true,
             'urgency' => 'emergency',
+            'expires_at' => $expiresAt,
             'notes' => 'Facility requested replacement donors.',
         ]);
 
@@ -47,8 +51,42 @@ class Phase11BloodRequestTest extends TestCase
         $request = DB::table('blood_requests')->first();
         $this->assertNotNull($request);
         $this->assertSame('RDR-' . now()->format('Y') . '-000001', $request->request_reference);
+        $this->assertSame(Carbon::parse($expiresAt)->setTimezone(config('app.timezone'))->format('Y-m-d H:i:s'), $request->expires_at);
+        $this->assertSame('open', $request->status);
         $this->assertSame(2, (int) DB::table('facility_blood_inventory')->where('facility_id', $facilityId)->where('blood_type_id', 4)->value('available_units'));
         $this->assertDatabaseHas('audit_logs', ['action_type' => 'blood_request_created']);
+
+        $this->withSession($this->adminSession())->getJson('/admin/blood-requests/data')
+            ->assertOk()->assertJsonPath('summary.open', 1)->assertJsonPath('data.0.required_donors', 5);
+    }
+
+    public function test_repeated_submission_key_returns_the_existing_request_without_creating_a_duplicate(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $payload = [
+            'facility_id' => $this->createFacility(),
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
+            'request_type' => 'blood_request',
+            'needed_blood_type_id' => 4,
+            'required_donors' => 1,
+            'specific_match_required' => 1,
+            'allow_other_blood_types' => false,
+            'urgency' => 'urgent',
+            'expires_at' => now()->addDay()->toIso8601String(),
+            'notes' => 'Need one O positive donor.',
+        ];
+
+        $first = $this->withSession($this->adminSession())->postJson('/admin/blood-requests', $payload);
+        $first->assertCreated();
+        $requestId = $first->json('request.request_id');
+
+        $this->withSession($this->adminSession())->postJson('/admin/blood-requests', $payload)
+            ->assertOk()
+            ->assertJsonPath('request.request_id', $requestId)
+            ->assertJsonPath('request.status', 'open');
+
+        $this->assertSame(1, DB::table('blood_requests')->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('action_type', 'blood_request_created')->count());
     }
 
     public function test_blood_request_listing_returns_rows_and_summary_for_the_management_page(): void
@@ -136,6 +174,7 @@ class Phase11BloodRequestTest extends TestCase
 
         $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
             'facility_id' => 999,
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
             'request_type' => 'replacement_donor',
             'needed_blood_type_id' => 999,
             'required_donors' => 0,
@@ -145,6 +184,7 @@ class Phase11BloodRequestTest extends TestCase
 
         $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
             'facility_id' => $this->createFacility(),
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
             'request_type' => 'replacement_donor',
             'needed_blood_type_id' => 4,
             'required_donors' => 1,
@@ -152,6 +192,59 @@ class Phase11BloodRequestTest extends TestCase
             'allow_other_blood_types' => true,
             'urgency' => 'normal',
         ])->assertUnprocessable()->assertJsonValidationErrors('specific_match_required');
+
+        $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
+            'facility_id' => $this->createFacility(),
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
+            'request_type' => 'not_a_request_type',
+            'needed_blood_type_id' => 4,
+            'required_donors' => 1,
+            'specific_match_required' => 1,
+            'allow_other_blood_types' => 'sometimes',
+            'urgency' => 'normal',
+            'expires_at' => now()->subMinute()->toIso8601String(),
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['request_type', 'allow_other_blood_types', 'expires_at']);
+
+        $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
+            'facility_id' => $this->createFacility(),
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
+            'request_type' => 'blood_request',
+            'needed_blood_type_id' => 4,
+            'specific_match_required' => 1,
+            'urgency' => 'normal',
+        ])->assertUnprocessable()->assertJsonValidationErrors('required_donors');
+
+        $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
+            'facility_id' => $this->createFacility(),
+            'request_type' => 'blood_request',
+            'needed_blood_type_id' => 4,
+            'required_donors' => 1,
+            'specific_match_required' => 1,
+            'allow_other_blood_types' => false,
+            'urgency' => 'normal',
+        ])->assertUnprocessable()->assertJsonValidationErrors('submission_key');
+    }
+
+    public function test_unexpected_save_error_returns_safe_message_without_server_details(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->mock(BloodRequestService::class, function ($mock): void {
+            $mock->shouldReceive('create')->once()->andThrow(new \RuntimeException('private SQL diagnostic'));
+        });
+
+        $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
+            'facility_id' => $this->createFacility(),
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
+            'request_type' => 'blood_request',
+            'needed_blood_type_id' => 4,
+            'required_donors' => 1,
+            'specific_match_required' => 1,
+            'allow_other_blood_types' => false,
+            'urgency' => 'normal',
+        ])->assertServerError()
+            ->assertJsonPath('message', 'We could not save this blood request due to a temporary server issue. Please try again; if the problem continues, contact an administrator.')
+            ->assertDontSee('private SQL diagnostic');
     }
 
     public function test_matching_uses_verified_blood_type_latest_eligibility_waiting_period_and_active_appointment_rules(): void
@@ -490,6 +583,7 @@ class Phase11BloodRequestTest extends TestCase
             $table->increments('request_id');
             $table->integer('facility_id')->nullable();
             $table->string('request_reference', 32)->nullable()->unique();
+            $table->string('submission_key', 36)->nullable()->unique();
             $table->string('patient_reference_code', 100)->nullable();
             $table->string('request_type', 40)->default('replacement_donor');
             $table->integer('needed_blood_type_id')->nullable();

@@ -12,6 +12,7 @@ export default defineConfig({
                 'resources/js/app.js',
                 'resources/js/adminlte.js',
                 'resources/js/google-signin.js',
+                'resources/js/admin-facilities.js',
             ],
             publicDirectory: '../public_html',
             buildDirectory: 'build',

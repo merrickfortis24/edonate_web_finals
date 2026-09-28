@@ -1,5 +1,24 @@
 @import '../../../public_html/css/style.css';
 
+.facility-pin-map { height: 330px; min-height: 280px; border: 1px solid var(--bs-border-color); border-radius: .5rem; background: var(--bs-tertiary-bg); }
+.facility-pin-map.is-invalid { border: 2px solid var(--bs-danger); }
+@media (max-width: 700px) { .facility-pin-map { height: 280px; min-height: 240px; } }
+.admin-facilities-page .facility-content { padding: 24px 32px 40px; }
+.admin-facilities-page .facility-panel { padding: 18px; }
+.admin-facilities-page .facility-summary { display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 18px; }
+.admin-facilities-page .facility-stat { padding: 16px; }
+.admin-facilities-page .facility-toolbar { align-items: end; display: grid; gap: 12px; grid-template-columns: minmax(200px, 1fr) 200px 160px auto; margin-bottom: 18px; }
+.admin-facilities-page .facility-toolbar label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+.admin-facilities-page .facility-table { min-width: 900px; }
+.admin-facilities-page .facility-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 900px) {
+    .admin-facilities-page .facility-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+    .admin-facilities-page .facility-content { padding: 16px; }
+    .admin-facilities-page .facility-toolbar, .admin-facilities-page .facility-summary { grid-template-columns: 1fr; }
+}
+
 :root {
     --edonate-red: #b60c0c;
     --edonate-red-dark: #780606;
@@ -525,6 +544,42 @@
 
 .edonate-admin-page .complete-info-donor {
     color: var(--bs-secondary-color) !important;
+}
+
+.edonate-admin-page.admin-users-page .user-account-tabs {
+    gap: 0.35rem;
+}
+
+.edonate-admin-page.admin-users-page .user-account-tabs .nav-link {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.5rem;
+}
+
+.edonate-admin-page.admin-users-page .user-account-tabs .nav-link:not(.active) {
+    color: var(--bs-body-color);
+}
+
+.edonate-admin-page.admin-users-page .user-account-tabs .nav-link:focus-visible {
+    outline: 2px solid var(--edonate-red);
+    outline-offset: 2px;
+}
+
+.edonate-admin-page.admin-users-page .account-status-count {
+    min-width: 1.6rem;
+}
+
+.edonate-admin-page.admin-users-page #userManagementAccountPanel:focus-visible {
+    outline: 2px solid var(--edonate-red);
+    outline-offset: 3px;
+}
+
+@media (max-width: 575.98px) {
+    .edonate-admin-page.admin-users-page .user-account-tabs .nav-link {
+        flex: 1 1 auto;
+        justify-content: center;
+        padding-inline: 0.55rem;
+    }
 }
 
 .edonate-admin-page .table-responsive,
@@ -1524,6 +1579,35 @@
 
 .edonate-admin-page.admin-dashboard-page .stat-card--red :where(.stat-card__label, .stat-card__value, .stat-card__change) {
     color: #fff;
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-summary-card-link {
+    border-radius: 1rem;
+    color: inherit;
+    display: block;
+    height: 100%;
+    text-decoration: none;
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-summary-card-link .stat-card {
+    cursor: pointer;
+    transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-summary-card-link:hover .stat-card {
+    box-shadow: 0 0.6rem 1.25rem rgb(24 32 45 / 18%);
+    transform: translateY(-2px);
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-summary-card-link:focus-visible {
+    outline: 3px solid var(--bs-primary);
+    outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .edonate-admin-page.admin-dashboard-page .dashboard-summary-card-link .stat-card {
+        transition: none;
+    }
 }
 
 .edonate-admin-page.admin-dashboard-page .dashboard-operations {

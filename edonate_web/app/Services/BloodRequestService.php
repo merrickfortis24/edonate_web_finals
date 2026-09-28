@@ -324,6 +324,7 @@ class BloodRequestService
 
         return [
             'facility_id' => (int) $data['facility_id'],
+            'submission_key' => $data['submission_key'] ?? null,
             'request_type' => (string) ($data['request_type'] ?? 'replacement_donor'),
             'needed_blood_type_id' => (int) $data['needed_blood_type_id'],
             'required_donors' => $required,
