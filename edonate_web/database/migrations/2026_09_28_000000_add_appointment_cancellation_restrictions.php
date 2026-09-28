@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -11,6 +12,10 @@ return new class extends Migration
         if (! Schema::hasTable('donors') || ! Schema::hasTable('appointments') || ! Schema::hasTable('admins')) {
             throw new RuntimeException('The donors, appointments, and admins tables must exist before appointment restrictions are installed.');
         }
+
+        // Legacy production databases may have a signed donors.donor_id even
+        // though newer Laravel schemas use an unsigned incrementing key.
+        $donorIdColumnType = $this->matchingIntegerColumnMethod('donors', 'donor_id');
 
         Schema::table('donors', function (Blueprint $table): void {
             if (! Schema::hasColumn('donors', 'appointment_restricted')) {
@@ -44,9 +49,9 @@ return new class extends Migration
         });
 
         if (! Schema::hasTable('appointment_cancellations')) {
-            Schema::create('appointment_cancellations', function (Blueprint $table): void {
+            Schema::create('appointment_cancellations', function (Blueprint $table) use ($donorIdColumnType): void {
                 $table->increments('cancellation_id');
-                $table->unsignedInteger('donor_id');
+                $table->{$donorIdColumnType}('donor_id');
                 $table->unsignedInteger('appointment_id');
                 $table->dateTime('cancelled_at');
                 $table->text('reason');
@@ -63,9 +68,9 @@ return new class extends Migration
         }
 
         if (! Schema::hasTable('appointment_restrictions')) {
-            Schema::create('appointment_restrictions', function (Blueprint $table): void {
+            Schema::create('appointment_restrictions', function (Blueprint $table) use ($donorIdColumnType): void {
                 $table->increments('restriction_id');
-                $table->unsignedInteger('donor_id');
+                $table->{$donorIdColumnType}('donor_id');
                 $table->string('status', 20)->default('active');
                 $table->text('restriction_reason');
                 $table->dateTime('restricted_at');
@@ -86,9 +91,9 @@ return new class extends Migration
         }
 
         if (! Schema::hasTable('appointment_restriction_appeals')) {
-            Schema::create('appointment_restriction_appeals', function (Blueprint $table): void {
+            Schema::create('appointment_restriction_appeals', function (Blueprint $table) use ($donorIdColumnType): void {
                 $table->increments('appeal_id');
-                $table->unsignedInteger('donor_id');
+                $table->{$donorIdColumnType}('donor_id');
                 $table->unsignedInteger('restriction_id');
                 $table->text('justification');
                 $table->string('status', 20)->default('pending');
@@ -127,6 +132,166 @@ return new class extends Migration
                 $table->foreign('admin_id', 'fk_appointment_reviews_admin')
                     ->references('admin_id')->on('admins')->nullOnDelete();
                 $table->index(['restriction_id', 'reviewed_at'], 'idx_appointment_reviews_restriction_date');
+            });
+        }
+
+        // A failed MySQL ALTER TABLE can leave the just-created table in place
+        // without its foreign keys. Repair such partial installs in place so a
+        // retry never needs to drop tables or discard cancellation history.
+        $this->matchExistingDonorKeyTypes();
+        $this->ensureMysqlForeignKeys([
+            ['appointment_cancellations', 'donor_id', 'donors', 'donor_id', 'fk_appointment_cancellations_donor', 'restrict'],
+            ['appointment_cancellations', 'appointment_id', 'appointments', 'appointment_id', 'fk_appointment_cancellations_appointment', 'restrict'],
+            ['appointment_restrictions', 'donor_id', 'donors', 'donor_id', 'fk_appointment_restrictions_donor', 'restrict'],
+            ['appointment_restrictions', 'restricted_by', 'admins', 'admin_id', 'fk_appointment_restrictions_created_by', 'null'],
+            ['appointment_restrictions', 'lifted_by', 'admins', 'admin_id', 'fk_appointment_restrictions_lifted_by', 'null'],
+            ['appointment_restriction_appeals', 'donor_id', 'donors', 'donor_id', 'fk_appointment_appeals_donor', 'restrict'],
+            ['appointment_restriction_appeals', 'restriction_id', 'appointment_restrictions', 'restriction_id', 'fk_appointment_appeals_restriction', 'restrict'],
+            ['appointment_restriction_appeals', 'reviewed_by', 'admins', 'admin_id', 'fk_appointment_appeals_reviewer', 'null'],
+            ['appointment_restriction_reviews', 'restriction_id', 'appointment_restrictions', 'restriction_id', 'fk_appointment_reviews_restriction', 'restrict'],
+            ['appointment_restriction_reviews', 'appeal_id', 'appointment_restriction_appeals', 'appeal_id', 'fk_appointment_reviews_appeal', 'null'],
+            ['appointment_restriction_reviews', 'admin_id', 'admins', 'admin_id', 'fk_appointment_reviews_admin', 'null'],
+        ]);
+
+        $this->ensureMysqlIndexes([
+            ['appointment_cancellations', ['donor_id', 'cancelled_at'], 'idx_appointment_cancellations_donor_date'],
+            ['appointment_restrictions', ['donor_id', 'status'], 'idx_appointment_restrictions_donor_status'],
+            ['appointment_restriction_appeals', ['donor_id', 'status'], 'idx_appointment_appeals_donor_status'],
+            ['appointment_restriction_appeals', ['restriction_id', 'status'], 'idx_appointment_appeals_restriction_status'],
+            ['appointment_restriction_reviews', ['restriction_id', 'reviewed_at'], 'idx_appointment_reviews_restriction_date'],
+        ]);
+    }
+
+    private function matchingIntegerColumnMethod(string $table, string $column): string
+    {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return 'unsignedInteger';
+        }
+
+        $metadata = $this->mysqlColumnMetadata($table, $column);
+        $type = strtolower((string) ($metadata->data_type ?? ''));
+        $unsigned = str_contains(strtolower((string) ($metadata->column_type ?? '')), 'unsigned');
+
+        $methods = [
+            'tinyint' => 'tinyInteger',
+            'smallint' => 'smallInteger',
+            'mediumint' => 'mediumInteger',
+            'int' => 'integer',
+            'integer' => 'integer',
+            'bigint' => 'bigInteger',
+        ];
+
+        if (! isset($methods[$type])) {
+            throw new RuntimeException("The {$table}.{$column} key must use an integer SQL type.");
+        }
+
+        return ($unsigned ? 'unsigned' : '').ucfirst($methods[$type]);
+    }
+
+    private function mysqlColumnMetadata(string $table, string $column): object
+    {
+        $metadata = DB::selectOne(
+            'SELECT DATA_TYPE AS data_type, COLUMN_TYPE AS column_type, IS_NULLABLE AS is_nullable '
+            .'FROM information_schema.COLUMNS '
+            .'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
+            [$table, $column]
+        );
+
+        if (! $metadata) {
+            throw new RuntimeException("Unable to inspect {$table}.{$column} for the appointment restriction migration.");
+        }
+
+        return $metadata;
+    }
+
+    private function matchExistingDonorKeyTypes(): void
+    {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return;
+        }
+
+        foreach (['appointment_cancellations', 'appointment_restrictions', 'appointment_restriction_appeals'] as $table) {
+            $parent = $this->mysqlColumnMetadata('donors', 'donor_id');
+            $child = $this->mysqlColumnMetadata($table, 'donor_id');
+            $parentType = $this->normalizedMysqlIntegerType($parent);
+            $childType = $this->normalizedMysqlIntegerType($child);
+
+            if ($parentType === $childType) {
+                continue;
+            }
+
+            $nullable = strtoupper((string) $child->is_nullable) === 'YES' ? 'NULL' : 'NOT NULL';
+            DB::statement("ALTER TABLE `{$table}` MODIFY COLUMN `donor_id` {$parentType} {$nullable}");
+        }
+    }
+
+    private function normalizedMysqlIntegerType(object $metadata): string
+    {
+        $types = [
+            'tinyint' => 'TINYINT',
+            'smallint' => 'SMALLINT',
+            'mediumint' => 'MEDIUMINT',
+            'int' => 'INT',
+            'integer' => 'INT',
+            'bigint' => 'BIGINT',
+        ];
+        $type = strtolower((string) ($metadata->data_type ?? ''));
+
+        if (! isset($types[$type])) {
+            throw new RuntimeException('Appointment restriction foreign keys must reference integer columns.');
+        }
+
+        return $types[$type].(str_contains(strtolower((string) ($metadata->column_type ?? '')), 'unsigned') ? ' UNSIGNED' : '');
+    }
+
+    private function ensureMysqlForeignKeys(array $foreignKeys): void
+    {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return;
+        }
+
+        foreach ($foreignKeys as [$table, $column, $referencedTable, $referencedColumn, $name, $deleteAction]) {
+            $exists = DB::selectOne(
+                'SELECT 1 FROM information_schema.TABLE_CONSTRAINTS '
+                .'WHERE CONSTRAINT_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ? AND CONSTRAINT_TYPE = ?',
+                [$table, $name, 'FOREIGN KEY']
+            );
+
+            if ($exists) {
+                continue;
+            }
+
+            Schema::table($table, function (Blueprint $blueprint) use ($column, $referencedTable, $referencedColumn, $name, $deleteAction): void {
+                $foreign = $blueprint->foreign($column, $name)->references($referencedColumn)->on($referencedTable);
+
+                if ($deleteAction === 'null') {
+                    $foreign->nullOnDelete();
+                } else {
+                    $foreign->restrictOnDelete();
+                }
+            });
+        }
+    }
+
+    private function ensureMysqlIndexes(array $indexes): void
+    {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            return;
+        }
+
+        foreach ($indexes as [$table, $columns, $name]) {
+            $exists = DB::selectOne(
+                'SELECT 1 FROM information_schema.STATISTICS '
+                .'WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?',
+                [$table, $name]
+            );
+
+            if ($exists) {
+                continue;
+            }
+
+            Schema::table($table, function (Blueprint $blueprint) use ($columns, $name): void {
+                $blueprint->index($columns, $name);
             });
         }
     }
