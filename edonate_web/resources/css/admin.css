@@ -499,6 +499,118 @@
     color: var(--bs-secondary-color);
 }
 
+.edonate-admin-page.admin-dashboard-page .activity-item__link {
+    align-items: center;
+    color: inherit;
+    display: flex;
+    flex: 1 1 auto;
+    gap: 12px;
+    min-width: 0;
+    text-decoration: none;
+}
+
+.edonate-admin-page.admin-dashboard-page .activity-item__link:hover .activity-item__name,
+.edonate-admin-page.admin-dashboard-page .approval-item__link:hover .approval-item__name {
+    color: var(--bs-link-color);
+    text-decoration: underline;
+}
+
+.edonate-admin-page.admin-dashboard-page :where(.activity-item__link, .approval-item__link):focus-visible,
+.edonate-admin-page.admin-dashboard-page .dashboard-restriction-card:focus-visible {
+    border-radius: 0.55rem;
+    outline: 3px solid var(--bs-primary);
+    outline-offset: 3px;
+}
+
+.edonate-admin-page.admin-dashboard-page :where(.activity-item__name, .activity-item__action, .approval-item__name, .approval-item__type) {
+    display: block;
+}
+
+.edonate-admin-page.admin-dashboard-page .activity-item__name,
+.edonate-admin-page.admin-dashboard-page .activity-item__action,
+.edonate-admin-page.admin-dashboard-page .approval-item__name,
+.edonate-admin-page.admin-dashboard-page .approval-item__type {
+    margin: 0;
+}
+
+.edonate-admin-page.admin-dashboard-page .approval-item__link {
+    align-items: center;
+    color: inherit;
+    display: flex;
+    flex: 1 1 auto;
+    gap: 1rem;
+    justify-content: space-between;
+    min-width: 0;
+    text-decoration: none;
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-restriction-card {
+    align-items: flex-start;
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.75rem;
+    box-shadow: var(--bs-box-shadow-sm);
+    color: var(--bs-body-color);
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    justify-content: flex-start;
+    min-height: 7.25rem;
+    padding: 1rem 1.15rem;
+    transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-restriction-card:hover {
+    box-shadow: var(--bs-box-shadow);
+    color: var(--bs-body-color);
+    transform: translateY(-1px);
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-restriction-card__label {
+    color: var(--bs-secondary-color);
+    font-size: 0.85rem;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.edonate-admin-page.admin-dashboard-page .dashboard-restriction-card__value {
+    color: var(--bs-body-color);
+    font-size: 1.55rem;
+    line-height: 1;
+}
+
+.edonate-admin-page .dashboard-record-highlight {
+    animation: dashboard-record-highlight 2.6s ease-out;
+    outline: 3px solid var(--bs-warning);
+    outline-offset: -3px;
+    scroll-margin-top: 7rem;
+}
+
+@keyframes dashboard-record-highlight {
+    0%, 65% { outline-color: var(--bs-warning); }
+    100% { outline-color: transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .edonate-admin-page.admin-dashboard-page .dashboard-restriction-card,
+    .edonate-admin-page .dashboard-record-highlight {
+        animation: none;
+        transition: none;
+    }
+}
+
+@media (max-width: 575.98px) {
+    .edonate-admin-page.admin-dashboard-page .approval-item__link {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .edonate-admin-page.admin-dashboard-page .dashboard-restriction-card {
+        min-height: 7rem;
+        padding: 0.95rem 1rem;
+    }
+}
+
 .edonate-admin-page :where(
     .event-stat__value,
     .facility-stat strong,

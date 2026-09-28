@@ -131,14 +131,16 @@
 
 			<section class="row row-cols-1 row-cols-md-2 g-3 mt-1" aria-label="Appointment restriction reviews">
 				<div class="col">
-					<a class="dashboard-kpi-card h-100 d-flex align-items-center justify-content-between text-decoration-none" href="{{ route('admin.appointment-restrictions.index') }}">
-						<span><span class="dashboard-kpi-card__label d-block">Restricted Donors</span><strong class="dashboard-kpi-card__value">{{ number_format($appointmentRestrictionStats['restricted_donors'] ?? 0) }}</strong></span>
+					<a class="dashboard-restriction-card h-100 text-decoration-none" href="{{ route('admin.appointment-restrictions.index') }}">
+						<span class="dashboard-restriction-card__label">Restricted Donors</span>
+						<strong class="dashboard-restriction-card__value">{{ number_format($appointmentRestrictionStats['restricted_donors'] ?? 0) }}</strong>
 						<span class="badge text-bg-danger">Review</span>
 					</a>
 				</div>
 				<div class="col">
-					<a class="dashboard-kpi-card h-100 d-flex align-items-center justify-content-between text-decoration-none" href="{{ route('admin.appointment-restrictions.index') }}">
-						<span><span class="dashboard-kpi-card__label d-block">Pending Restriction Appeals</span><strong class="dashboard-kpi-card__value">{{ number_format($appointmentRestrictionStats['pending_appeals'] ?? 0) }}</strong></span>
+					<a class="dashboard-restriction-card h-100 text-decoration-none" href="{{ route('admin.appointment-restrictions.index', ['appeal_status' => 'pending']) }}">
+						<span class="dashboard-restriction-card__label">Pending Restriction Appeals</span>
+						<strong class="dashboard-restriction-card__value">{{ number_format($appointmentRestrictionStats['pending_appeals'] ?? 0) }}</strong>
 						<span class="badge text-bg-warning">Review</span>
 					</a>
 				</div>
@@ -185,12 +187,23 @@
 					<ul class="activity-list">
 						@forelse ($recentActivities as $activity)
 							<li class="activity-item">
-								<span class="activity-item__dot activity-item__dot--{{ data_get($activity, 'tone', 'blue') }}"></span>
-								<div class="activity-item__info">
-									<p class="activity-item__name">{{ data_get($activity, 'name', 'System') }}</p>
-									<p class="activity-item__action">{{ data_get($activity, 'action', 'Activity') }}</p>
-								</div>
-								<span class="activity-item__time">{{ data_get($activity, 'time', 'Recently') }}</span>
+								@if (data_get($activity, 'url'))
+									<a class="activity-item__link" href="{{ data_get($activity, 'url') }}" aria-label="Open donor verification record from {{ data_get($activity, 'action', 'activity') }}">
+										<span class="activity-item__dot activity-item__dot--{{ data_get($activity, 'tone', 'blue') }}"></span>
+										<span class="activity-item__info">
+											<span class="activity-item__name">{{ data_get($activity, 'name', 'System') }}</span>
+											<span class="activity-item__action">{{ data_get($activity, 'action', 'Activity') }}</span>
+										</span>
+										<span class="activity-item__time">{{ data_get($activity, 'time', 'Recently') }}</span>
+									</a>
+								@else
+									<span class="activity-item__dot activity-item__dot--{{ data_get($activity, 'tone', 'blue') }}"></span>
+									<div class="activity-item__info">
+										<p class="activity-item__name">{{ data_get($activity, 'name', 'System') }}</p>
+										<p class="activity-item__action">{{ data_get($activity, 'action', 'Activity') }}</p>
+									</div>
+									<span class="activity-item__time">{{ data_get($activity, 'time', 'Recently') }}</span>
+								@endif
 							</li>
 						@empty
 							<li class="activity-item">
@@ -213,20 +226,19 @@
 					<ul class="approval-list">
 						@forelse ($pendingApprovals as $approval)
 							<li class="approval-item">
-								<div class="approval-item__info">
-									<p class="approval-item__name">{{ data_get($approval, 'name', 'Unknown donor') }}</p>
-									<p class="approval-item__type">{{ data_get($approval, 'type', 'Pending approval') }}</p>
-								</div>
-								<div class="approval-item__actions">
-									<a class="btn-approve btn" href="{{ data_get($approval, 'approve_url', route('admin.eligibility.index')) }}">Approve</a>
-									<a class="btn-review btn" href="{{ data_get($approval, 'review_url', route('admin.eligibility.index')) }}">Review</a>
-								</div>
+								<a class="approval-item__link" href="{{ data_get($approval, 'review_url', route('admin.eligibility.index')) }}" aria-label="Review {{ data_get($approval, 'name', 'Unknown donor') }} — {{ data_get($approval, 'type', 'pending approval') }}">
+									<span class="approval-item__info">
+										<span class="approval-item__name">{{ data_get($approval, 'name', 'Unknown donor') }}</span>
+										<span class="approval-item__type">{{ data_get($approval, 'type', 'Pending approval') }}</span>
+									</span>
+									<span class="btn-review btn">Review</span>
+								</a>
 							</li>
 						@empty
 							<li class="approval-item">
 								<div class="approval-item__info">
 									<p class="approval-item__name">{{ (bool) data_get($dashboard, 'pending_approvals_available', false) ? 'No pending approvals at the moment.' : 'Pending approvals are unavailable.' }}</p>
-									<p class="approval-item__type">{{ (bool) data_get($dashboard, 'pending_approvals_available', false) ? 'Pending eligibility and appointment items will appear here.' : 'Unable to load approval data.' }}</p>
+								<p class="approval-item__type">{{ (bool) data_get($dashboard, 'pending_approvals_available', false) ? 'Pending identity verification, eligibility, and appointment items will appear here.' : 'Unable to load approval data.' }}</p>
 								</div>
 							</li>
 						@endforelse

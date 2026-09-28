@@ -19,6 +19,7 @@ class AppointmentRestrictionController extends Controller
 
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:150'],
+            'appeal_status' => ['nullable', 'in:pending'],
         ]);
 
         $latestAuth = DB::table('donor_authentication as da')
@@ -62,6 +63,7 @@ class AppointmentRestrictionController extends Controller
             ]);
 
         $search = trim((string) ($validated['search'] ?? ''));
+        $appealStatus = (string) ($validated['appeal_status'] ?? '');
         if ($search !== '') {
             $query->where(function ($builder) use ($search): void {
                 $builder->where('d.first_name', 'like', '%'.$search.'%')
@@ -74,9 +76,14 @@ class AppointmentRestrictionController extends Controller
             });
         }
 
+        if ($appealStatus === 'pending') {
+            $query->whereNotNull('pending_appeals.donor_id');
+        }
+
         return view('admin.appointment_restrictions.index', [
             'donors' => $query->orderByDesc('d.restricted_at')->paginate(15)->withQueryString(),
             'search' => $search,
+            'appealStatus' => $appealStatus,
             'stats' => $service->dashboardCounts(),
         ]);
     }

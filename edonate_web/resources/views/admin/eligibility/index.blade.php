@@ -9,6 +9,7 @@
     {!! json_encode([
         'page' => 'eligibility-review',
         'eligibilityPayload' => $eligibilityPayload ?? [
+            'focusId' => 0,
             'api' => [
                 'listUrl' => '',
                 'detailBaseUrl' => '',
@@ -19,8 +20,13 @@
 @endsection
 
 @section('main_content')
-    <main class="main eligibility-main container-fluid px-0">
+<main class="main eligibility-main container-fluid px-0">
         <section class="content eligibility-content container-fluid py-3" aria-label="Eligibility content">
+            @if ((int) data_get($eligibilityPayload ?? [], 'focusId', 0) > 0)
+                <div class="alert alert-info" role="status">
+                    Opened eligibility record #{{ (int) data_get($eligibilityPayload, 'focusId') }} from the dashboard. It will be shown regardless of the current filters or page.
+                </div>
+            @endif
             <div class="eligibility-stats row g-3" aria-label="Eligibility summary">
                 <div class="col-6 col-xl">
                     <article class="stat-card eligibility-stat eligibility-stat--total h-100">

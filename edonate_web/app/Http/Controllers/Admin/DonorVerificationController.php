@@ -25,10 +25,12 @@ class DonorVerificationController extends Controller
             'status' => ['nullable', 'string', Rule::in(['', 'pending', 'verified', 'rejected'])],
             'search' => ['nullable', 'string', 'max:150'],
             'page' => ['nullable', 'integer', 'min:1'],
+            'focus' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $status = strtolower(trim((string) ($validated['status'] ?? '')));
-        $search = trim((string) ($validated['search'] ?? ''));
+        $focusId = (int) ($validated['focus'] ?? 0);
+        $status = $focusId > 0 ? '' : strtolower(trim((string) ($validated['status'] ?? '')));
+        $search = $focusId > 0 ? '' : trim((string) ($validated['search'] ?? ''));
 
         $query = DB::table('donor_verifications as dv')
             ->join('donors as d', 'd.donor_id', '=', 'dv.donor_id')
@@ -36,11 +38,13 @@ class DonorVerificationController extends Controller
 
         $query = $this->joinLatestDonorAuth($query);
 
-        if ($status !== '') {
+        if ($focusId > 0) {
+            $query->where('dv.verification_id', $focusId);
+        } elseif ($status !== '') {
             $query->where('dv.status', $status);
         }
 
-        if ($search !== '') {
+        if ($focusId === 0 && $search !== '') {
             $like = '%' . $search . '%';
             $query->where(function ($builder) use ($like): void {
                 $builder->whereRaw("CONCAT(COALESCE(d.first_name,''),' ',COALESCE(d.last_name,'')) LIKE ?", [$like])
@@ -71,7 +75,7 @@ class DonorVerificationController extends Controller
             ->orderByRaw("CASE WHEN dv.status = 'pending' THEN 0 WHEN dv.status = 'rejected' THEN 1 ELSE 2 END")
             ->orderByDesc('dv.created_at')
             ->orderByDesc('dv.verification_id')
-            ->paginate(12)
+            ->paginate(12, ['*'], 'page', $focusId > 0 ? 1 : null)
             ->withQueryString();
 
         $donorIds = $verifications->getCollection()
@@ -92,6 +96,7 @@ class DonorVerificationController extends Controller
                 'status' => $status,
                 'search' => $search,
             ],
+            'focusedVerificationId' => $focusId,
             'documentTypes' => $this->documentTypes(),
         ]);
     }

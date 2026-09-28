@@ -32,8 +32,13 @@ class EligibilityController extends Controller
 
     public function index(Request $request)
     {
+        $validated = $request->validate([
+            'focus' => ['nullable', 'integer', 'min:1'],
+        ]);
+
         return view('admin.eligibility.index', [
             'eligibilityPayload' => [
+                'focusId' => (int) ($validated['focus'] ?? 0),
                 'api' => [
                     'listUrl' => route('admin.eligibility.data'),
                     'detailBaseUrl' => url('/admin/eligibility'),
@@ -51,9 +56,11 @@ class EligibilityController extends Controller
             'search' => ['nullable', 'string', 'max:150'],
             'status' => ['nullable', 'string', Rule::in(['', 'eligible', 'not_eligible', 'temporary_deferred', 'for_review', 'pending', 'approved', 'declined'])],
             'source' => ['nullable', 'string', Rule::in(['', 'auto', 'admin_review', 'legacy'])],
+            'focus_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $page = (int) ($validated['page'] ?? 1);
+        $focusId = (int) ($validated['focus_id'] ?? 0);
+        $page = $focusId > 0 ? 1 : (int) ($validated['page'] ?? 1);
         $perPage = (int) ($validated['per_page'] ?? 10);
         $searchTerm = trim((string) ($validated['search'] ?? ''));
         $status = Str::lower(trim((string) ($validated['status'] ?? '')));
@@ -66,7 +73,9 @@ class EligibilityController extends Controller
         $base = $this->joinLatestDonorAuth($base);
         $base = $this->joinReviewerAdmin($base);
 
-        if ($searchTerm !== '') {
+        if ($focusId > 0) {
+            $base->where('es.eligibility_id', $focusId);
+        } elseif ($searchTerm !== '') {
             $like = '%' . $searchTerm . '%';
             $base->where(function ($q) use ($like): void {
                 $q->whereRaw($this->donorNameExpression().' LIKE ?', [$like])
@@ -77,11 +86,11 @@ class EligibilityController extends Controller
             });
         }
 
-        if ($status !== '') {
+        if ($focusId === 0 && $status !== '') {
             $base->whereIn(DB::raw("LOWER(TRIM(COALESCE(es.status, '')))"), self::STATUS_FILTERS[$status] ?? [$status]);
         }
 
-        if ($source !== '' && Schema::hasColumn('eligibility_status', 'source')) {
+        if ($focusId === 0 && $source !== '' && Schema::hasColumn('eligibility_status', 'source')) {
             if ($source === 'legacy') {
                 $base->where(function ($q): void {
                     $q->whereNull('es.source')

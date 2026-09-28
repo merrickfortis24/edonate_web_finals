@@ -1,8 +1,12 @@
 document.addEventListener('DOMContentLoaded', function () {
+    const initialPayload = window.AdminPageData && window.AdminPageData.eligibilityPayload
+        ? window.AdminPageData.eligibilityPayload
+        : {};
     const config = {
         currentPage: 1,
         perPage: 10,
         totalRecords: 0,
+        focusId: Number(initialPayload.focusId || 0),
         selectedId: null,
         isLoading: false,
         currentMode: 'view', // view | review
@@ -174,6 +178,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 status: document.querySelector(selectors.statusFilter)?.value || '',
                 source: document.querySelector(selectors.sourceFilter)?.value || '',
             });
+            if (config.focusId > 0) params.set('focus_id', String(config.focusId));
 
             const response = await fetch(urls.listUrl + '?' + params.toString(), {
                 headers: {
@@ -226,7 +231,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 : '<button type="button" class="btn btn-sm btn-outline-secondary view-btn" data-id="' + escapeHtml(row.eligibility_id) + '">View</button>';
 
             return (
-                '<tr>' +
+                '<tr id="eligibility-row-' + escapeHtml(row.eligibility_id) + '" tabindex="-1" data-eligibility-id="' + escapeHtml(row.eligibility_id) + '">' +
                     '<td>' +
                         '<div class="fw-semibold">' + escapeHtml(row.donor_name) + '</div>' +
                         (donorMeta ? '<small class="text-muted d-block">' + donorMeta + '</small>' : '') +
@@ -257,6 +262,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (id > 0) openReviewModal(id);
             });
         });
+
+        const focusId = Number(config.focusId || 0);
+        config.focusId = 0;
+        if (focusId > 0) {
+            const focusedRow = document.getElementById('eligibility-row-' + focusId);
+            if (focusedRow) {
+                focusedRow.classList.add('dashboard-record-highlight');
+                focusedRow.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+                focusedRow.focus({ preventScroll: true });
+                window.setTimeout(function () { focusedRow.classList.remove('dashboard-record-highlight'); }, 2800);
+            }
+        }
     }
 
     function updatePagination(meta) {
@@ -555,18 +572,22 @@ document.addEventListener('DOMContentLoaded', function () {
     function bindEvents() {
         document.querySelector(selectors.refreshBtn)?.addEventListener('click', function () {
             config.currentPage = 1;
+            config.focusId = 0;
             loadSubmissions();
         });
         document.querySelector(selectors.searchInput)?.addEventListener('input', function () {
             config.currentPage = 1;
+            config.focusId = 0;
             loadSubmissions();
         });
         document.querySelector(selectors.statusFilter)?.addEventListener('change', function () {
             config.currentPage = 1;
+            config.focusId = 0;
             loadSubmissions();
         });
         document.querySelector(selectors.sourceFilter)?.addEventListener('change', function () {
             config.currentPage = 1;
+            config.focusId = 0;
             loadSubmissions();
         });
         document.querySelector(selectors.decisionSelect)?.addEventListener('change', updateDecisionUi);

@@ -18,6 +18,13 @@
             </div>
         @endif
 
+        @if (($appealStatus ?? '') === 'pending')
+            <div class="alert alert-warning d-flex flex-column flex-sm-row align-items-sm-center justify-content-between gap-2" role="status">
+                <span>Showing restricted donors with a pending appeal.</span>
+                <a class="alert-link" href="{{ route('admin.appointment-restrictions.index') }}">View all restricted donors</a>
+            </div>
+        @endif
+
         <div class="row g-3 mb-3">
             <div class="col-12 col-md-6">
                 <a href="{{ route('admin.appointment-restrictions.index') }}" class="card border-danger text-decoration-none h-100">
@@ -41,10 +48,11 @@
             <div class="card-header d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
                 <h2 class="card-title mb-0">Currently Restricted Donors</h2>
                 <form class="d-flex gap-2" method="GET" action="{{ route('admin.appointment-restrictions.index') }}" role="search">
+                    @if (($appealStatus ?? '') !== '')<input type="hidden" name="appeal_status" value="{{ $appealStatus }}">@endif
                     <label class="visually-hidden" for="restrictionSearch">Search donors</label>
                     <input id="restrictionSearch" class="form-control" type="search" name="search" value="{{ $search }}" placeholder="Name, email, phone, or ID">
                     <button class="btn btn-primary" type="submit">Search</button>
-                    @if ($search !== '')<a class="btn btn-outline-secondary" href="{{ route('admin.appointment-restrictions.index') }}">Clear</a>@endif
+                    @if ($search !== '')<a class="btn btn-outline-secondary" href="{{ route('admin.appointment-restrictions.index', ($appealStatus ?? '') !== '' ? ['appeal_status' => $appealStatus] : []) }}">Clear</a>@endif
                 </form>
             </div>
             <div class="card-body p-0">
@@ -79,7 +87,7 @@
                                     <td class="text-end"><a class="btn btn-sm btn-outline-primary" href="{{ route('admin.appointment-restrictions.show', $record->donor_id) }}"><i class="bi bi-eye me-1" aria-hidden="true"></i>View Details</a></td>
                                 </tr>
                             @empty
-                                <tr><td colspan="10" class="py-5 text-center text-muted">No donors currently have appointment restrictions.</td></tr>
+                                <tr><td colspan="10" class="py-5 text-center text-muted">{{ ($appealStatus ?? '') === 'pending' ? 'No restricted donors have a pending appeal.' : 'No donors currently have appointment restrictions.' }}</td></tr>
                             @endforelse
                         </tbody>
                     </table>

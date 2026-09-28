@@ -21,6 +21,7 @@
         'rescheduleOptionsUrl' => '',
     ],
     'initialStatus' => '',
+    'initialAppointmentId' => 0,
     'filters' => [
             'centers' => [],
         ],
@@ -32,9 +33,13 @@
 @php
     $centerOptions = data_get($appointmentManagementPayload ?? [], 'filters.centers', []);
     $initialStatus = data_get($appointmentManagementPayload ?? [], 'initialStatus', '');
+    $initialAppointmentId = (int) data_get($appointmentManagementPayload ?? [], 'initialAppointmentId', 0);
 @endphp
 <main class="appointment-main container-fluid px-0">
     <section class="appointment-content container-fluid py-3" aria-label="Appointments content">
+        @if ($initialAppointmentId > 0)
+            <div class="alert alert-info" role="status">Opened appointment #{{ $initialAppointmentId }} from the dashboard. It will be shown even if it is outside the current filters or page.</div>
+        @endif
         <div class="appointment-stats row g-3" aria-label="Appointment summary">
             <div class="col-6 col-xl-3">
                 <article class="stat-card appointment-stat appointment-stat--green h-100">
@@ -351,7 +356,8 @@
             perPage: 10,
             search: '',
             center: '',
-            status: statusFilter ? String(statusFilter.value || '') : ''
+            status: statusFilter ? String(statusFilter.value || '') : '',
+            focusAppointmentId: Number(payload.initialAppointmentId || 0)
         };
 
         var searchDebounceTimer = null;
@@ -556,7 +562,7 @@
                 var actions = renderActionButtons(item.status, item.appointment_date, item.appointment_time, item.appointment_id);
 
                 return ''
-                    + '<tr class="appointment-data-row" data-appointment-id="' + escapeHtml(item.appointment_id || '') + '" data-event-id="' + escapeHtml(item.event_id || '') + '" data-appointment-date="' + escapeHtml(item.appointment_date || '') + '" data-appointment-time="' + escapeHtml(item.appointment_time || '') + '">'
+                    + '<tr class="appointment-data-row" id="appointment-row-' + escapeHtml(item.appointment_id || '') + '" tabindex="-1" data-appointment-id="' + escapeHtml(item.appointment_id || '') + '" data-event-id="' + escapeHtml(item.event_id || '') + '" data-appointment-date="' + escapeHtml(item.appointment_date || '') + '" data-appointment-time="' + escapeHtml(item.appointment_time || '') + '">'
                     + '<td><span class="appointment-id">' + appointmentCode + '</span></td>'
                     + '<td><span class="appointment-donor__name">' + donorName + '</span><span class="appointment-donor__meta">' + donorMeta + '</span></td>'
                     + '<td>'
@@ -568,6 +574,26 @@
                     + '<td class="appointment-actions">' + actions + '</td>'
                     + '</tr>';
             }).join('');
+
+            focusDashboardAppointment();
+        }
+
+        function focusDashboardAppointment() {
+            var appointmentId = Number(state.focusAppointmentId || 0);
+            if (!appointmentId || !tableBody) {
+                return;
+            }
+
+            var row = document.getElementById('appointment-row-' + appointmentId);
+            state.focusAppointmentId = 0;
+            if (!row) {
+                return;
+            }
+
+            row.classList.add('dashboard-record-highlight');
+            row.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+            row.focus({ preventScroll: true });
+            window.setTimeout(function () { row.classList.remove('dashboard-record-highlight'); }, 2800);
         }
 
         function updateStats(stats) {
@@ -620,14 +646,18 @@
             params.set('page', String(state.page));
             params.set('per_page', String(state.perPage));
 
-            if (state.search !== '') {
-                params.set('search', state.search);
-            }
-            if (state.center !== '') {
-                params.set('center', state.center);
-            }
-            if (state.status !== '') {
-                params.set('status', state.status);
+            if (state.focusAppointmentId > 0) {
+                params.set('appointment_id', String(state.focusAppointmentId));
+            } else {
+                if (state.search !== '') {
+                    params.set('search', state.search);
+                }
+                if (state.center !== '') {
+                    params.set('center', state.center);
+                }
+                if (state.status !== '') {
+                    params.set('status', state.status);
+                }
             }
 
             return url.toString();
@@ -697,6 +727,7 @@
                 clearTimeout(searchDebounceTimer);
 
                 searchDebounceTimer = setTimeout(function () {
+                    state.focusAppointmentId = 0;
                     state.search = nextValue;
                     state.page = 1;
                     loadAppointments();
@@ -706,6 +737,7 @@
 
         if (centerFilter) {
             centerFilter.addEventListener('change', function () {
+                state.focusAppointmentId = 0;
                 state.center = String(centerFilter.value || '').trim();
                 state.page = 1;
                 loadAppointments();
@@ -714,6 +746,7 @@
 
         if (statusFilter) {
             statusFilter.addEventListener('change', function () {
+                state.focusAppointmentId = 0;
                 state.status = String(statusFilter.value || '').trim();
                 state.page = 1;
                 loadAppointments();
@@ -738,6 +771,7 @@
                 }
 
                 state.page = nextPage;
+                state.focusAppointmentId = 0;
                 loadAppointments();
             });
         }

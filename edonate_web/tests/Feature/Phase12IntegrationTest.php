@@ -295,6 +295,153 @@ class Phase12IntegrationTest extends TestCase
         $this->assertSame(1, array_sum($payload['monthly_donations']['values']));
     }
 
+    public function test_dashboard_links_activity_and_each_pending_approval_to_exact_record_ids(): void
+    {
+        $this->seedDonor(1, 'Pending', 'Identity');
+        $this->seedDonor(2, 'Pending', 'Eligibility');
+        $this->seedDonor(3, 'Pending', 'Appointment');
+        $this->seedDonor(4, 'Approved', 'Identity');
+
+        DB::table('donor_verifications')->insert([
+            ['verification_id' => 44, 'donor_id' => 4, 'document_type' => 'national_id', 'document_path' => 'front.jpg', 'status' => 'verified', 'reviewed_by_admin_id' => 1, 'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now()],
+            ['verification_id' => 45, 'donor_id' => 1, 'document_type' => 'national_id', 'document_path' => 'pending.jpg', 'status' => 'pending', 'reviewed_by_admin_id' => null, 'reviewed_at' => null, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+        $eligibilityId = DB::table('eligibility_status')->insertGetId([
+            'donor_id' => 2,
+            'status' => 'for_review',
+        ], 'eligibility_id');
+        $appointmentId = DB::table('appointments')->insertGetId([
+            'donor_id' => 3,
+            'event_id' => null,
+            'appointment_date' => Carbon::tomorrow()->toDateString(),
+            'appointment_time' => '09:00:00',
+            'status' => 'pending',
+            'created_at' => now(),
+        ], 'appointment_id');
+        DB::table('audit_logs')->insert([
+            'actor_admin_id' => 1,
+            'actor_name' => 'Reviewing Administrator',
+            'action_type' => 'donor_verification_approved',
+            'target_table' => 'donor_verifications',
+            'target_id' => 44,
+            'description' => 'Approved donor identity verification.',
+            'created_at' => now(),
+        ]);
+
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $dashboard = $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->get('/admin/dashboard')
+            ->assertOk();
+
+        $dashboard->assertSee(route('admin.donor-verifications.index', ['focus' => 44]), false)
+            ->assertSee(route('admin.donor-verifications.index', ['focus' => 45]), false)
+            ->assertSee(route('admin.eligibility.index', ['focus' => $eligibilityId]), false)
+            ->assertSee(route('admin.appointments', ['focus' => $appointmentId]), false)
+            ->assertSee(route('admin.eligibility.index'), false);
+
+        $verificationPage = $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->get('/admin/donor-verifications?focus=44&page=99&status=pending&search=not-a-match')
+            ->assertOk()
+            ->assertSee('id="verification-row-44"', false)
+            ->assertSee('class="dashboard-record-highlight"', false)
+            ->assertDontSee('id="verification-row-45"', false);
+        $verificationPage->assertSee('scrollIntoView', false);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->get('/admin/eligibility?focus='.$eligibilityId)
+            ->assertOk()
+            ->assertSee('"focusId":'.$eligibilityId, false);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->getJson('/admin/eligibility/data?focus_id='.$eligibilityId.'&page=99&status=eligible&search=not-a-match')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.eligibility_id', $eligibilityId);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->get('/admin/appointments?focus='.$appointmentId)
+            ->assertOk()
+            ->assertSee('scrollIntoView', false);
+
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->getJson('/admin/appointments/data?appointment_id='.$appointmentId.'&page=99&status=cancelled&search=not-a-match')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.appointment_id', $appointmentId);
+
+        $this->assertStringContainsString('scrollIntoView', file_get_contents(base_path('../public_html/js/admin/eligibility-review.js')));
+    }
+
+    public function test_dashboard_pending_empty_state_is_truthful_and_restriction_review_cards_are_responsive(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $dashboard = $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->get('/admin/dashboard')
+            ->assertOk()
+            ->assertSee('No pending approvals at the moment.');
+
+        $dashboard->assertSee(route('admin.appointment-restrictions.index'), false)
+            ->assertSee(route('admin.appointment-restrictions.index', ['appeal_status' => 'pending']), false);
+
+        $styles = file_get_contents(resource_path('css/admin.css'));
+        $this->assertIsString($styles);
+        $this->assertStringContainsString('.dashboard-restriction-card {', $styles);
+        $this->assertStringContainsString('align-items: flex-start;', $styles);
+        $this->assertStringContainsString('@media (max-width: 575.98px)', $styles);
+        $this->assertStringContainsString('dashboard-record-highlight', $styles);
+    }
+
+    public function test_pending_appeal_review_link_filters_to_only_donors_with_a_pending_appeal(): void
+    {
+        Schema::table('donors', function (Blueprint $table): void {
+            $table->boolean('appointment_restricted')->default(false);
+            $table->integer('consecutive_cancellations')->default(0);
+            $table->string('restriction_status')->nullable();
+            $table->timestamp('restricted_at')->nullable();
+        });
+        Schema::create('appointment_cancellations', function (Blueprint $table): void {
+            $table->increments('cancellation_id');
+            $table->integer('donor_id');
+            $table->integer('appointment_id')->nullable();
+            $table->timestamp('cancelled_at')->nullable();
+        });
+        Schema::create('appointment_restrictions', function (Blueprint $table): void {
+            $table->increments('restriction_id');
+            $table->integer('donor_id');
+            $table->string('status');
+            $table->text('restriction_reason')->nullable();
+            $table->timestamp('restricted_at')->nullable();
+        });
+        Schema::create('appointment_restriction_appeals', function (Blueprint $table): void {
+            $table->increments('appeal_id');
+            $table->integer('donor_id');
+            $table->integer('restriction_id');
+            $table->text('justification')->nullable();
+            $table->string('status');
+            $table->timestamp('submitted_at')->nullable();
+        });
+
+        $this->seedDonor(1, 'Pending', 'Appeal', ['appointment_restricted' => true, 'restriction_status' => 'restricted', 'restricted_at' => now()]);
+        $this->seedDonor(2, 'Other', 'Restricted', ['appointment_restricted' => true, 'restriction_status' => 'restricted', 'restricted_at' => now()]);
+        DB::table('appointment_restrictions')->insert([
+            ['restriction_id' => 1, 'donor_id' => 1, 'status' => 'active', 'restriction_reason' => 'Review', 'restricted_at' => now()],
+            ['restriction_id' => 2, 'donor_id' => 2, 'status' => 'active', 'restriction_reason' => 'Review', 'restricted_at' => now()],
+        ]);
+        DB::table('appointment_restriction_appeals')->insert([
+            ['appeal_id' => 1, 'donor_id' => 1, 'restriction_id' => 1, 'justification' => 'Please review', 'status' => 'pending', 'submitted_at' => now()],
+            ['appeal_id' => 2, 'donor_id' => 2, 'restriction_id' => 2, 'justification' => 'Already reviewed', 'status' => 'rejected', 'submitted_at' => now()],
+        ]);
+
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->get('/admin/appointment-restrictions?appeal_status=pending')
+            ->assertOk()
+            ->assertSee('Pending Appeal')
+            ->assertSee('Showing restricted donors with a pending appeal.')
+            ->assertSee('Pending Appeal')
+            ->assertDontSee('Other Restricted');
+    }
+
     public function test_report_marks_missing_metrics_unavailable_and_never_guesses_facility_by_name(): void
     {
         $this->seedReportRows();
@@ -466,7 +613,7 @@ class Phase12IntegrationTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['audit_logs', 'notifications', 'blood_requests', 'facility_blood_inventory', 'facilities', 'donation_events', 'appointments', 'donation_records', 'eligibility_status', 'donor_authentication', 'donors', 'locations', 'blood_types', 'admins'] as $table) {
+        foreach (['appointment_restriction_reviews', 'appointment_restriction_appeals', 'appointment_restrictions', 'appointment_cancellations', 'donor_verifications', 'audit_logs', 'notifications', 'blood_requests', 'facility_blood_inventory', 'facilities', 'donation_events', 'appointments', 'donation_records', 'eligibility_status', 'donor_authentication', 'donors', 'locations', 'blood_types', 'admins'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();
@@ -525,7 +672,20 @@ class Phase12IntegrationTest extends TestCase
             $table->increments('eligibility_id');
             $table->integer('donor_id')->nullable();
             $table->string('status')->nullable();
+            $table->date('last_donation_date')->nullable();
             $table->date('next_eligible_date')->nullable();
+        });
+        Schema::create('donor_verifications', function (Blueprint $table): void {
+            $table->increments('verification_id');
+            $table->integer('donor_id');
+            $table->string('document_type')->nullable();
+            $table->string('document_path')->nullable();
+            $table->string('document_back_path')->nullable();
+            $table->string('status')->default('pending');
+            $table->text('rejection_reason')->nullable();
+            $table->integer('reviewed_by_admin_id')->nullable();
+            $table->timestamp('reviewed_at')->nullable();
+            $table->timestamps();
         });
         Schema::create('donation_events', function (Blueprint $table): void {
             $table->increments('event_id');

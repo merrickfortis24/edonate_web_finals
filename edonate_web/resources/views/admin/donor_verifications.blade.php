@@ -40,6 +40,13 @@
             </div>
         @endif
 
+        @if (($focusedVerificationId ?? 0) > 0)
+            <div class="alert alert-info" role="status">
+                Opened verification record #{{ $focusedVerificationId }} from the dashboard.
+                <a class="alert-link ms-1" href="{{ route('admin.donor-verifications.index') }}">Return to all verification records</a>.
+            </div>
+        @endif
+
         <div class="row g-3" aria-label="Verification summary">
             <div class="col-6 col-xl-3">
                 <article class="stat-card h-100">
@@ -107,10 +114,11 @@
                             $historyItems = $histories[(int) $verification->donor_id] ?? collect();
                             $documentLabel = $documentTypes[$verification->document_type] ?? \Illuminate\Support\Str::headline($verification->document_type);
                         @endphp
-                        <tr>
+                        <tr id="verification-row-{{ $verification->verification_id }}" tabindex="-1" @class(['dashboard-record-highlight' => (int) ($focusedVerificationId ?? 0) === (int) $verification->verification_id])>
                             <td>
                                 <div class="fw-semibold">{{ trim($verification->donor_name) ?: 'Unknown Donor' }}</div>
                                 <small class="text-muted">D{{ str_pad((string) $verification->donor_id, 3, '0', STR_PAD_LEFT) }}</small>
+                                <small class="text-muted d-block">Verification #{{ $verification->verification_id }}</small>
                             </td>
                             <td>
                                 <div>{{ $verification->contact_number ?: '-' }}</div>
@@ -139,7 +147,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="8" class="text-center text-muted py-4">No donor verification requests found.</td>
+                            <td colspan="8" class="text-center text-muted py-4">{{ ($focusedVerificationId ?? 0) > 0 ? 'The selected verification record could not be found.' : 'No donor verification requests found.' }}</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -272,6 +280,13 @@
 @push('admin_scripts')
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        const focusedRow = document.getElementById('verification-row-{{ (int) ($focusedVerificationId ?? 0) }}');
+        if (focusedRow) {
+            focusedRow.scrollIntoView({ block: 'center', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+            focusedRow.focus({ preventScroll: true });
+            window.setTimeout(function() { focusedRow.classList.remove('dashboard-record-highlight'); }, 2800);
+        }
+
         const approveForms = document.querySelectorAll('.approve-form');
         approveForms.forEach(form => {
             form.addEventListener('submit', function(e) {

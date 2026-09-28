@@ -1341,7 +1341,12 @@ class AdminAuthController extends BaseController
      */
     public function appointments(Request $request)
     {
-        $requestedStatus = Str::lower(trim((string) $request->query('status', '')));
+        $validated = $request->validate([
+            'status' => ['nullable', 'string', Rule::in(['', 'upcoming', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'])],
+            'focus' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $focusAppointmentId = (int) ($validated['focus'] ?? 0);
+        $requestedStatus = $focusAppointmentId > 0 ? '' : Str::lower(trim((string) ($validated['status'] ?? '')));
         $initialStatus = in_array($requestedStatus, [
             'upcoming', 'confirmed', 'pending', 'cancelled', 'rescheduled',
             'checked_in', 'completed', 'deferred_on_site', 'no_show',
@@ -1350,6 +1355,7 @@ class AdminAuthController extends BaseController
         return view('admin.appointment_management', [
             'appointmentManagementPayload' => [
                 'initialStatus' => $initialStatus,
+                'initialAppointmentId' => $focusAppointmentId,
                 'api' => [
                     'listUrl' => route('admin.appointments.data'),
                     'donationProcessingUrl' => route('admin.donation-records'),
@@ -1373,9 +1379,11 @@ class AdminAuthController extends BaseController
             'search' => ['nullable', 'string', 'max:150'],
             'center' => ['nullable', 'string', 'max:150'],
             'status' => ['nullable', 'string', Rule::in(['', 'upcoming', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'])],
+            'appointment_id' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $page = (int) ($validated['page'] ?? 1);
+        $focusAppointmentId = (int) ($validated['appointment_id'] ?? 0);
+        $page = $focusAppointmentId > 0 ? 1 : (int) ($validated['page'] ?? 1);
         $perPage = (int) ($validated['per_page'] ?? 10);
         $searchTerm = trim((string) ($validated['search'] ?? ''));
         $center = trim((string) ($validated['center'] ?? ''));
@@ -1386,7 +1394,9 @@ class AdminAuthController extends BaseController
 
         $query = $this->appointmentManagementBaseQuery();
 
-        if ($searchTerm !== '') {
+        if ($focusAppointmentId > 0) {
+            $query->where('ap.appointment_id', $focusAppointmentId);
+        } elseif ($searchTerm !== '') {
             $likeTerm = '%'.$searchTerm.'%';
             $numericSearch = null;
 
@@ -1406,11 +1416,14 @@ class AdminAuthController extends BaseController
             });
         }
 
-        if ($center !== '') {
+        if ($focusAppointmentId === 0 && $center !== '') {
             $query->whereRaw('LOWER('.$centerExpression.') = ?', [Str::lower($center)]);
         }
 
-        if ($status === 'upcoming') {
+        if ($focusAppointmentId > 0) {
+            // A dashboard deep link reveals the requested record regardless
+            // of the list's ordinary status, search, or pagination filters.
+        } elseif ($status === 'upcoming') {
             $query->whereDate('ap.appointment_date', '>=', Carbon::today()->toDateString())
                 ->whereRaw('('.$statusExpression.') in (?, ?)', ['pending', 'confirmed']);
         } elseif ($status !== '') {
@@ -4733,9 +4746,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                         && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name']))),
             'pending_approvals' => $approvalsResult['value'],
             'pending_approvals_available' => $approvalsResult['available']
-                && ($this->dashboardTableHasColumns('donors', ['donor_id', 'verification_status'])
+                && ($this->dashboardTableHasColumns('donor_verifications', ['verification_id', 'donor_id', 'status'])
                     || $this->dashboardTableHasColumns('eligibility_status', ['eligibility_id', 'donor_id', 'status'])
-                    || $this->dashboardTableHasColumns('appointments', ['appointment_id', 'status'])),
+                    || $this->dashboardTableHasColumns('appointments', ['appointment_id', 'donor_id', 'status'])),
             'links' => [
                 'map' => route('admin.blood-availability-mapping'),
                 'activities' => route('admin.audit-logs'),
@@ -5370,16 +5383,33 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
         $activities = collect();
 
         if ($this->dashboardTableHasColumns('audit_logs', ['actor_name', 'description', 'action_type', 'created_at'])) {
+            $hasTargets = $this->dashboardTableHasColumns('audit_logs', ['target_table', 'target_id']);
+            $auditColumns = ['actor_name', 'description', 'action_type', 'created_at'];
+            if ($hasTargets) {
+                $auditColumns = array_merge($auditColumns, ['target_table', 'target_id']);
+            }
+
             DB::table('audit_logs')
                 ->orderByDesc('created_at')
                 ->limit(5)
-                ->get(['actor_name', 'description', 'action_type', 'created_at'])
-                ->each(function (object $row) use ($activities): void {
+                ->get($auditColumns)
+                ->each(function (object $row) use ($activities, $hasTargets): void {
+                    $actionType = (string) ($row->action_type ?? '');
+                    $targetId = (int) ($row->target_id ?? 0);
+                    $url = $hasTargets
+                        && $actionType === 'donor_verification_approved'
+                        && (string) ($row->target_table ?? '') === 'donor_verifications'
+                        && $targetId > 0
+                            ? route('admin.donor-verifications.index', ['focus' => $targetId])
+                            : '';
+
                     $activities->push($this->dashboardActivityItem(
                         (string) ($row->actor_name ?: 'System'),
-                        (string) ($row->description ?: Str::headline((string) ($row->action_type ?? 'Activity'))),
+                        (string) ($row->description ?: Str::headline($actionType ?: 'Activity')),
                         (string) ($row->created_at ?? ''),
-                        $this->dashboardActivityTone((string) ($row->action_type ?? ''))
+                        $this->dashboardActivityTone($actionType),
+                        0,
+                        $url
                     ));
                 });
         }
@@ -5461,6 +5491,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
                 'action' => $item['action'],
                 'time' => $item['time'],
                 'tone' => $item['tone'],
+                'url' => $item['url'],
             ])
             ->values()
             ->all();
@@ -5475,50 +5506,107 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
     {
         $approvals = collect();
 
+        if ($this->dashboardTableHasColumns('donor_verifications', ['verification_id', 'donor_id', 'status'])
+            && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
+            $verificationColumns = ['dv.verification_id', 'd.first_name', 'd.last_name'];
+            $hasCreatedAt = $this->dashboardTableHasColumns('donor_verifications', ['created_at']);
+            if ($hasCreatedAt) {
+                $verificationColumns[] = 'dv.created_at';
+            }
+
+            DB::table('donor_verifications as dv')
+                ->join('donors as d', 'd.donor_id', '=', 'dv.donor_id')
+                ->whereRaw("LOWER(TRIM(COALESCE(dv.status, ''))) = ?", ['pending'])
+                ->orderByDesc($hasCreatedAt ? 'dv.created_at' : 'dv.verification_id')
+                ->limit(10)
+                ->get($verificationColumns)
+                ->each(function (object $row) use ($approvals, $hasCreatedAt): void {
+                    $id = (int) $row->verification_id;
+                    $approvals->push([
+                        'name' => $this->dashboardDonorName($row),
+                        'type' => 'Donor Identity Verification',
+                        'review_url' => route('admin.donor-verifications.index', ['focus' => $id]),
+                        'sort_value' => $this->dashboardSortValue($hasCreatedAt ? (string) ($row->created_at ?? '') : '', $id),
+                    ]);
+                });
+        }
+
         if ($this->dashboardTableHasColumns('eligibility_status', ['donor_id', 'status', 'eligibility_id'])
             && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
+            $eligibilityColumns = ['es.eligibility_id', 'd.first_name', 'd.last_name'];
+            $hasCreatedAt = $this->dashboardTableHasColumns('eligibility_status', ['created_at']);
+            if ($hasCreatedAt) {
+                $eligibilityColumns[] = 'es.created_at';
+            }
+
             DB::table('eligibility_status as es')
                 ->leftJoin('donors as d', 'd.donor_id', '=', 'es.donor_id')
                 ->where(function ($query): void {
                     $query->whereNull('es.status')
-                        ->orWhereIn('es.status', ['for_review', 'for review', 'pending']);
+                        ->orWhereIn(DB::raw("LOWER(TRIM(COALESCE(es.status, '')))"), ['for_review', 'for review', 'pending review', 'pending']);
                 })
-                ->orderByDesc('es.eligibility_id')
-                ->limit(5)
-                ->get(['d.first_name', 'd.last_name'])
-                ->each(function (object $row) use ($approvals): void {
+                ->orderByDesc($hasCreatedAt ? 'es.created_at' : 'es.eligibility_id')
+                ->limit(10)
+                ->get($eligibilityColumns)
+                ->each(function (object $row) use ($approvals, $hasCreatedAt): void {
+                    $id = (int) $row->eligibility_id;
                     $approvals->push([
                         'name' => $this->dashboardDonorName($row),
                         'type' => 'Eligibility Review',
-                        'approve_url' => route('admin.eligibility.index'),
-                        'review_url' => route('admin.eligibility.index'),
+                        'review_url' => route('admin.eligibility.index', ['focus' => $id]),
+                        'sort_value' => $this->dashboardSortValue($hasCreatedAt ? (string) ($row->created_at ?? '') : '', $id),
                     ]);
                 });
         }
 
-        if ($approvals->count() < 5
-            && $this->dashboardTableHasColumns('appointments', ['donor_id', 'status', 'appointment_date'])
+        if ($this->dashboardTableHasColumns('appointments', ['appointment_id', 'donor_id', 'status', 'appointment_date'])
             && $this->dashboardTableHasColumns('donors', ['donor_id', 'first_name', 'last_name'])) {
-            $needed = 5 - $approvals->count();
             $statusExpression = $this->appointmentStatusExpression('ap');
+            $appointmentColumns = ['ap.appointment_id', 'd.first_name', 'd.last_name'];
+            $hasCreatedAt = $this->dashboardTableHasColumns('appointments', ['created_at']);
+            if ($hasCreatedAt) {
+                $appointmentColumns[] = 'ap.created_at';
+            } else {
+                $appointmentColumns[] = 'ap.appointment_date';
+            }
 
             DB::table('appointments as ap')
-                ->leftJoin('donors as d', 'd.donor_id', '=', 'ap.donor_id')
+                ->join('donors as d', 'd.donor_id', '=', 'ap.donor_id')
                 ->whereRaw('('.$statusExpression.') = ?', ['pending'])
-                ->orderBy('ap.appointment_date')
-                ->limit($needed)
-                ->get(['d.first_name', 'd.last_name'])
-                ->each(function (object $row) use ($approvals): void {
+                ->orderBy($hasCreatedAt ? 'ap.created_at' : 'ap.appointment_date')
+                ->limit(10)
+                ->get($appointmentColumns)
+                ->each(function (object $row) use ($approvals, $hasCreatedAt): void {
+                    $id = (int) $row->appointment_id;
+                    $timestamp = $hasCreatedAt ? (string) ($row->created_at ?? '') : (string) ($row->appointment_date ?? '');
                     $approvals->push([
                         'name' => $this->dashboardDonorName($row),
                         'type' => 'Pending Appointment',
-                        'approve_url' => route('admin.appointments'),
-                        'review_url' => route('admin.appointments'),
+                        'review_url' => route('admin.appointments', ['focus' => $id]),
+                        'sort_value' => $this->dashboardSortValue($timestamp, $id),
                     ]);
                 });
         }
 
-        return $approvals->values()->all();
+        return $approvals
+            ->sortByDesc('sort_value')
+            ->take(5)
+            ->map(fn (array $approval): array => [
+                'name' => $approval['name'],
+                'type' => $approval['type'],
+                'review_url' => $approval['review_url'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function dashboardSortValue(string $timestamp, int $fallback): int
+    {
+        try {
+            return trim($timestamp) !== '' ? Carbon::parse($timestamp)->timestamp : $fallback;
+        } catch (Throwable) {
+            return $fallback;
+        }
     }
 
     /**
@@ -5526,7 +5614,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
      *
      * @return array<string, string|int>
      */
-    private function dashboardActivityItem(string $name, string $action, string $timestamp, string $tone, int $fallbackSort = 0): array
+    private function dashboardActivityItem(string $name, string $action, string $timestamp, string $tone, int $fallbackSort = 0, string $url = ''): array
     {
         $parsed = null;
 
@@ -5542,6 +5630,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'time' => $parsed ? $parsed->diffForHumans() : 'Recently',
             'tone' => in_array($tone, ['green', 'blue', 'gold', 'red'], true) ? $tone : 'blue',
             'sort_value' => $parsed ? $parsed->timestamp : $fallbackSort,
+            'url' => $url,
         ];
     }
 
