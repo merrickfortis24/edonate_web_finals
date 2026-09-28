@@ -18,8 +18,6 @@ return [
     // Browser choices cannot authorize disclosure of other people's records.
     'firebase_sync_enabled' => (bool) env('PRIVACY_FIREBASE_SYNC_ENABLED', false),
     'geocoding_enabled' => (bool) env('PRIVACY_GEOCODING_ENABLED', false),
-    // Gemini's age/region/paid-service restrictions require an operator review.
-    'ai_enabled' => (bool) env('PRIVACY_AI_ENABLED', false),
     // No analytics provider is currently installed. Do not offer a fake opt-in.
     'analytics_enabled' => false,
     'data_forms' => [

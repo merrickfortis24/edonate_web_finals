@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Appointment;
+use App\Models\AppointmentRestriction;
+use App\Models\AppointmentRestrictionAppeal;
 use App\Models\BloodRequest;
 use App\Models\BloodRequestDonor;
 use App\Models\BloodType;
@@ -39,6 +41,20 @@ class DonorPortalController extends Controller
 
         $bookingService = app(AppointmentBookingService::class);
         $bookingReadiness = $bookingService->bookingReadiness($context['donor']);
+        $activeRestriction = Schema::hasTable('appointment_restrictions')
+            ? AppointmentRestriction::query()
+                ->where('donor_id', $context['donor']->donor_id)
+                ->where('status', 'active')
+                ->orderByDesc('restriction_id')
+                ->first()
+            : null;
+        $pendingRestrictionAppeal = $activeRestriction && Schema::hasTable('appointment_restriction_appeals')
+            ? AppointmentRestrictionAppeal::query()
+                ->where('restriction_id', $activeRestriction->restriction_id)
+                ->where('status', 'pending')
+                ->latest('appeal_id')
+                ->first()
+            : null;
         $selectedEventId = (int) $request->query('event_id', old('event_id', 0));
         $eventOptions = DonationEvent::query()
             ->whereDate('event_date', '>=', Carbon::today()->toDateString())
@@ -98,14 +114,22 @@ class DonorPortalController extends Controller
             'canBookAppointment' => $canBookAppointment,
             'selectedEventId' => $selectedEventId,
             'identityVerificationStatus' => $this->donorVerificationStatus($context['donor']),
+            'activeRestriction' => $activeRestriction,
+            'pendingRestrictionAppeal' => $pendingRestrictionAppeal,
+            'consecutiveCancellationCount' => (int) ($context['donor']->consecutive_cancellations ?? 0),
         ]);
     }
 
-    public function storeAppointment(Request $request): RedirectResponse
+    public function storeAppointment(Request $request): RedirectResponse|JsonResponse
     {
         $context = $this->buildContext($request, 'book');
         if ($context instanceof RedirectResponse) {
             return $context;
+        }
+
+        $bookingService = app(AppointmentBookingService::class);
+        if (app(\App\Services\AppointmentRestrictionService::class)->isRestricted($context['donor'])) {
+            return $this->appointmentRestrictionResponse($request);
         }
 
         $validated = $request->validate([
@@ -113,12 +137,25 @@ class DonorPortalController extends Controller
             'appointment_time' => ['required', 'date_format:H:i'],
         ]);
 
-        app(AppointmentBookingService::class)->book(
-            $context['donor'],
-            (int) $validated['event_id'],
-            $request,
-            (string) $validated['appointment_time']
-        );
+        try {
+            $bookingService->book(
+                $context['donor'],
+                (int) $validated['event_id'],
+                $request,
+                (string) $validated['appointment_time']
+            );
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $freshDonor = Donor::query()->find((int) $context['donor']->donor_id);
+            if ($freshDonor && app(\App\Services\AppointmentRestrictionService::class)->isRestricted($freshDonor)) {
+                return $this->appointmentRestrictionResponse($request);
+            }
+
+            throw $exception;
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'message' => 'Appointment confirmed successfully.'], 201);
+        }
 
         return redirect()
             ->route('donor.book-appointment')
@@ -148,7 +185,7 @@ class DonorPortalController extends Controller
         ]);
     }
 
-    public function cancelAppointment(Request $request, int $appointment): RedirectResponse
+    public function cancelAppointment(Request $request, int $appointment): RedirectResponse|JsonResponse
     {
         $context = $this->buildContext($request, 'book');
         if ($context instanceof RedirectResponse) {
@@ -156,7 +193,7 @@ class DonorPortalController extends Controller
         }
 
         $validated = $request->validate([
-            'cancellation_reason' => ['nullable', 'string', 'max:500'],
+            'cancellation_reason' => ['required', 'string', 'max:1000'],
         ]);
 
         app(AppointmentBookingService::class)->cancel(
@@ -166,9 +203,56 @@ class DonorPortalController extends Controller
             $request
         );
 
+        $count = (int) (Donor::query()->where('donor_id', $context['donor']->donor_id)->value('consecutive_cancellations') ?? 0);
+        $warning = match (true) {
+            $count >= 3 => 'Your appointment privileges have been temporarily restricted due to 3 consecutive appointment cancellations. Please contact the administrator and provide a valid justification to request reinstatement.',
+            $count === 2 => 'Warning: You have cancelled 2 consecutive appointments. One more consecutive cancellation will temporarily restrict your appointment privileges and require administrator review.',
+            default => 'You have cancelled 1 consecutive appointment. Please remember that 3 consecutive cancellations may temporarily restrict your appointment privileges.',
+        };
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Appointment cancelled successfully.',
+                'consecutive_cancellations' => $count,
+                'restricted' => $count >= 3,
+                'warning' => $warning,
+            ]);
+        }
+
         return redirect()
             ->route('donor.book-appointment')
-            ->with('success', 'Appointment cancelled successfully.');
+            ->with('success', 'Appointment cancelled successfully.')
+            ->with('cancellation_warning', $warning);
+    }
+
+    public function submitAppointmentRestrictionAppeal(Request $request): RedirectResponse|JsonResponse
+    {
+        $context = $this->buildContext($request, 'book');
+        if ($context instanceof RedirectResponse) {
+            return $context;
+        }
+
+        $validated = $request->validate([
+            'justification' => ['required', 'string', 'min:20', 'max:2000'],
+        ]);
+
+        $appeal = app(\App\Services\AppointmentRestrictionService::class)->submitAppeal(
+            $context['donor'],
+            (string) $validated['justification'],
+            $request
+        );
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Your justification has been submitted for administrator review.',
+                'appeal_id' => (int) $appeal->appeal_id,
+                'status' => $appeal->status,
+            ], 201);
+        }
+
+        return redirect()->route('donor.book-appointment')->with('success', 'Your justification has been submitted for administrator review.');
     }
 
     public function checkEligibility(Request $request)
@@ -747,5 +831,23 @@ class DonorPortalController extends Controller
                 'error' => $exception->getMessage(),
             ]);
         }
+    }
+
+    private function appointmentRestrictionResponse(Request $request): RedirectResponse|JsonResponse
+    {
+        $message = 'Your appointment privileges are temporarily restricted. Please contact the eDonate administrator or submit a justification for review.';
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'APPOINTMENT_RESTRICTED',
+                'message' => $message,
+            ], 403);
+        }
+
+        return redirect()
+            ->route('donor.book-appointment')
+            ->with('error', $message)
+            ->with('appointment_restricted', true);
     }
 }

@@ -55,6 +55,7 @@ class DonorVerificationController extends Controller
                 'dv.donor_id',
                 'dv.document_type',
                 'dv.document_path',
+                'dv.document_back_path',
                 'dv.status',
                 'dv.rejection_reason',
                 'dv.reviewed_by_admin_id',
@@ -95,9 +96,16 @@ class DonorVerificationController extends Controller
         ]);
     }
 
-    public function document(DonorVerification $verification): BinaryFileResponse
+    public function document(Request $request, DonorVerification $verification): BinaryFileResponse
     {
-        $docPath = trim((string) $verification->document_path);
+        $side = $request->query('side', 'front');
+        if (! is_string($side) || ! in_array($side, ['front', 'back'], true)) {
+            abort(404, 'Verification document not found.');
+        }
+
+        $docPath = trim((string) ($side === 'back'
+            ? $verification->document_back_path
+            : $verification->document_path));
         $extension = strtolower((string) pathinfo($docPath, PATHINFO_EXTENSION));
         $allowedExtensions = ['jpg', 'jpeg', 'png', 'pdf'];
         $allowedMimes = ['image/jpeg', 'image/png', 'application/pdf'];
@@ -120,7 +128,13 @@ class DonorVerificationController extends Controller
             abort(404, 'Verification document not found.');
         }
 
-        $filename = 'donor-verification-' . (int) $verification->verification_id . '.' . $extension;
+        $filename = 'donor-verification-' . (int) $verification->verification_id
+            . ($side === 'back' ? '-back' : '-front') . '.' . $extension;
+        $securityHeaders = [
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
+        ];
 
         // 1. Try Laravel local disk (storage/app/) — used by the web donor portal
         if (Storage::disk('local')->exists($docPath)) {
@@ -132,9 +146,8 @@ class DonorVerificationController extends Controller
                 abort(415, 'Verification document type is not supported.');
             }
             return response()->file(Storage::disk('local')->path($docPath), [
-                'Content-Type'           => $mime,
-                'Content-Disposition'    => 'inline; filename="' . $filename . '"',
-                'X-Content-Type-Options' => 'nosniff',
+                ...$securityHeaders,
+                'Content-Type' => $mime,
             ]);
         }
 
@@ -148,9 +161,8 @@ class DonorVerificationController extends Controller
                 abort(415, 'Verification document type is not supported.');
             }
             return response()->file(Storage::disk('public')->path($docPath), [
-                'Content-Type'           => $mime,
-                'Content-Disposition'    => 'inline; filename="' . $filename . '"',
-                'X-Content-Type-Options' => 'nosniff',
+                ...$securityHeaders,
+                'Content-Type' => $mime,
             ]);
         }
 
@@ -171,9 +183,8 @@ class DonorVerificationController extends Controller
                     abort(415, 'Verification document type is not supported.');
                 }
                 return response()->file($publicPath, [
-                    'Content-Type'           => $mime,
-                    'Content-Disposition'    => 'inline; filename="' . $filename . '"',
-                    'X-Content-Type-Options' => 'nosniff',
+                    ...$securityHeaders,
+                    'Content-Type' => $mime,
                 ]);
             }
         }

@@ -15,7 +15,7 @@ class AccessibilityFixturesTest extends TestCase
         $this->assertSame('sqlite', config('database.default'));
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));
         Http::preventStrayRequests();
-        config(['app.url' => 'http://audit.test', 'privacy.ai_enabled' => true,
+        config(['app.url' => 'http://audit.test',
             'services.firebase.web' => ['api_key' => '', 'auth_domain' => '', 'project_id' => '', 'app_id' => '']]);
         $this->app['url']->forceRootUrl('http://audit.test');
         $session = $this->app['session.store'];

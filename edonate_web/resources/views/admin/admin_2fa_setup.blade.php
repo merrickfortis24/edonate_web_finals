@@ -164,6 +164,86 @@
                     </div>
                 </section>
             @endif
+
+            <section class="card shadow-sm mt-3">
+                <header class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+                    <span class="fw-semibold">Trusted Devices</span>
+                    @if (($activeTrustedDeviceCount ?? 0) > 0)
+                        <form method="POST" action="{{ route('admin.2fa.trusted-devices.revoke-all') }}" class="m-0"
+                            onsubmit="return confirm('Revoke all trusted devices? They will need to complete two-factor authentication the next time they sign in.');">
+                            @csrf
+                            <button type="submit" class="btn btn-outline-danger btn-sm">Revoke All Trusted Devices</button>
+                        </form>
+                    @endif
+                </header>
+                <div class="card-body">
+                    <p class="text-body-secondary small">
+                        These browser-specific credentials can skip 2FA only after a valid password sign-in. Each expires 30 days after it was trusted.
+                    </p>
+
+                    @if (!($trustedDevicesAvailable ?? false))
+                        <div class="alert alert-warning mb-0" role="alert">Trusted-device storage is not available. Run the application migrations to enable this feature.</div>
+                    @elseif (($trustedDevices ?? collect())->isEmpty())
+                        <p class="text-body-secondary mb-0">No trusted devices have been registered for this account.</p>
+                    @else
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-striped table-hover align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th scope="col">Device</th>
+                                        <th scope="col">Browser</th>
+                                        <th scope="col">Platform</th>
+                                        <th scope="col">IP Address</th>
+                                        <th scope="col">Trusted Since</th>
+                                        <th scope="col">Last Used</th>
+                                        <th scope="col">Expires</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach ($trustedDevices as $device)
+                                        @php
+                                            $deviceExpired = \Illuminate\Support\Carbon::parse($device->expires_at)->lessThanOrEqualTo(now());
+                                            $deviceRevoked = !empty($device->revoked_at);
+                                            $deviceActive = !$deviceRevoked && !$deviceExpired;
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $device->device_name ?: 'Unknown device' }}</td>
+                                            <td>{{ $device->browser ?: 'Unknown' }}</td>
+                                            <td>{{ $device->platform ?: 'Unknown' }}</td>
+                                            <td>{{ $device->ip_address ?: '—' }}</td>
+                                            <td>{{ \Illuminate\Support\Carbon::parse($device->trusted_at)->format('M d, Y h:i A') }}</td>
+                                            <td>{{ $device->last_used_at ? \Illuminate\Support\Carbon::parse($device->last_used_at)->format('M d, Y h:i A') : '—' }}</td>
+                                            <td>{{ \Illuminate\Support\Carbon::parse($device->expires_at)->format('M d, Y h:i A') }}</td>
+                                            <td>
+                                                @if ($deviceRevoked)
+                                                    <span class="badge text-bg-secondary">Revoked</span>
+                                                @elseif ($deviceExpired)
+                                                    <span class="badge text-bg-warning">Expired</span>
+                                                @else
+                                                    <span class="badge text-bg-success">Active</span>
+                                                @endif
+                                            </td>
+                                            <td>
+                                                @if ($deviceActive)
+                                                    <form method="POST" action="{{ route('admin.2fa.trusted-devices.revoke', $device->id) }}" class="m-0"
+                                                        onsubmit="return confirm('Revoke this trusted device? It will need to complete two-factor authentication the next time it signs in.');">
+                                                        @csrf
+                                                        <button type="submit" class="btn btn-outline-danger btn-sm">Revoke</button>
+                                                    </form>
+                                                @else
+                                                    <span class="text-body-secondary">—</span>
+                                                @endif
+                                            </td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        </div>
+                    @endif
+                </div>
+            </section>
         </div>
     </main>
 @endsection

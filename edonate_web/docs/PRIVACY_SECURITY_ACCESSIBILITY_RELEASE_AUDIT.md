@@ -27,15 +27,15 @@ The DPA requires transparency, legitimate purpose, proportionality, security, li
 
 ## P1 high-priority findings
 
-1. **Provider governance is incomplete.** Firebase synchronization, server-side geocoding, and Gemini are correctly off by default, but consent is not a substitute for a processor agreement, transfer assessment, least-privilege IAM, retention terms, or documented legal ground. Existing provider copies are not erased by disabling future sync.
+1. **Provider governance is incomplete.** Firebase synchronization and server-side geocoding are off by default, but consent is not a substitute for a processor agreement, transfer assessment, least-privilege IAM, retention terms, or documented legal ground. The Gemini chat feature has been removed; review any historical messages and provider copies if it was previously enabled.
 
-2. **Gemini cannot be enabled solely because the widget has a checkbox.** The operator must verify service tier, permitted region and age population, data-use terms, logging/retention, and a no-personal/no-health-data operating rule. Google's current [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms) contain material age, region, sensitive-data, and unpaid-service provisions. The current warning is not a technical DLP control.
+2. **Historical Gemini data still needs review.** Removing the chat prevents new requests from this application, but does not erase eDonate records, backups, logs, or copies Google may already hold. Establish an approved retention/deletion process and verify completion where applicable.
 
 3. **Firebase rules and IAM were not available in this repository.** Admin SDK credentials bypass Realtime Database security rules. Before enabling synchronization, inspect service-account roles, key age, audit logs, rules, backups, and every existing node/copy. Follow Firebase's [security rules guidance](https://firebase.google.com/docs/database/security).
 
 4. **OSM services require an operational review.** Optional map tiles disclose the browser IP and tile area. Nominatim use must comply with its [public usage policy](https://operations.osmfoundation.org/policies/nominatim/), including identification, caching, app-wide rate limits, attribution, and avoiding personal/confidential submissions. Current geocoding is default-off and reduced to barangay/city/province, but free-text areas can still reveal personal data and a shared multi-server rate limit is not proven.
 
-5. **Retention is configuration, not execution.** The cleanup command can report/delete selected temporary records, but it is not scheduled. Donation history, health answers, consent receipts, identity-review rows/files, audit logs, sessions, notifications, backups, mail-provider records, Firebase copies, and Gemini records need an approved schedule, legal holds, deletion verification, and accountable owners. Run only a dry-run until the schedule is approved.
+5. **Retention is configuration, not execution.** The cleanup command can report/delete selected temporary records, but it is not scheduled. Donation history, health answers, consent receipts, identity-review rows/files, audit logs, sessions, notifications, backups, mail-provider records, Firebase copies, and any historical Gemini records need an approved schedule, legal holds, deletion verification, and accountable owners. Run only a dry-run until the schedule is approved.
 
 6. **Data-subject rights lack an end-to-end operating procedure.** The drafts mention access, correction, objection, blocking/erasure, portability, and withdrawal; only chat deletion has a direct control. Define identity verification, intake/acknowledgment, deadlines, search across backups/providers, decision/appeal, legal-hold exceptions, and evidence of completion. The NPC summarizes these [data-subject rights](https://privacy.gov.ph/data-subject-rights/).
 
@@ -64,10 +64,10 @@ The DPA requires transparency, legitimate purpose, proportionality, security, li
 - Password registration and profile completion reject birthdates below 18; Google-created donor accounts require an explicit 18+ attestation. Known underage accounts are denied by donor middleware, appointment readiness rejects missing/underage birthdates, donation completion rechecks age on the donation date, and donor matching excludes missing/underage birthdates when the schema supports them. The UI exposes the same cutoff.
 - Seven donor collection routes have server-side, current-version Terms/privacy acknowledgment and purpose-specific validation: registration/OTP, profile completion, health screening, identity verification, appointment booking, and blood-request interest.
 - Consent was **not** indiscriminately added to logout, cancellation, deletion, authentication, or staff operational actions. Consent must be freely given and purpose-specific; staff cannot consent on a donor's behalf. Other lawful grounds and authority still require documentation.
-- Optional analytics, maps, and AI are off by default. No analytics/advertising script was found. Reject and selected-choice controls are available; closing the banner does not grant consent; withdrawal unloads optional integrations.
-- Google/Firebase browser scripts are lazy-loaded only after a deliberate Google sign-in action. Bootstrap and SweetAlert are served locally instead of by passive CDN requests.
+- Optional maps are off by default; no analytics/advertising provider is enabled. The Gemini chatbot and its API have been removed. Reject and selected-choice controls are available; closing the banner does not grant consent; withdrawal unloads optional integrations.
+- Firebase Authentication is bundled and served from the application origin on sign-in pages; no Google/Firebase provider request occurs until the user selects Google sign-in. The client auth state is memory-only. Bootstrap and SweetAlert are also served locally instead of by passive CDN requests.
 - The preference cookie is first-party, encrypted, HttpOnly, SameSite=Lax, versioned, and expiring. Consent receipts use a keyed pseudonym and omit raw email, IP, user-agent, health answers, and documents.
-- AI conversation IDs are bound to the Laravel session; API keys stay server-side; outputs are inserted as text; prompts/provider bodies are not logged; deletion is available after withdrawal. Remote latency no longer holds a SQL transaction open.
+- The legacy chat-message table and retention cleanup remain only to preserve and govern any historical records; no chatbot widget, Gemini request handler, or chat API route is active.
 - Identity documents use private storage and admin-only, throttled retrieval with path, extension, MIME, size, and `nosniff` checks.
 - App responses receive baseline anti-framing, MIME-sniffing, referrer, permissions, cache, and HSTS protections where applicable. Dynamic JSON embedded in the admin layout is escaped against `</script>` breakout.
 - Keyboard focus visibility, skip links, dialog focus restoration, table-region access, labels, status announcements, reduced-motion behavior, and 320px cookie-control reflow are covered by automated fixtures.
@@ -79,9 +79,9 @@ The DPA requires transparency, legitimate purpose, proportionality, security, li
 |---|---|---|---|
 | Hostinger | Hosting necessarily receives traffic metadata and stores application/database/files | Required infrastructure; live controls not inspected | DPA/contract, location/transfers, subprocessors, encryption, backups, support access, deletion and incident terms |
 | Gmail SMTP/Google | Email address, OTP/reset/notification content and mail metadata | Operational mail; not controlled by cookie banner | Minimize templates, DPA/terms, account MFA, retention/log access, alternative contact path |
-| Firebase Authentication | Browser/account data when user requests Google sign-in; backend token validation | Lazy-loaded on deliberate action | Authorized domains, OAuth consent/branding, API restrictions, account-linking rules, provider notice |
+| Firebase Authentication | Browser/account data when user requests Google sign-in; backend token validation | Self-hosted SDK; provider flow starts only on deliberate sign-in | Authorized domains, OAuth consent/branding, API restrictions, account-linking rules, provider notice |
 | Firebase Realtime Database/Admin SDK | Potential copy of donor, location, eligibility, appointment and notification records | Future synchronization default-off | Exact field allowlist, lawful ground, rules/IAM/key review, DPA/transfers/retention, erase prior copies |
-| Gemini API | Staff chat prompts and replies; server/provider metadata | Default-off plus explicit optional choice | Paid/unpaid tier, adult-user restriction, no-PII/no-health enforcement, region, DPA/transfers, retention, human review |
+| Gemini API (legacy) | Historical staff chat prompts/replies, if any | No active application integration; feature removed | Review historical data, retention, and provider-copy deletion if applicable |
 | OpenStreetMap tile servers | Browser IP, user agent, referrer policy, requested tile coordinates | Default-off until maps choice | Tile policy/attribution, privacy notice, caching/alternate provider, withdrawal behavior |
 | Nominatim | Server IP/user agent and area query | Default-off; reduced area only | Usage-policy compliance, shared throttling/cache, no personal/confidential data, provider alternative/SLA |
 | Self-hosted Bootstrap/SweetAlert | No third-party browser request | Local pinned copies | Track upstream security notices and licenses |
@@ -123,7 +123,6 @@ Automated scans are not a WCAG conformance determination. [WCAG 2.1 conformance]
 
    PRIVACY_FIREBASE_SYNC_ENABLED=false
    PRIVACY_GEOCODING_ENABLED=false
-   PRIVACY_AI_ENABLED=false
    ```
 
 4. Push through a pull request and require the new quality job. It must retain the verified PHP, dependency-audit, deterministic-build, and 19/19 browser results before deployment.

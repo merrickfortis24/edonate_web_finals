@@ -52,7 +52,7 @@ Counsel/DPO must complete the exact statutory basis and retention—not merely w
 | Google sign-in/Firebase Authentication |  |  |  |  | No |
 | Firebase Realtime Database synchronization |  |  |  |  | No |
 | OpenStreetMap tiles/Nominatim geocoding |  |  |  |  | No |
-| Gemini staff assistant/chat records |  |  |  |  | No |
+| Historical Gemini staff chat records (feature removed) |  |  |  |  | No |
 | Backups, disaster recovery and legal holds |  |  |  |  | No |
 
 ## Required governance decisions

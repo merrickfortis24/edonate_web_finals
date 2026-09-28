@@ -12,6 +12,6 @@
         <input id="{{ $prefix }}-purpose" type="checkbox" name="purpose_accepted" value="1" required aria-describedby="{{ $prefix }}-error">
         {{ config('privacy.purposes.'.$purpose) }}
     </label>
-    <p>Optional tracking and AI choices are separate. For alternatives or withdrawal, use the privacy contact in the policy. Declining this processing prevents this particular submission.</p>
+    <p>Optional service choices are separate. For alternatives or withdrawal, use the privacy contact in the policy. Declining this processing prevents this particular submission.</p>
     <p id="{{ $prefix }}-error" class="ed-consent-error" role="alert">{{ $errors->first('privacy_acknowledged') ?: ($errors->first('purpose_accepted') ?: $errors->first('privacy_version')) }}</p>
 </fieldset>

@@ -44,7 +44,7 @@ class PrivacyCheck extends Command
             $checks['Database/consent receipt table accessible'] = false;
         }
         foreach ($checks as $label => $ok) $this->line(($ok ? 'PASS ' : 'BLOCK ').$label);
-        foreach (['firebase_sync_enabled', 'geocoding_enabled', 'ai_enabled'] as $integration) {
+        foreach (['firebase_sync_enabled', 'geocoding_enabled'] as $integration) {
             $this->line((config('privacy.'.$integration) ? 'REVIEW enabled: ' : 'OFF ').$integration);
         }
         $this->warn('These checks cannot verify legal grounds, provider contracts, rights handling, retention, live hosting configuration, or full WCAG conformance.');

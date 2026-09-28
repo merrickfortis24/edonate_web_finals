@@ -156,17 +156,45 @@
     @endphp
 
     <div class="modal fade" id="documentModal{{ $verification->verification_id }}" tabindex="-1" aria-labelledby="documentModalLabel{{ $verification->verification_id }}" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="documentModalLabel{{ $verification->verification_id }}">Verification Document - {{ trim($verification->donor_name) ?: 'Unknown Donor' }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body text-center p-0" style="background: #f8f9fa;">
-                    <iframe src="{{ route('admin.donor-verifications.document', $verification->verification_id) }}" style="width: 100%; height: 70vh; border: none; display: block;"></iframe>
+                <div class="modal-body" style="background: #f8f9fa;">
+                    <div class="row g-3">
+                        @foreach ([
+                            ['side' => 'front', 'label' => 'Front of ID', 'path' => $verification->document_path],
+                            ['side' => 'back', 'label' => 'Back of ID', 'path' => $verification->document_back_path],
+                        ] as $document)
+                            @if (filled($document['path']))
+                                @php
+                                    $documentExtension = strtolower(pathinfo($document['path'], PATHINFO_EXTENSION));
+                                    $documentUrl = route('admin.donor-verifications.document', [
+                                        'verification' => $verification->verification_id,
+                                        'side' => $document['side'],
+                                    ]);
+                                @endphp
+                                <div class="col-12 col-lg-6">
+                                    <section class="h-100 rounded border bg-white p-3" aria-label="{{ $document['label'] }}">
+                                        <h6 class="mb-3 fw-semibold">{{ $document['label'] }}</h6>
+                                        @if (in_array($documentExtension, ['jpg', 'jpeg', 'png'], true))
+                                            <img src="{{ $documentUrl }}" alt="{{ $document['label'] }} submitted by donor" loading="lazy" class="img-fluid d-block mx-auto rounded" style="max-height: 65vh; object-fit: contain;">
+                                        @else
+                                            <iframe src="{{ $documentUrl }}" title="{{ $document['label'] }} submitted by donor" loading="lazy" class="w-100 border rounded" style="height: 65vh;"></iframe>
+                                        @endif
+                                        <a href="{{ $documentUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary mt-3">Open {{ strtolower($document['side']) }} in New Tab</a>
+                                    </section>
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+                    @unless (filled($verification->document_back_path))
+                        <p class="text-muted text-center mb-0 mt-3">No back image was submitted for this document.</p>
+                    @endunless
                 </div>
                 <div class="modal-footer">
-                    <a href="{{ route('admin.donor-verifications.document', $verification->verification_id) }}" target="_blank" rel="noopener" class="btn btn-outline-primary">Open in New Tab</a>
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>

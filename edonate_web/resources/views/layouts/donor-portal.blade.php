@@ -49,7 +49,6 @@
         </section>
     </main>
 </div>
-<x-chatbot-widget />
     <x-privacy-controls />
 </body>
 </html>

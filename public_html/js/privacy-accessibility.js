@@ -3,14 +3,14 @@
     if (window.eDonatePrivacy) return;
     const panel = document.getElementById('ed-privacy-panel');
     const stateElement = document.getElementById('ed-privacy-state');
-    let choices = { decided: false, necessary: true, analytics: false, maps: false, ai: false, expires_at: 0 };
+    let choices = { decided: false, necessary: true, analytics: false, maps: false, expires_at: 0 };
     try { if (stateElement) choices = { ...choices, ...JSON.parse(stateElement.textContent) }; } catch (_) { /* Denied by default. */ }
     let opener = null;
     let saving = false;
     let channel;
     const form = panel?.querySelector('form');
     const status = document.getElementById('ed-privacy-status');
-    const categories = ['analytics', 'maps', 'ai'];
+    const categories = ['analytics', 'maps'];
     const enforceBanner = panel?.dataset.enforceBanner !== 'false';
 
     function allowed(category) {
@@ -53,8 +53,6 @@
             channel?.postMessage('changed');
             close();
             if (revoked) {
-                // Keep the existing conversation identifier until deletion or tab closure.
-                // It enables erasure without re-consenting; it never authorizes an AI send.
                 location.reload(); // Removing script tags alone cannot stop already running trackers.
             }
         } catch (error) {
@@ -97,7 +95,7 @@
     });
     panel?.querySelector('[data-privacy-close]').addEventListener('click', close);
     panel?.addEventListener('keydown', event => { if (event.key === 'Escape' && !saving) { event.stopPropagation(); close(); } });
-    panel?.querySelector('[data-privacy-reject]').addEventListener('click', () => save({ analytics: false, maps: false, ai: false }));
+    panel?.querySelector('[data-privacy-reject]').addEventListener('click', () => save({ analytics: false, maps: false }));
     panel?.querySelector('[data-privacy-accept]').addEventListener('click', () => save(Object.fromEntries(categories.map(name => [name, !!form.elements.namedItem(name)]))));
     form?.addEventListener('submit', event => {
         event.preventDefault();

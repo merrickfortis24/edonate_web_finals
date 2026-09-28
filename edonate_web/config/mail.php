@@ -39,7 +39,14 @@ return [
 
         'smtp' => [
             'transport' => 'smtp',
-            'scheme' => env('MAIL_SCHEME'),
+            // MAIL_SCHEME is Laravel's current setting. Map the older
+            // MAIL_ENCRYPTION values so existing TLS/SSL deployments keep
+            // using the intended SMTP transport after upgrading Laravel.
+            'scheme' => env('MAIL_SCHEME') ?: match (strtolower((string) env('MAIL_ENCRYPTION'))) {
+                'tls' => 'smtp',
+                'ssl' => 'smtps',
+                default => null,
+            },
             'url' => env('MAIL_URL'),
             'host' => env('MAIL_HOST', '127.0.0.1'),
             'port' => env('MAIL_PORT', 2525),

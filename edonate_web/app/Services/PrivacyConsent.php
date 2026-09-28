@@ -35,7 +35,6 @@ class PrivacyConsent
             'necessary' => true,
             'analytics' => $valid && config('privacy.analytics_enabled') && ($value['analytics'] ?? false) === true,
             'maps' => $valid && ($value['maps'] ?? false) === true,
-            'ai' => $valid && config('privacy.ai_enabled') && ($value['ai'] ?? false) === true,
             'expires_at' => $valid ? $value['expires_at'] : 0,
         ];
     }

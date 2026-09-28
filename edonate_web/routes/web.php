@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\BloodRequestController as AdminBloodRequestController;
+use App\Http\Controllers\Admin\AppointmentRestrictionController;
 use App\Http\Controllers\Admin\DonationEventController as AdminDonationEventController;
 use App\Http\Controllers\Admin\DonorVerificationController as AdminDonorVerificationController;
 use App\Http\Controllers\Admin\DonorProfilePhotoController;
@@ -60,6 +61,9 @@ Route::patch('/appointments/{appointment}/cancel', [DonorPortalController::class
     ->whereNumber('appointment')
     ->middleware(['donor.active', 'throttle:appointment-write'])
     ->name('donor.appointments.cancel');
+Route::post('/appointments/restriction-appeal', [DonorPortalController::class, 'submitAppointmentRestrictionAppeal'])
+    ->middleware(['donor.active', 'throttle:appointment-write'])
+    ->name('donor.appointments.restriction-appeal');
 Route::get('/eligibility', [DonorPortalController::class, 'checkEligibility'])
     ->middleware(['donor.active', 'throttle:donor-api'])
     ->name('donor.check-eligibility');
@@ -141,6 +145,13 @@ Route::middleware('admin.auth')->group(function () {
     Route::post('/admin/settings/2fa/disable', [AdminAuthController::class, 'disableTwoFactor'])
         ->middleware('throttle:admin-write')
         ->name('admin.2fa.disable');
+    Route::post('/admin/settings/2fa/trusted-devices/{trustedDevice}/revoke', [AdminAuthController::class, 'revokeTrustedDevice'])
+        ->whereNumber('trustedDevice')
+        ->middleware('throttle:admin-write')
+        ->name('admin.2fa.trusted-devices.revoke');
+    Route::post('/admin/settings/2fa/trusted-devices/revoke-all', [AdminAuthController::class, 'revokeAllTrustedDevices'])
+        ->middleware('throttle:admin-write')
+        ->name('admin.2fa.trusted-devices.revoke-all');
     Route::middleware('admin.role:admin,staff')->group(function () {
         Route::get('/staff/dashboard', [AdminAuthController::class, 'staffDashboard'])->name('staff.dashboard');
         Route::get('/admin/appointments', [AdminAuthController::class, 'appointments'])->name('admin.appointments');
@@ -470,5 +481,31 @@ Route::middleware('admin.auth')->group(function () {
         });
     });
 });
+
+Route::middleware(['admin.auth', 'admin.role:admin'])
+    ->prefix('admin/appointment-restrictions')
+    ->name('admin.appointment-restrictions.')
+    ->group(function (): void {
+        Route::get('/', [AppointmentRestrictionController::class, 'index'])->name('index');
+        Route::get('/{donor}', [AppointmentRestrictionController::class, 'show'])
+            ->whereNumber('donor')
+            ->name('show');
+        Route::post('/appeals/{appeal}/approve', [AppointmentRestrictionController::class, 'approveAppeal'])
+            ->whereNumber('appeal')
+            ->middleware('throttle:admin-write')
+            ->name('appeals.approve');
+        Route::post('/appeals/{appeal}/reject', [AppointmentRestrictionController::class, 'rejectAppeal'])
+            ->whereNumber('appeal')
+            ->middleware('throttle:admin-write')
+            ->name('appeals.reject');
+        Route::patch('/{donor}/lift', [AppointmentRestrictionController::class, 'lift'])
+            ->whereNumber('donor')
+            ->middleware('throttle:admin-write')
+            ->name('lift');
+        Route::post('/{donor}/keep', [AppointmentRestrictionController::class, 'keepRestricted'])
+            ->whereNumber('donor')
+            ->middleware('throttle:admin-write')
+            ->name('keep');
+    });
 
 // Deploy through the authenticated SSH workflow, never shell commands in a web request.

@@ -72,6 +72,10 @@ class AdminAuthController extends BaseController
 
     private const REMEMBER_DAYS = 30;
 
+    private const TRUSTED_DEVICE_COOKIE_NAME = 'edonate_admin_trusted_device';
+
+    private const TRUSTED_DEVICE_DAYS = 30;
+
     private const RESET_TOKEN_TTL_MINUTES = 30;
 
     private const RESET_CACHE_PREFIX = 'admin_password_reset:';
@@ -342,6 +346,45 @@ class AdminAuthController extends BaseController
         $accountTwoFactorEnabled = $this->isTwoFactorEnabledForAdmin($admin);
 
         if ($accountTwoFactorEnabled) {
+            $trustedDevice = $this->findAndRotateTrustedDevice($request, $admin);
+            if ($trustedDevice !== null) {
+                $this->clearPendingTwoFactorLogin($request);
+                $this->setAdminSession($request, $admin, $role);
+
+                if ($rememberRequested) {
+                    $this->issueRememberMeToken((int) $admin->admin_id);
+                } else {
+                    $this->clearRememberMeToken((int) $admin->admin_id);
+                }
+
+                $deviceMetadata = [
+                    'device_name' => (string) ($trustedDevice->device_name ?? ''),
+                    'browser' => (string) ($trustedDevice->browser ?? ''),
+                    'platform' => (string) ($trustedDevice->platform ?? ''),
+                ];
+                $this->recordTrustedDeviceSecurityEvent(
+                    $request,
+                    'admin_trusted_device_used',
+                    (int) $admin->admin_id,
+                    (int) $trustedDevice->id,
+                    $deviceMetadata
+                );
+                $this->recordTrustedDeviceSecurityEvent(
+                    $request,
+                    'admin_2fa_trusted_device_bypass',
+                    (int) $admin->admin_id,
+                    (int) $trustedDevice->id,
+                    $deviceMetadata
+                );
+
+                return [
+                    'ok' => true,
+                    'status' => 'authenticated',
+                    'role' => $role,
+                    'redirect_url' => route($this->dashboardRouteForRole($role)),
+                ];
+            }
+
             $this->stagePendingTwoFactorLogin(
                 $request,
                 $admin,
@@ -425,6 +468,7 @@ class AdminAuthController extends BaseController
         $validated = $request->validate([
             'code' => ['nullable', 'digits:6', 'required_without:recovery_code'],
             'recovery_code' => ['nullable', 'string', 'max:64', 'required_without:code'],
+            'trust_device' => ['nullable', 'boolean'],
         ]);
 
         $pending = $this->getPendingTwoFactorLogin($request);
@@ -498,7 +542,8 @@ class AdminAuthController extends BaseController
             $request,
             $pending,
             $admin,
-            $usedRecoveryCode ? 'recovery_code' : 'totp'
+            $usedRecoveryCode ? 'recovery_code' : 'totp',
+            (bool) ($validated['trust_device'] ?? false)
         );
     }
 
@@ -537,12 +582,16 @@ class AdminAuthController extends BaseController
                 'token' => $token,
             ], false);
             $resetUrl = rtrim($request->getSchemeAndHttpHost(), '/').$resetPath;
+            $resetCache = Cache::store(self::RESET_CACHE_STORE);
+            $resetCacheKey = $this->makePasswordResetCacheKey($admin->email);
 
-            Cache::store(self::RESET_CACHE_STORE)->put(
-                $this->makePasswordResetCacheKey($admin->email),
+            $resetCache->put(
+                $resetCacheKey,
                 ['token_hash' => Hash::make($token)],
                 now()->addMinutes(self::RESET_TOKEN_TTL_MINUTES)
             );
+
+            $deliverySucceeded = true;
 
             try {
                 Mail::to($admin->email)->send(new AdminPasswordResetMail(
@@ -551,21 +600,48 @@ class AdminAuthController extends BaseController
                     self::RESET_TOKEN_TTL_MINUTES
                 ));
             } catch (Throwable $exception) {
-                logger()->error('Failed to send admin password reset email.', [
-                    'email' => $admin->email,
+                $deliverySucceeded = false;
+
+                // A failed delivery must not leave a valid reset credential
+                // behind. Do not invalidate a newer token from a concurrent
+                // request for the same account.
+                $cachedReset = $resetCache->get($resetCacheKey);
+                if (is_array($cachedReset)
+                    && ! empty($cachedReset['token_hash'])
+                    && Hash::check($token, (string) $cachedReset['token_hash'])) {
+                    $resetCache->forget($resetCacheKey);
+                }
+
+                $sensitiveValues = array_values(array_unique(array_filter([
+                    $admin->email,
+                    config('mail.mailers.smtp.username'),
+                    config('mail.mailers.smtp.password'),
+                    config('mail.from.address'),
+                ], static fn ($value): bool => is_string($value) && $value !== '')));
+                $safeErrorMessage = str_replace($sensitiveValues, '[redacted]', $exception->getMessage());
+
+                Log::error('Failed to send admin password reset email.', [
+                    'admin_id' => (int) $admin->admin_id,
+                    'mailer' => config('mail.default'),
+                    'exception_class' => $exception::class,
+                    'message' => Str::limit($safeErrorMessage, 1000),
                     'ip' => $request->ip(),
-                    'message' => $exception->getMessage(),
                 ]);
             }
 
-            logger()->info('Admin password reset requested.', [
-                'admin_id' => $admin->admin_id,
-                'email' => $admin->email,
-                'ip' => $request->ip(),
-            ]);
+            if ($deliverySucceeded) {
+                Log::info('Admin password reset email dispatched.', [
+                    'admin_id' => (int) $admin->admin_id,
+                    'mailer' => config('mail.default'),
+                    'ip' => $request->ip(),
+                ]);
+            }
         }
 
-        return back()->with('success', 'If an account exists for that email, a reset link has been sent.');
+        return back()->with(
+            'success',
+            'If an account exists for that email address, your reset request has been received. Check your inbox and spam folder, and contact the administrator if no instructions arrive.'
+        );
     }
 
     /**
@@ -616,9 +692,25 @@ class AdminAuthController extends BaseController
             $updatePayload['remember_token_expires_at'] = null;
         }
 
-        $updatedRows = DB::table('admins')
-            ->where('email', $validated['email'])
-            ->update($updatePayload);
+        [$targetAdminId, $updatedRows, $revokedTrustedDevices] = DB::transaction(function () use ($validated, $updatePayload): array {
+            $targetId = DB::table('admins')
+                ->where('email', $validated['email'])
+                ->lockForUpdate()
+                ->value('admin_id');
+
+            if (! is_numeric($targetId)) {
+                return [null, 0, 0];
+            }
+
+            $updated = DB::table('admins')
+                ->where('admin_id', (int) $targetId)
+                ->update($updatePayload);
+            $revoked = $updated > 0
+                ? $this->revokeTrustedDevicesForAdmin((int) $targetId)
+                : 0;
+
+            return [(int) $targetId, $updated, $revoked];
+        });
 
         Cache::store(self::RESET_CACHE_STORE)->forget($this->makePasswordResetCacheKey($validated['email']));
 
@@ -626,6 +718,19 @@ class AdminAuthController extends BaseController
             return redirect()
                 ->route('admin.password.request')
                 ->withErrors(['email' => 'Unable to reset password for this account.']);
+        }
+
+        if (is_numeric($targetAdminId)) {
+            $this->clearTrustedDeviceCookieForAdmin($request, (int) $targetAdminId);
+            if ($revokedTrustedDevices > 0) {
+                $this->recordTrustedDeviceSecurityEvent(
+                    $request,
+                    'admin_all_trusted_devices_revoked',
+                    (int) $targetAdminId,
+                    null,
+                    ['reason' => 'password_reset', 'revoked_count' => $revokedTrustedDevices]
+                );
+            }
         }
 
         return redirect()
@@ -640,6 +745,7 @@ class AdminAuthController extends BaseController
     {
         return view('admin.admin_dashboard', [
             'dashboardPayload' => $this->buildAdminDashboardPayload(),
+            'appointmentRestrictionStats' => app(\App\Services\AppointmentRestrictionService::class)->dashboardCounts(),
         ]);
     }
 
@@ -2600,13 +2706,28 @@ class AdminAuthController extends BaseController
             ], 404);
         }
 
-        DB::table('admins')
-            ->where('admin_id', (int) $targetAdmin->admin_id)
-            ->update([
-                'password' => Hash::make((string) $validated['password']),
-                'remember_token' => null,
-                'remember_token_expires_at' => null,
-            ]);
+        $revokedTrustedDevices = DB::transaction(function () use ($validated, $targetAdmin): int {
+            DB::table('admins')
+                ->where('admin_id', (int) $targetAdmin->admin_id)
+                ->update([
+                    'password' => Hash::make((string) $validated['password']),
+                    'remember_token' => null,
+                    'remember_token_expires_at' => null,
+                ]);
+
+            return $this->revokeTrustedDevicesForAdmin((int) $targetAdmin->admin_id);
+        });
+
+        $this->clearTrustedDeviceCookieForAdmin($request, (int) $targetAdmin->admin_id);
+        if ($revokedTrustedDevices > 0) {
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_all_trusted_devices_revoked',
+                (int) $targetAdmin->admin_id,
+                null,
+                ['reason' => 'admin_password_reset', 'revoked_count' => $revokedTrustedDevices]
+            );
+        }
 
         $this->logRbacAdminAudit(
             $request,
@@ -2781,9 +2902,24 @@ class AdminAuthController extends BaseController
             $updatePayload['remember_token_expires_at'] = null;
         }
 
-        DB::table('admins')
-            ->where('admin_id', $adminId)
-            ->update($updatePayload);
+        $revokedTrustedDevices = DB::transaction(function () use ($adminId, $updatePayload): int {
+            DB::table('admins')
+                ->where('admin_id', $adminId)
+                ->update($updatePayload);
+
+            return $this->revokeTrustedDevicesForAdmin($adminId);
+        });
+
+        $this->clearTrustedDeviceCookieForAdmin($request, $adminId);
+        if ($revokedTrustedDevices > 0) {
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_all_trusted_devices_revoked',
+                $adminId,
+                null,
+                ['reason' => 'password_changed', 'revoked_count' => $revokedTrustedDevices]
+            );
+        }
 
         $this->logAdminSettingsAudit(
             $request,
@@ -2926,7 +3062,24 @@ class AdminAuthController extends BaseController
                 ->with('error', 'Two-factor columns are not available yet. Please run migrations first.');
         }
 
-        return view('admin.admin_2fa_setup', $this->prepareTwoFactorSetupViewData($request, $admin));
+        $viewData = $this->prepareTwoFactorSetupViewData($request, $admin);
+        $viewData['trustedDevicesAvailable'] = $this->supportsTrustedDeviceStorage();
+        $viewData['trustedDevices'] = $this->supportsTrustedDeviceStorage()
+            ? DB::table('admin_trusted_devices')
+                ->select('id', 'device_name', 'browser', 'platform', 'ip_address', 'trusted_at', 'last_used_at', 'expires_at', 'revoked_at')
+                ->where('admin_id', (int) $admin->admin_id)
+                ->orderByDesc('trusted_at')
+                ->get()
+            : collect();
+        $viewData['activeTrustedDeviceCount'] = $this->supportsTrustedDeviceStorage()
+            ? DB::table('admin_trusted_devices')
+                ->where('admin_id', (int) $admin->admin_id)
+                ->whereNull('revoked_at')
+                ->where('expires_at', '>', now())
+                ->count()
+            : 0;
+
+        return view('admin.admin_2fa_setup', $viewData);
     }
 
     /**
@@ -3017,6 +3170,7 @@ class AdminAuthController extends BaseController
                 'show' => false,
                 'maskedEmail' => '',
                 'remainingSeconds' => 0,
+                'trustedDevicesAvailable' => $this->supportsTrustedDeviceStorage(),
             ];
         }
 
@@ -3024,6 +3178,7 @@ class AdminAuthController extends BaseController
             'show' => true,
             'maskedEmail' => $this->maskEmail((string) ($pending['email'] ?? '')),
             'remainingSeconds' => max(0, (int) ($pending['expires_at'] ?? 0) - now()->timestamp),
+            'trustedDevicesAvailable' => $this->supportsTrustedDeviceStorage(),
         ];
     }
 
@@ -3069,14 +3224,23 @@ class AdminAuthController extends BaseController
             ->values()
             ->all();
 
-        DB::table('admins')
-            ->where('admin_id', (int) $admin->admin_id)
-            ->update([
-                'two_factor_enabled' => true,
-                'two_factor_secret' => Crypt::encryptString($secret),
-                'two_factor_confirmed_at' => now(),
-                'two_factor_recovery_codes' => json_encode($hashedRecoveryCodes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ]);
+        $revokedTrustedDevices = DB::transaction(function () use ($admin, $secret, $hashedRecoveryCodes): int {
+            DB::table('admins')
+                ->where('admin_id', (int) $admin->admin_id)
+                ->update([
+                    'two_factor_enabled' => true,
+                    'two_factor_secret' => Crypt::encryptString($secret),
+                    'two_factor_confirmed_at' => now(),
+                    'two_factor_recovery_codes' => json_encode($hashedRecoveryCodes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
+
+            // Never carry trusted browsers across an authenticator enrollment/reset.
+            return $this->revokeTrustedDevicesForAdmin((int) $admin->admin_id);
+        });
+
+        // Revoke any token created before the second factor was enrolled.
+        $this->clearRememberMeToken((int) $admin->admin_id);
+        $this->clearTrustedDeviceCookie();
 
         $request->session()->forget(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY);
         $request->session()->flash('two_factor_recovery_codes', $recoveryCodes);
@@ -3095,6 +3259,16 @@ class AdminAuthController extends BaseController
             'admin_id' => (int) ($admin->admin_id ?? 0),
             'ip' => $request->ip(),
         ]);
+
+        if ($revokedTrustedDevices > 0) {
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_all_trusted_devices_revoked',
+                (int) $admin->admin_id,
+                null,
+                ['reason' => 'two_factor_secret_changed', 'revoked_count' => $revokedTrustedDevices]
+            );
+        }
 
         if ((bool) ($validated['return_to_dashboard'] ?? false)) {
             return redirect()
@@ -3143,17 +3317,22 @@ class AdminAuthController extends BaseController
             ]);
         }
 
-        DB::table('admins')
-            ->where('admin_id', (int) $admin->admin_id)
-            ->update([
-                'two_factor_enabled' => false,
-                'two_factor_secret' => null,
-                'two_factor_confirmed_at' => null,
-                'two_factor_recovery_codes' => null,
-                'two_factor_last_verified_at' => null,
-            ]);
+        $revokedTrustedDevices = DB::transaction(function () use ($admin): int {
+            DB::table('admins')
+                ->where('admin_id', (int) $admin->admin_id)
+                ->update([
+                    'two_factor_enabled' => false,
+                    'two_factor_secret' => null,
+                    'two_factor_confirmed_at' => null,
+                    'two_factor_recovery_codes' => null,
+                    'two_factor_last_verified_at' => null,
+                ]);
+
+            return $this->revokeTrustedDevicesForAdmin((int) $admin->admin_id);
+        });
 
         $request->session()->forget(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY);
+        $this->clearTrustedDeviceCookie();
 
         $this->logRbacAdminAudit(
             $request,
@@ -3170,9 +3349,96 @@ class AdminAuthController extends BaseController
             'ip' => $request->ip(),
         ]);
 
+        if ($revokedTrustedDevices > 0) {
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_all_trusted_devices_revoked',
+                (int) $admin->admin_id,
+                null,
+                ['reason' => 'two_factor_disabled', 'revoked_count' => $revokedTrustedDevices]
+            );
+        }
+
         return redirect()
             ->route('admin.2fa.setup')
             ->with('success', 'Two-factor authentication has been disabled.');
+    }
+
+    /** Revoke one trusted device belonging to the currently signed-in admin. */
+    public function revokeTrustedDevice(Request $request, int $trustedDevice): RedirectResponse
+    {
+        $admin = $this->getCurrentAdminForTwoFactor($request);
+        if ($admin === null) {
+            return redirect()->route('admin.login')->with('error', 'Please log in to continue.');
+        }
+
+        if (! $this->supportsTrustedDeviceStorage()) {
+            return redirect()->route('admin.2fa.setup')->with('error', 'Trusted-device storage is not available. Please run migrations first.');
+        }
+
+        $device = DB::table('admin_trusted_devices')
+            ->where('id', $trustedDevice)
+            ->where('admin_id', (int) $admin->admin_id)
+            ->first();
+
+        if (! $device) {
+            abort(404);
+        }
+
+        if ($device->revoked_at === null) {
+            DB::table('admin_trusted_devices')
+                ->where('id', (int) $device->id)
+                ->where('admin_id', (int) $admin->admin_id)
+                ->whereNull('revoked_at')
+                ->update(['revoked_at' => now(), 'updated_at' => now()]);
+
+            $cookieToken = $this->decryptTrustedDeviceCookie($request);
+            if ($cookieToken !== null && hash_equals((string) $device->token_hash, hash('sha256', $cookieToken))) {
+                $this->clearTrustedDeviceCookie();
+            }
+
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_trusted_device_revoked',
+                (int) $admin->admin_id,
+                (int) $device->id,
+                [
+                    'device_name' => (string) ($device->device_name ?? ''),
+                    'browser' => (string) ($device->browser ?? ''),
+                    'platform' => (string) ($device->platform ?? ''),
+                ]
+            );
+        }
+
+        return redirect()->route('admin.2fa.setup')->with('success', 'The trusted device has been revoked.');
+    }
+
+    /** Revoke all trusted devices belonging to the currently signed-in admin. */
+    public function revokeAllTrustedDevices(Request $request): RedirectResponse
+    {
+        $admin = $this->getCurrentAdminForTwoFactor($request);
+        if ($admin === null) {
+            return redirect()->route('admin.login')->with('error', 'Please log in to continue.');
+        }
+
+        if (! $this->supportsTrustedDeviceStorage()) {
+            return redirect()->route('admin.2fa.setup')->with('error', 'Trusted-device storage is not available. Please run migrations first.');
+        }
+
+        $revokedCount = $this->revokeTrustedDevicesForAdmin((int) $admin->admin_id);
+        $this->clearTrustedDeviceCookie();
+
+        if ($revokedCount > 0) {
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_all_trusted_devices_revoked',
+                (int) $admin->admin_id,
+                null,
+                ['revoked_count' => $revokedCount]
+            );
+        }
+
+        return redirect()->route('admin.2fa.setup')->with('success', 'All trusted devices have been revoked.');
     }
 
     /**
@@ -3259,6 +3525,12 @@ class AdminAuthController extends BaseController
             return false;
         }
 
+        if (isset($admin->is_active) && ! (bool) $admin->is_active) {
+            $this->clearRememberMeToken((int) $admin->admin_id);
+
+            return false;
+        }
+
         $expiresAt = ! empty($admin->remember_token_expires_at)
             ? Carbon::parse($admin->remember_token_expires_at)
             : null;
@@ -3274,8 +3546,14 @@ class AdminAuthController extends BaseController
             return false;
         }
 
-        // Require explicit password + TOTP flow for 2FA-enabled accounts.
-        if ($this->isTwoFactorEnabledForAdmin($admin)) {
+        // A remember token is only issued after primary authentication and,
+        // when enabled, successful TOTP/recovery verification. Still require
+        // enrollment if the global policy now requires 2FA.
+        if (
+            $this->isGlobalTwoFactorRequired()
+            && $this->supportsTwoFactorStorage()
+            && ! $this->isTwoFactorEnabledForAdmin($admin)
+        ) {
             $this->clearRememberMeToken((int) $admin->admin_id);
 
             $this->pushFirebaseSecurityEvent('admin_remember_login_blocked_by_2fa', [
@@ -3570,7 +3848,8 @@ class AdminAuthController extends BaseController
         Request $request,
         array $pending,
         object $admin,
-        string $method
+        string $method,
+        bool $trustDevice = false
     ): RedirectResponse {
         $this->clearPendingTwoFactorLogin($request);
 
@@ -3583,6 +3862,10 @@ class AdminAuthController extends BaseController
                 ->update([
                     'two_factor_last_verified_at' => now(),
                 ]);
+        }
+
+        if ($trustDevice) {
+            $this->createTrustedDevice($request, $admin);
         }
 
         if (! empty($pending['remember'])) {
@@ -6306,7 +6589,7 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             self::REMEMBER_DAYS * 24 * 60,
             '/',
             null,
-            request()->isSecure(),
+            (bool) config('session.secure'),
             true,
             false,
             config('session.same_site', 'lax')
@@ -6341,6 +6624,267 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
 
         return Schema::hasColumn('admins', 'remember_token')
             && Schema::hasColumn('admins', 'remember_token_expires_at');
+    }
+
+    /** Check for the additive trusted-device table without caching across requests/tests. */
+    private function supportsTrustedDeviceStorage(): bool
+    {
+        return Schema::hasTable('admin_trusted_devices');
+    }
+
+    /** Register this browser only after a successful TOTP or recovery-code challenge. */
+    private function createTrustedDevice(Request $request, object $admin): void
+    {
+        if (! $this->supportsTrustedDeviceStorage()) {
+            return;
+        }
+
+        $token = Str::random(64);
+        $trustedAt = now();
+        $expiresAt = $trustedAt->copy()->addDays(self::TRUSTED_DEVICE_DAYS);
+        $client = $this->trustedDeviceClientMetadata($request);
+
+        $deviceId = DB::table('admin_trusted_devices')->insertGetId([
+            'admin_id' => (int) $admin->admin_id,
+            'token_hash' => hash('sha256', $token),
+            'device_name' => $client['device_name'],
+            'browser' => $client['browser'],
+            'platform' => $client['platform'],
+            'ip_address' => $request->ip(),
+            'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+            'trusted_at' => $trustedAt,
+            'last_used_at' => $trustedAt,
+            'expires_at' => $expiresAt,
+            'revoked_at' => null,
+            'created_at' => $trustedAt,
+            'updated_at' => $trustedAt,
+        ]);
+
+        $this->queueTrustedDeviceCookie($token, $expiresAt);
+        $this->recordTrustedDeviceSecurityEvent(
+            $request,
+            'admin_trusted_device_created',
+            (int) $admin->admin_id,
+            (int) $deviceId,
+            $client
+        );
+    }
+
+    /** Validate a browser token for this account and rotate it without extending its original expiry. */
+    private function findAndRotateTrustedDevice(Request $request, object $admin): ?object
+    {
+        if (! $this->supportsTrustedDeviceStorage()) {
+            return null;
+        }
+
+        $cookieValue = $request->cookie(self::TRUSTED_DEVICE_COOKIE_NAME);
+        if (! is_string($cookieValue) || $cookieValue === '') {
+            if ($cookieValue !== null) {
+                $this->clearTrustedDeviceCookie();
+            }
+
+            return null;
+        }
+
+        $token = $this->decryptTrustedDeviceCookie($request);
+        if ($token === null || strlen($token) > 256) {
+            $this->clearTrustedDeviceCookie();
+
+            return null;
+        }
+
+        $tokenHash = hash('sha256', $token);
+        $device = DB::table('admin_trusted_devices')
+            ->where('token_hash', $tokenHash)
+            ->first();
+
+        if (! $device || (int) $device->admin_id !== (int) $admin->admin_id) {
+            $this->clearTrustedDeviceCookie();
+
+            return null;
+        }
+
+        if ($device->revoked_at !== null) {
+            $this->clearTrustedDeviceCookie();
+
+            return null;
+        }
+
+        $expiresAt = Carbon::parse((string) $device->expires_at);
+        if (! $expiresAt->isFuture()) {
+            $this->clearTrustedDeviceCookie();
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_trusted_device_expired',
+                (int) $admin->admin_id,
+                (int) $device->id,
+                [
+                    'device_name' => (string) ($device->device_name ?? ''),
+                    'browser' => (string) ($device->browser ?? ''),
+                    'platform' => (string) ($device->platform ?? ''),
+                ]
+            );
+
+            return null;
+        }
+
+        $rotatedToken = Str::random(64);
+        $updated = DB::table('admin_trusted_devices')
+            ->where('id', (int) $device->id)
+            ->where('admin_id', (int) $admin->admin_id)
+            ->where('token_hash', $tokenHash)
+            ->whereNull('revoked_at')
+            ->where('expires_at', '>', now())
+            ->update([
+                'token_hash' => hash('sha256', $rotatedToken),
+                'last_used_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        if ($updated !== 1) {
+            $this->clearTrustedDeviceCookie();
+
+            return null;
+        }
+
+        $this->queueTrustedDeviceCookie($rotatedToken, $expiresAt);
+        $device->last_used_at = now()->toDateTimeString();
+
+        return $device;
+    }
+
+    /** Queue Laravel's encrypted, HttpOnly cookie, bounded by the DB expiry time. */
+    private function queueTrustedDeviceCookie(string $token, Carbon $expiresAt): void
+    {
+        $remainingSeconds = $expiresAt->getTimestamp() - now()->getTimestamp();
+        if ($remainingSeconds <= 0) {
+            $this->clearTrustedDeviceCookie();
+
+            return;
+        }
+
+        $minutes = (int) ceil($remainingSeconds / 60);
+        Cookie::queue(cookie(
+            self::TRUSTED_DEVICE_COOKIE_NAME,
+            Crypt::encryptString($token),
+            $minutes,
+            config('session.path', '/'),
+            config('session.domain'),
+            (bool) config('session.secure'),
+            true,
+            false,
+            config('session.same_site', 'lax')
+        ));
+    }
+
+    private function clearTrustedDeviceCookie(): void
+    {
+        Cookie::queue(Cookie::forget(
+            self::TRUSTED_DEVICE_COOKIE_NAME,
+            config('session.path', '/'),
+            config('session.domain')
+        ));
+    }
+
+    /** Decrypt Laravel's authenticated cookie payload; malformed values fail closed. */
+    private function decryptTrustedDeviceCookie(Request $request): ?string
+    {
+        $cookieValue = $request->cookie(self::TRUSTED_DEVICE_COOKIE_NAME);
+        if (! is_string($cookieValue) || $cookieValue === '') {
+            return null;
+        }
+
+        try {
+            $token = Crypt::decryptString($cookieValue);
+        } catch (DecryptException $exception) {
+            $this->clearTrustedDeviceCookie();
+
+            return null;
+        }
+
+        return $token === '' ? null : $token;
+    }
+
+    /** Revoke all recorded tokens, retaining rows for security history. */
+    private function revokeTrustedDevicesForAdmin(int $adminId): int
+    {
+        if (! $this->supportsTrustedDeviceStorage()) {
+            return 0;
+        }
+
+        $now = now();
+
+        return DB::table('admin_trusted_devices')
+            ->where('admin_id', $adminId)
+            ->whereNull('revoked_at')
+            ->update(['revoked_at' => $now, 'updated_at' => $now]);
+    }
+
+    /** Describe a browser for the management UI; this is metadata, never an auth factor. */
+    private function trustedDeviceClientMetadata(Request $request): array
+    {
+        $userAgent = (string) $request->userAgent();
+
+        $browser = match (true) {
+            preg_match('/Edg\//i', $userAgent) === 1 => 'Microsoft Edge',
+            preg_match('/OPR\//i', $userAgent) === 1 => 'Opera',
+            preg_match('/Firefox\//i', $userAgent) === 1 => 'Firefox',
+            preg_match('/Chrome\//i', $userAgent) === 1 => 'Google Chrome',
+            preg_match('/Safari\//i', $userAgent) === 1 => 'Safari',
+            default => 'Unknown browser',
+        };
+
+        $platform = match (true) {
+            preg_match('/Windows NT/i', $userAgent) === 1 => 'Windows',
+            preg_match('/Android/i', $userAgent) === 1 => 'Android',
+            preg_match('/iPhone|iPad|iPod/i', $userAgent) === 1 => 'iOS',
+            preg_match('/Macintosh|Mac OS/i', $userAgent) === 1 => 'macOS',
+            preg_match('/Linux/i', $userAgent) === 1 => 'Linux',
+            default => 'Unknown platform',
+        };
+
+        return [
+            'device_name' => $browser.' on '.$platform,
+            'browser' => $browser,
+            'platform' => $platform,
+        ];
+    }
+
+    /** Store trusted-device actions in the existing audit log and best-effort security feed. */
+    private function recordTrustedDeviceSecurityEvent(
+        Request $request,
+        string $event,
+        int $adminId,
+        ?int $deviceId,
+        array $metadata = []
+    ): void {
+        unset($metadata['token'], $metadata['token_hash']);
+        $details = array_merge($metadata, [
+            'security_event' => $event,
+            'trusted_device_id' => $deviceId,
+            'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+        ]);
+
+        $this->logRbacAdminAudit(
+            $request,
+            $event,
+            Str::headline(str_replace('_', ' ', $event)).'.',
+            $adminId,
+            $details
+        );
+
+        $this->pushFirebaseSecurityEvent($event, array_merge($metadata, [
+            'admin_id' => $adminId,
+            'trusted_device_id' => $deviceId,
+            'ip' => $request->ip(),
+        ]));
+    }
+
+    private function clearTrustedDeviceCookieForAdmin(Request $request, int $adminId): void
+    {
+        if ((int) $request->session()->get('admin_id', 0) === $adminId) {
+            $this->clearTrustedDeviceCookie();
+        }
     }
 
     /**

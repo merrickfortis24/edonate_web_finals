@@ -57,17 +57,12 @@ test('map waits for explicit consent; table is still available', async ({ page }
     await page.getByRole('button', {name:'Save selected choices'}).click();
     await expect.poll(() => external.some(origin => origin.endsWith('.basemaps.cartocdn.com'))).toBe(true);
 });
-test('chat creates no conversation identifier before consent and starts only after opt-in', async ({ page }) => {
+test('former Gemini chat widget is absent from the admin interface', async ({ page }) => {
     await mount(page, 'admin-dashboard');
-    await page.locator('#ed-privacy-panel [data-privacy-close]').click();
-    await page.getByRole('button', {name:'Open eDonate assistant'}).click();
-    await expect(page.locator('#ec-input')).toBeDisabled();
-    expect(await page.evaluate(() => sessionStorage.getItem('edonate.chat.session'))).toBeNull();
-    await page.locator('#edonate-chatbot [data-privacy-open]').click();
-    await page.locator('#ed-privacy-form input[name="ai"]').check();
-    await page.getByRole('button', {name:'Save selected choices'}).click();
-    await expect(page.locator('#ec-input')).toBeEnabled();
-    expect(await page.evaluate(() => sessionStorage.getItem('edonate.chat.session'))).toMatch(/^[0-9a-f-]{36}$/);
+    await expect(page.locator('#edonate-chatbot')).toHaveCount(0);
+    await expect(page.getByRole('button', {name:'Open eDonate assistant'})).toHaveCount(0);
+    await expect(page.locator('#ed-privacy-form input[name="ai"]')).toHaveCount(0);
+    expect(external).toEqual([]);
 });
 test('facility modal: named fields, keyboard Escape and visible backdrop', async ({ page }) => {
     await mount(page, 'admin-facilities');

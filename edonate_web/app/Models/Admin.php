@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Admin extends Model
 {
@@ -20,4 +21,9 @@ class Admin extends Model
         'role',
         'created_at',
     ];
+
+    public function trustedDevices(): HasMany
+    {
+        return $this->hasMany(AdminTrustedDevice::class, 'admin_id', 'admin_id');
+    }
 }

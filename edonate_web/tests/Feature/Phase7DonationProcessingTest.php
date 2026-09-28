@@ -18,6 +18,7 @@ class Phase7DonationProcessingTest extends TestCase
         parent::setUp();
 
         $this->buildSchema();
+        (require database_path('migrations/2026_09_28_000000_add_appointment_cancellation_restrictions.php'))->up();
     }
 
     public function test_admin_can_check_in_confirmed_appointment(): void
@@ -237,6 +238,32 @@ class Phase7DonationProcessingTest extends TestCase
             'next_eligible_date' => Carbon::today()->addDays(56)->toDateString(),
         ]);
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'donation_completed')->count());
+    }
+
+    public function test_successful_donation_completion_resets_the_consecutive_cancellation_streak(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+        DB::table('donors')->where('donor_id', $donorId)->update(['consecutive_cancellations' => 2]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('donors', ['donor_id' => $donorId, 'consecutive_cancellations' => 0]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action_type' => 'appointment_cancellation_streak_reset',
+            'target_table' => 'donors',
+            'target_id' => $donorId,
+        ]);
     }
 
     public function test_completed_donation_adds_verified_units_to_assigned_facility_exactly_once(): void

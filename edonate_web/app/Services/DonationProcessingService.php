@@ -52,6 +52,10 @@ class DonationProcessingService
     public function completeDonation(int $appointmentId, int $adminId, array $data, ?Request $request = null): array
     {
         return DB::transaction(function () use ($appointmentId, $adminId, $data, $request): array {
+            $donorId = DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+            $donor = is_numeric($donorId)
+                ? Donor::query()->where('donor_id', (int) $donorId)->lockForUpdate()->first()
+                : null;
             $appointment = $this->lockedAppointment($appointmentId);
             $existingRecord = $this->lockedDonationRecord($appointmentId);
             $normalized = $this->statuses->normalize((string) $appointment->status);
@@ -75,11 +79,6 @@ class DonationProcessingService
                     'appointment' => 'This appointment already has a donation record.',
                 ]);
             }
-
-            $donor = Donor::query()
-                ->where('donor_id', $appointment->donor_id)
-                ->lockForUpdate()
-                ->first();
 
             if (! $donor) {
                 throw ValidationException::withMessages([
@@ -164,6 +163,12 @@ class DonationProcessingService
             );
 
             $this->eligibility->markCompletedDonation((int) $appointment->donor_id, $donationDate);
+            app(AppointmentRestrictionService::class)->resetStreakAfterCompletion(
+                $donor,
+                (int) $appointment->appointment_id,
+                $adminId,
+                $request
+            );
 
             $this->donorNotification(
                 (int) $appointment->donor_id,

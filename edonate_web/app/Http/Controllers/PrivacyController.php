@@ -15,12 +15,10 @@ class PrivacyController extends Controller
             'version' => ['required', Rule::in([config('privacy.version')])],
             'analytics' => ['required', 'boolean'],
             'maps' => ['required', 'boolean'],
-            'ai' => ['required', 'boolean'],
         ]);
         $choices = [
             'analytics' => (bool) $data['analytics'] && (bool) config('privacy.analytics_enabled'),
             'maps' => (bool) $data['maps'],
-            'ai' => (bool) $data['ai'] && (bool) config('privacy.ai_enabled'),
         ];
         if (in_array(true, $choices, true) && ! $consent->readyForCollection()) {
             return response()->json(['message' => 'Optional services are disabled until the operator publishes the reviewed privacy notice.'], 503);

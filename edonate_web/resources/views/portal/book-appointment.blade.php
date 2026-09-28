@@ -10,6 +10,10 @@
 @php
     $bookingAllowed = $canBookAppointment ?? false;
     $verificationStatusLabel = \Illuminate\Support\Str::headline(str_replace('_', ' ', $identityVerificationStatus ?? 'unverified'));
+    $donorRestricted = isset($donor) && (bool) ($donor->appointment_restricted ?? false);
+    $consecutiveCancellationCount = $consecutiveCancellationCount ?? (int) ($donor->consecutive_cancellations ?? 0);
+    $activeRestriction = $activeRestriction ?? null;
+    $pendingRestrictionAppeal = $pendingRestrictionAppeal ?? null;
 @endphp
 
 <section class="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-slate-200/70">
@@ -21,11 +25,54 @@
         <span class="w-9" aria-hidden="true"></span>
     </header>
 
+    @if (session('success') || session('error') || session('cancellation_warning') || $errors->any())
+        <div class="space-y-2 px-4 pt-4 sm:px-6 lg:px-8" aria-live="polite">
+            @if (session('success'))<p class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{{ session('success') }}</p>@endif
+            @if (session('error'))<p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{{ session('error') }}</p>@endif
+            @if (session('cancellation_warning'))<p class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{{ session('cancellation_warning') }}</p>@endif
+            @foreach ($errors->all() as $error)<p class="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{{ $error }}</p>@endforeach
+        </div>
+    @endif
+
+    @if ($donorRestricted)
+        @php
+            $contactEmail = config('privacy.contact_email') ?: config('mail.from.address');
+        @endphp
+        <section class="mx-4 mt-4 rounded-xl border border-red-300 bg-red-50 p-4 text-red-900 sm:mx-6 lg:mx-8" aria-labelledby="appointmentRestrictionTitle">
+            <h3 id="appointmentRestrictionTitle" class="text-base font-extrabold">Account Temporarily Restricted</h3>
+            <p class="mt-2 text-sm">Your appointment privileges have been temporarily restricted because you cancelled three consecutive appointments. To restore your appointment privileges, please contact the eDonate administrator and provide a valid explanation for the cancellations.</p>
+            <p class="mt-2 text-sm"><span class="font-semibold">Restriction Date:</span> {{ ($activeRestriction?->restricted_at ?? $donor->restricted_at)?->format('F j, Y g:i A') ?? 'Not available' }}</p>
+            @if ($contactEmail)
+                <a class="mt-3 inline-flex rounded-lg bg-red-800 px-4 py-2 text-sm font-semibold text-white hover:bg-red-900" href="mailto:{{ $contactEmail }}">Contact Administrator</a>
+            @else
+                <p class="mt-3 text-sm font-semibold">Please use the administrator contact details provided by your organization.</p>
+            @endif
+
+            @if ($pendingRestrictionAppeal)
+                <div class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+                    Your justification was submitted {{ $pendingRestrictionAppeal->submitted_at?->diffForHumans() ?? 'recently' }} and is pending administrator review.
+                </div>
+            @else
+                <form method="POST" action="{{ route('donor.appointments.restriction-appeal') }}" class="mt-4 space-y-3 rounded-lg border border-red-200 bg-white p-4">
+                    @csrf
+                    <div>
+                        <h4 class="font-bold">Request Account Review</h4>
+                        <p class="mt-1 text-sm text-slate-600">Please explain why you cancelled your previous appointments. The administrator will review your request before restoring your appointment privileges.</p>
+                    </div>
+                    <label for="restrictionJustification" class="block text-sm font-semibold text-slate-700">Reason / Justification</label>
+                    <textarea id="restrictionJustification" name="justification" rows="4" minlength="20" maxlength="2000" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" placeholder="Explain the circumstances around your cancellations (at least 20 characters).">{{ old('justification') }}</textarea>
+                    @error('justification')<p class="text-sm text-red-700">{{ $message }}</p>@enderror
+                    <button type="submit" class="rounded-xl bg-red-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-900">Submit for Review</button>
+                </form>
+            @endif
+        </section>
+    @endif
+
     <form method="POST" action="{{ route('donor.book-appointment.store') }}" class="space-y-6 p-4 sm:p-6 lg:p-8">
         @csrf
         <x-privacy-acknowledgment purpose="appointment" />
 
-        @if (! $bookingAllowed)
+        @if (! $bookingAllowed && ! $donorRestricted)
             <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
                 You can still view upcoming events, but booking is disabled until your account, identity, and eligibility requirements are satisfied for an event.
                 Current verification status: <span class="font-semibold">{{ $verificationStatusLabel }}</span>.
@@ -163,11 +210,15 @@
                         </td>
                         <td class="px-3 py-3 text-right">
                             @if ($canCancel)
-                                <form method="POST" action="{{ route('donor.appointments.cancel', $appointment->appointment_id) }}" onsubmit="return confirm('Cancel this appointment?');">
-                                    @csrf
-                                    @method('PATCH')
-                                    <button type="submit" class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700">Cancel</button>
-                                </form>
+                                <button
+                                    type="button"
+                                    data-open-cancellation
+                                    data-appointment-id="{{ $appointment->appointment_id }}"
+                                    data-event-name="{{ $appointment->event?->title ?? 'Legacy appointment' }}"
+                                    data-appointment-date="{{ $appointment->appointment_date ? \Carbon\Carbon::parse($appointment->appointment_date)->format('F j, Y') : 'Date unavailable' }}"
+                                    data-appointment-time="{{ $appointment->appointment_time ? \Carbon\Carbon::parse($appointment->appointment_time)->format('g:i A') : 'Time unavailable' }}"
+                                    class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                >Cancel</button>
                             @endif
                         </td>
                     </tr>
@@ -177,6 +228,34 @@
         </div>
     @endif
 </x-dashboard.card>
+
+<dialog id="cancelAppointmentDialog" class="w-[calc(100%-2rem)] max-w-xl rounded-2xl border-0 p-0 shadow-2xl backdrop:bg-slate-900/60">
+    <form id="cancelAppointmentForm" method="POST" action="{{ route('donor.appointments.cancel', ['appointment' => '__APPOINTMENT__']) }}" class="overflow-hidden rounded-2xl bg-white">
+        @csrf
+        @method('PATCH')
+        <div class="bg-red-800 px-5 py-4 text-white">
+            <h2 class="text-lg font-bold">Cancel Appointment?</h2>
+            <p id="cancelAppointmentSummary" class="mt-1 text-sm text-red-100"></p>
+        </div>
+        <div class="space-y-4 p-5">
+            <div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                <p class="font-bold">Please provide your reason for cancelling this appointment.</p>
+                <p class="mt-1">Repeated appointment cancellations may result in temporary restriction of your appointment privileges. Three consecutive cancellations will require administrator review before you can book another appointment.</p>
+                @if ($consecutiveCancellationCount === 1)
+                    <p class="mt-2 font-semibold">You have already cancelled 1 consecutive appointment; 2 more may restrict booking.</p>
+                @elseif ($consecutiveCancellationCount >= 2)
+                    <p class="mt-2 font-semibold">Warning: you have cancelled {{ $consecutiveCancellationCount }} consecutive appointments. One more will temporarily restrict your appointment privileges.</p>
+                @endif
+            </div>
+            <label for="cancellationReason" class="block text-sm font-semibold text-slate-700">Reason for cancellation <span class="text-red-600">*</span></label>
+            <textarea id="cancellationReason" name="cancellation_reason" rows="4" maxlength="1000" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-800 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" placeholder="Please explain why you need to cancel."></textarea>
+            <div class="flex justify-end gap-2">
+                <button type="button" data-close-cancellation class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">Keep Appointment</button>
+                <button type="submit" class="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800">Confirm Cancellation</button>
+            </div>
+        </div>
+    </form>
+</dialog>
 
 <script>
     (function () {
@@ -220,6 +299,33 @@
         });
 
         fillTimes(radios.find(function (radio) { return radio.checked; }) || radios[0]);
+    })();
+
+    (function () {
+        var dialog = document.getElementById('cancelAppointmentDialog');
+        var form = document.getElementById('cancelAppointmentForm');
+        var summary = document.getElementById('cancelAppointmentSummary');
+        var reason = document.getElementById('cancellationReason');
+        if (!dialog || !form) return;
+        var actionTemplate = form.action;
+
+        document.querySelectorAll('[data-open-cancellation]').forEach(function (button) {
+            button.addEventListener('click', function () {
+                var id = button.dataset.appointmentId || '';
+                form.action = actionTemplate.replace('__APPOINTMENT__', encodeURIComponent(id));
+                summary.textContent = (button.dataset.eventName || 'Appointment') + ' · ' + (button.dataset.appointmentDate || '') + ' · ' + (button.dataset.appointmentTime || '');
+                reason.value = '';
+                if (typeof dialog.showModal === 'function') dialog.showModal();
+            });
+        });
+
+        document.querySelectorAll('[data-close-cancellation]').forEach(function (button) {
+            button.addEventListener('click', function () { dialog.close(); });
+        });
+
+        dialog.addEventListener('click', function (event) {
+            if (event.target === dialog) dialog.close();
+        });
     })();
 </script>
 @endcomponent

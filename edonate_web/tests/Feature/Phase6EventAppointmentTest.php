@@ -23,6 +23,7 @@ class Phase6EventAppointmentTest extends TestCase
         (require database_path('migrations/2026_09_25_000001_link_event_posts_to_donation_events.php'))->up();
         (require database_path('migrations/2026_09_25_000002_add_is_donation_to_posts_table.php'))->up();
         (require database_path('migrations/2026_09_08_000000_create_privacy_receipts_table.php'))->up();
+        (require database_path('migrations/2026_09_28_000000_add_appointment_cancellation_restrictions.php'))->up();
     }
 
     public function test_admin_can_create_valid_donation_event(): void
@@ -509,6 +510,186 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertSame(1, DB::table('appointments')->where('event_id', $eventId)->where('status', 'confirmed')->count());
     }
 
+    public function test_three_donor_cancellations_require_reasons_warn_and_restrict_appointment_privileges(): void
+    {
+        $donorId = $this->createBookableDonor();
+        $appointmentIds = [];
+        for ($index = 1; $index <= 3; $index++) {
+            $eventId = $this->createEvent(['title' => 'Cancellation Test '.$index]);
+            $appointmentIds[] = $this->createAppointment($donorId, $eventId);
+        }
+
+        $this->withSession($this->donorSession($donorId))
+            ->patch('/appointments/'.$appointmentIds[0].'/cancel', $this->privacyAcknowledgment())
+            ->assertSessionHasErrors('cancellation_reason');
+        $this->assertSame(0, DB::table('appointment_cancellations')->where('donor_id', $donorId)->count());
+
+        $first = $this->withSession($this->donorSession($donorId))
+            ->patch('/appointments/'.$appointmentIds[0].'/cancel', [...$this->privacyAcknowledgment(), 'cancellation_reason' => 'I am unwell today.'])
+            ->assertRedirect(route('donor.book-appointment'));
+        $first->assertSessionHas('cancellation_warning', 'You have cancelled 1 consecutive appointment. Please remember that 3 consecutive cancellations may temporarily restrict your appointment privileges.');
+        $this->assertDatabaseHas('donors', ['donor_id' => $donorId, 'consecutive_cancellations' => 1, 'appointment_restricted' => false]);
+
+        $second = $this->withSession($this->donorSession($donorId))
+            ->patch('/appointments/'.$appointmentIds[1].'/cancel', [...$this->privacyAcknowledgment(), 'cancellation_reason' => 'My transport was unavailable.'])
+            ->assertRedirect(route('donor.book-appointment'));
+        $second->assertSessionHas('cancellation_warning', 'Warning: You have cancelled 2 consecutive appointments. One more consecutive cancellation will temporarily restrict your appointment privileges and require administrator review.');
+        $this->assertDatabaseHas('donors', ['donor_id' => $donorId, 'consecutive_cancellations' => 2, 'appointment_restricted' => false]);
+
+        $third = $this->withSession($this->donorSession($donorId))
+            ->patch('/appointments/'.$appointmentIds[2].'/cancel', [...$this->privacyAcknowledgment(), 'cancellation_reason' => 'An urgent family situation came up.'])
+            ->assertRedirect(route('donor.book-appointment'));
+        $third->assertSessionHas('cancellation_warning', 'Your appointment privileges have been temporarily restricted due to 3 consecutive appointment cancellations. Please contact the administrator and provide a valid justification to request reinstatement.');
+
+        $this->assertDatabaseHas('donors', [
+            'donor_id' => $donorId,
+            'appointment_restricted' => true,
+            'consecutive_cancellations' => 3,
+            'restriction_status' => 'restricted',
+        ]);
+        $this->assertSame(3, DB::table('appointment_cancellations')->where('donor_id', $donorId)->where('cancelled_by', 'donor')->count());
+        $this->assertSame(1, DB::table('appointment_restrictions')->where('donor_id', $donorId)->where('status', 'active')->count());
+        $this->assertDatabaseHas('notifications', ['donor_id' => $donorId, 'notification_type' => 'appointment_cancellation_warning']);
+        $this->assertDatabaseHas('notifications', ['donor_id' => $donorId, 'notification_type' => 'appointment_restricted']);
+        $this->assertDatabaseHas('admin_notifications', ['notification_type' => 'appointment_restriction_review_required']);
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'appointment_cancelled_by_donor', 'target_id' => $appointmentIds[2]]);
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'donor_appointment_restricted', 'target_table' => 'donors', 'target_id' => $donorId]);
+    }
+
+    public function test_restricted_donor_cannot_book_and_can_submit_only_one_pending_appeal(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = $this->createBookableDonor();
+        $restrictionId = $this->activateRestriction($donorId);
+        $eventId = $this->createEvent();
+
+        $this->withSession($this->donorSession($donorId))
+            ->postJson('/appointments/book', [...$this->privacyAcknowledgment(), 'event_id' => $eventId, 'appointment_time' => '09:00'])
+            ->assertForbidden()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('code', 'APPOINTMENT_RESTRICTED');
+        $this->assertDatabaseMissing('appointments', ['donor_id' => $donorId, 'event_id' => $eventId]);
+
+        $this->withSession($this->donorSession($donorId))
+            ->get(route('donor.book-appointment'))
+            ->assertOk()
+            ->assertSee('Account Temporarily Restricted')
+            ->assertSee('Restriction Date:')
+            ->assertSee('Request Account Review')
+            ->assertSee('Submit for Review')
+            ->assertSee('disabled', false);
+
+        $payload = ['justification' => 'I had an unexpected medical emergency and could not attend the appointments.'];
+        $this->withSession($this->donorSession($donorId))
+            ->postJson('/appointments/restriction-appeal', $payload)
+            ->assertCreated()
+            ->assertJsonPath('status', 'pending');
+        $this->withSession($this->donorSession($donorId))
+            ->postJson('/appointments/restriction-appeal', $payload)
+            ->assertUnprocessable();
+
+        $this->assertSame(1, DB::table('appointment_restriction_appeals')->where('restriction_id', $restrictionId)->count());
+        $this->assertDatabaseHas('admin_notifications', ['notification_type' => 'appointment_restriction_appeal_submitted']);
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'restriction_appeal_submitted']);
+
+        $appointmentId = $this->createAppointment($donorId, $eventId);
+        $newEventId = $this->createEvent(['title' => 'Reschedule Target']);
+        $this->withSession($this->adminSession())
+            ->patchJson('/admin/appointments/'.$appointmentId.'/reschedule', ['event_id' => $newEventId, 'appointment_time' => '09:30'])
+            ->assertUnprocessable();
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $appointmentId, 'event_id' => $eventId]);
+    }
+
+    public function test_admin_can_approve_or_reject_appeals_and_manual_lift_is_audited(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $approvedDonor = $this->createBookableDonor();
+        $this->activateRestriction($approvedDonor);
+        $appealId = (int) $this->withSession($this->donorSession($approvedDonor))
+            ->postJson('/appointments/restriction-appeal', ['justification' => 'I was sick and could not attend those appointments.'])
+            ->assertCreated()
+            ->json('appeal_id');
+
+        $this->withSession($this->adminSession())
+            ->get(route('admin.appointment-restrictions.index'))
+            ->assertOk()
+            ->assertSee('Currently Restricted Donors')
+            ->assertSee('View Details');
+        $this->withSession($this->adminSession())
+            ->get(route('admin.appointment-restrictions.show', $approvedDonor))
+            ->assertOk()
+            ->assertSee('Appointment Cancellation History')
+            ->assertSee('Approve &amp; Lift Restriction', false);
+
+        $this->withSession($this->adminSession())
+            ->postJson(route('admin.appointment-restrictions.appeals.approve', $appealId), ['admin_notes' => 'Reviewed and approved.'])
+            ->assertRedirect();
+        $this->assertDatabaseHas('donors', [
+            'donor_id' => $approvedDonor,
+            'appointment_restricted' => false,
+            'consecutive_cancellations' => 0,
+            'restriction_status' => 'lifted',
+            'restriction_lifted_by' => 1,
+        ]);
+        $this->assertDatabaseHas('appointment_restriction_appeals', ['appeal_id' => $appealId, 'status' => 'approved', 'reviewed_by' => 1]);
+        $this->assertDatabaseHas('appointment_restriction_reviews', ['action' => 'appeal_approved', 'admin_id' => 1]);
+        $this->assertDatabaseHas('notifications', ['donor_id' => $approvedDonor, 'notification_type' => 'appointment_restriction_appeal_approved']);
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'restriction_appeal_approved']);
+
+        $rejectedDonor = $this->createBookableDonor();
+        $this->activateRestriction($rejectedDonor);
+        $rejectedAppealId = (int) $this->withSession($this->donorSession($rejectedDonor))
+            ->postJson('/appointments/restriction-appeal', ['justification' => 'I could not attend because I had an emergency.'])
+            ->assertCreated()
+            ->json('appeal_id');
+        $this->withSession($this->adminSession())
+            ->postJson(route('admin.appointment-restrictions.appeals.reject', $rejectedAppealId), ['admin_notes' => 'Please provide more relevant details.'])
+            ->assertRedirect();
+        $this->assertDatabaseHas('donors', ['donor_id' => $rejectedDonor, 'appointment_restricted' => true, 'consecutive_cancellations' => 3]);
+        $this->assertDatabaseHas('appointment_restriction_appeals', ['appeal_id' => $rejectedAppealId, 'status' => 'rejected']);
+        $this->assertDatabaseHas('notifications', ['donor_id' => $rejectedDonor, 'notification_type' => 'appointment_restriction_appeal_rejected']);
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'restriction_appeal_rejected']);
+
+        $manualDonor = $this->createBookableDonor();
+        $manualRestriction = $this->activateRestriction($manualDonor);
+        $this->withSession($this->adminSession())
+            ->patchJson(route('admin.appointment-restrictions.lift', $manualDonor), ['admin_notes' => 'Donor contacted the office.'])
+            ->assertRedirect();
+        $this->assertDatabaseHas('appointment_restrictions', ['restriction_id' => $manualRestriction, 'status' => 'lifted', 'lifted_by' => 1]);
+        $this->assertDatabaseHas('appointment_restriction_reviews', ['restriction_id' => $manualRestriction, 'action' => 'manual_lift']);
+        $this->assertDatabaseHas('notifications', ['donor_id' => $manualDonor, 'notification_type' => 'appointment_restriction_lifted']);
+        $this->assertDatabaseHas('audit_logs', ['action_type' => 'appointment_restriction_lifted']);
+
+        $keptDonor = $this->createBookableDonor();
+        $keptRestriction = $this->activateRestriction($keptDonor);
+        $this->withSession($this->adminSession())
+            ->postJson(route('admin.appointment-restrictions.keep', $keptDonor), ['admin_notes' => 'Review completed; policy still applies.'])
+            ->assertRedirect();
+        $this->assertDatabaseHas('donors', ['donor_id' => $keptDonor, 'appointment_restricted' => true]);
+        $this->assertDatabaseHas('appointment_restriction_reviews', ['restriction_id' => $keptRestriction, 'action' => 'kept_restricted']);
+    }
+
+    public function test_admin_cancel_and_no_show_do_not_increment_donor_cancellation_streak(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = $this->createBookableDonor();
+        $eventId = $this->createEvent(['event_date' => Carbon::today()->toDateString()]);
+        $cancelledAppointment = $this->createAppointment($donorId, $eventId);
+        $noShowAppointment = $this->createAppointment($donorId, $eventId, ['appointment_date' => Carbon::yesterday()->toDateString()]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson('/admin/appointments/'.$cancelledAppointment.'/cancel', ['cancellation_reason' => 'Facility schedule changed.'])
+            ->assertOk();
+        $this->withSession($this->adminSession())
+            ->patchJson('/admin/appointments/'.$noShowAppointment.'/no-show')
+            ->assertOk();
+
+        $this->assertSame(0, (int) DB::table('donors')->where('donor_id', $donorId)->value('consecutive_cancellations'));
+        $this->assertSame(0, DB::table('appointment_cancellations')->where('donor_id', $donorId)->count());
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $cancelledAppointment, 'status' => 'cancelled']);
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $noShowAppointment, 'status' => 'no_show']);
+    }
+
     public function test_cancelling_event_cancels_future_active_appointments_but_not_completed(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
@@ -769,6 +950,27 @@ class Phase6EventAppointmentTest extends TestCase
         $this->createEligibility($donorId, ['status' => 'eligible']);
 
         return $donorId;
+    }
+
+    private function activateRestriction(int $donorId): int
+    {
+        $restrictedAt = now();
+        DB::table('donors')->where('donor_id', $donorId)->update([
+            'appointment_restricted' => true,
+            'consecutive_cancellations' => 3,
+            'restriction_status' => 'restricted',
+            'restriction_reason' => \App\Services\AppointmentRestrictionService::DEFAULT_RESTRICTION_REASON,
+            'restricted_at' => $restrictedAt,
+        ]);
+
+        return (int) DB::table('appointment_restrictions')->insertGetId([
+            'donor_id' => $donorId,
+            'status' => 'active',
+            'restriction_reason' => \App\Services\AppointmentRestrictionService::DEFAULT_RESTRICTION_REASON,
+            'restricted_at' => $restrictedAt,
+            'created_at' => $restrictedAt,
+            'updated_at' => $restrictedAt,
+        ], 'restriction_id');
     }
 
     private function createDonor(array $overrides = []): int

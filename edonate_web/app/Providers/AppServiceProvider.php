@@ -149,15 +149,6 @@ class AppServiceProvider extends ServiceProvider
      */
     private function registerRateLimiters(): void
     {
-        RateLimiter::for('chatbot', function (Request $request): array {
-            return [
-                Limit::perMinute((int) config('chatbot.requests_per_minute', 10))
-                    ->by('chat-minute:'.$this->clientIp($request)),
-                Limit::perHour((int) config('chatbot.requests_per_hour', 100))
-                    ->by('chat-hour:'.$this->clientIp($request)),
-            ];
-        });
-
         RateLimiter::for('donor-api', function (Request $request) {
             return Limit::perMinute($this->rateLimit('donor_api_per_minute', 60))
                 ->by($this->donorKey($request));

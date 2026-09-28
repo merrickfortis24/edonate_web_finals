@@ -27,12 +27,24 @@ class Donor extends Model
         'verification_status',
         'is_active',
         'profile_photo_path',
+        'appointment_restricted',
+        'consecutive_cancellations',
+        'restriction_status',
+        'restriction_reason',
+        'restricted_at',
+        'restricted_by',
+        'restriction_lifted_at',
+        'restriction_lifted_by',
     ];
 
     protected $casts = [
         'blood_type_verified_at' => 'datetime',
         'birthdate' => 'date',
         'is_active' => 'boolean',
+        'appointment_restricted' => 'boolean',
+        'consecutive_cancellations' => 'integer',
+        'restricted_at' => 'datetime',
+        'restriction_lifted_at' => 'datetime',
     ];
 
     public function bloodType()
@@ -58,6 +70,21 @@ class Donor extends Model
     public function appointments()
     {
         return $this->hasMany(Appointment::class, 'donor_id', 'donor_id');
+    }
+
+    public function appointmentCancellations()
+    {
+        return $this->hasMany(AppointmentCancellation::class, 'donor_id', 'donor_id');
+    }
+
+    public function appointmentRestrictions()
+    {
+        return $this->hasMany(AppointmentRestriction::class, 'donor_id', 'donor_id');
+    }
+
+    public function restrictionAppeals()
+    {
+        return $this->hasMany(AppointmentRestrictionAppeal::class, 'donor_id', 'donor_id');
     }
 
     public function donationRecords()

@@ -43,6 +43,7 @@
 		$recentActivities = data_get($dashboard, 'recent_activities', []);
 		$pendingApprovals = data_get($dashboard, 'pending_approvals', []);
 		$dashboardLinks = data_get($dashboard, 'links', []);
+		$appointmentRestrictionStats = $appointmentRestrictionStats ?? [];
 	@endphp
 	<div class="main container-fluid px-0">
 		<main class="content container-fluid py-3">
@@ -118,6 +119,21 @@
 						</article>
 					</div>
 				@endforeach
+			</section>
+
+			<section class="row row-cols-1 row-cols-md-2 g-3 mt-1" aria-label="Appointment restriction reviews">
+				<div class="col">
+					<a class="dashboard-kpi-card h-100 d-flex align-items-center justify-content-between text-decoration-none" href="{{ route('admin.appointment-restrictions.index') }}">
+						<span><span class="dashboard-kpi-card__label d-block">Restricted Donors</span><strong class="dashboard-kpi-card__value">{{ number_format($appointmentRestrictionStats['restricted_donors'] ?? 0) }}</strong></span>
+						<span class="badge text-bg-danger">Review</span>
+					</a>
+				</div>
+				<div class="col">
+					<a class="dashboard-kpi-card h-100 d-flex align-items-center justify-content-between text-decoration-none" href="{{ route('admin.appointment-restrictions.index') }}">
+						<span><span class="dashboard-kpi-card__label d-block">Pending Restriction Appeals</span><strong class="dashboard-kpi-card__value">{{ number_format($appointmentRestrictionStats['pending_appeals'] ?? 0) }}</strong></span>
+						<span class="badge text-bg-warning">Review</span>
+					</a>
+				</div>
 			</section>
 
 			<section class="map-banner d-flex align-items-center" aria-label="Geographic blood availability map">

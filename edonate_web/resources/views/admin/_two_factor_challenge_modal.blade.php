@@ -89,6 +89,25 @@
                             <div class="form-text">Use one recovery code if you cannot access Google Authenticator. Each code works once.</div>
                         </div>
 
+                        @if ((bool) ($twoFactorChallengeModal['trustedDevicesAvailable'] ?? false))
+                            <div class="form-check mb-3">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    name="trust_device"
+                                    id="trust_device"
+                                    value="1"
+                                    @checked(old('trust_device'))
+                                >
+                                <label class="form-check-label" for="trust_device">Don’t ask again for 30 days</label>
+                                <div class="form-text">Select this only on a private device you trust. Do not use it on a shared or public computer.</div>
+                            </div>
+                        @else
+                            <div class="alert alert-warning py-2" role="status">
+                                Trusted devices are unavailable until the database migration is run.
+                            </div>
+                        @endif
+
                         <button type="submit" class="btn btn-danger w-100">Verify and Continue</button>
                     </form>
                 </div>

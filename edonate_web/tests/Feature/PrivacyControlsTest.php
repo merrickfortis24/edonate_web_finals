@@ -18,37 +18,36 @@ class PrivacyControlsTest extends TestCase
         $this->assertSame('sqlite', config('database.default'));
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));
         (require database_path('migrations/2026_09_08_000000_create_privacy_receipts_table.php'))->up();
-        config(['privacy.ai_enabled' => true]);
         Http::preventStrayRequests();
         Route::middleware('web')->post('/__test/personal-data', fn () => response()->json(['saved' => true]))->name('test.personal-data');
         // The route name contains a dot; store it as an array key, not a config path.
         config(['privacy.data_forms' => array_merge(config('privacy.data_forms'), ['test.personal-data' => 'health-screening'])]);
     }
 
-    public function test_all_optional_processing_is_denied_without_current_authenticated_choice(): void
+    public function test_optional_processing_is_denied_without_a_current_choice_and_legacy_ai_choice_is_ignored(): void
     {
         foreach ([null, 'garbage', json_encode(['version' => 'old', 'maps' => true, 'ai' => true, 'expires_at' => now()->addDay()->timestamp]),
             json_encode(['version' => config('privacy.version'), 'ai' => true, 'expires_at' => now()->subMinute()->timestamp])] as $cookie) {
             $request = Request::create('/', 'GET', [], [config('privacy.cookie') => $cookie]);
             $choices = app(PrivacyConsent::class)->choices($request);
             $this->assertFalse($choices['maps']);
-            $this->assertFalse($choices['ai']);
             $this->assertFalse($choices['analytics']);
+            $this->assertArrayNotHasKey('ai', $choices);
         }
     }
 
     public function test_choices_have_no_preselected_analytics_and_can_be_withdrawn(): void
     {
-        $payload = ['version' => config('privacy.version'), 'maps' => true, 'ai' => true, 'analytics' => true];
+        $payload = ['version' => config('privacy.version'), 'maps' => true, 'analytics' => true];
         $response = $this->postJson(route('privacy.preferences'), $payload)
             ->assertOk()->assertJsonPath('choices.analytics', false)
-            ->assertJsonPath('choices.maps', true)->assertCookie(config('privacy.cookie'));
+            ->assertJsonPath('choices.maps', true)->assertJsonMissingPath('choices.ai')->assertCookie(config('privacy.cookie'));
         $cookie = collect($response->headers->getCookies())->first(fn ($item) => $item->getName() === config('privacy.cookie'));
         $this->assertTrue($cookie->isHttpOnly());
         $this->assertSame('lax', $cookie->getSameSite());
         $this->assertStringNotContainsString('"maps":true', $cookie->getValue());
-        $this->postJson(route('privacy.preferences'), array_replace($payload, ['maps' => false, 'ai' => false]))
-            ->assertOk()->assertJsonPath('choices.maps', false)->assertJsonPath('choices.ai', false);
+        $this->postJson(route('privacy.preferences'), array_replace($payload, ['maps' => false]))
+            ->assertOk()->assertJsonPath('choices.maps', false)->assertJsonMissingPath('choices.ai');
         $this->assertDatabaseCount('privacy_receipts', 2);
         $row = (array) DB::table('privacy_receipts')->first();
         $this->assertSame(64, strlen($row['subject_hash']));
@@ -74,10 +73,10 @@ class PrivacyControlsTest extends TestCase
 
     public function test_preferences_require_csrf_and_reject_stale_versions(): void
     {
-        $this->postJson(route('privacy.preferences'), ['version' => 'old', 'maps' => true, 'ai' => true, 'analytics' => false])
+        $this->postJson(route('privacy.preferences'), ['version' => 'old', 'maps' => true, 'analytics' => false])
             ->assertUnprocessable()->assertJsonValidationErrors('version');
         $this->app->instance('env', 'production');
-        $this->postJson(route('privacy.preferences'), ['version' => config('privacy.version'), 'maps' => true, 'ai' => true, 'analytics' => false])
+        $this->postJson(route('privacy.preferences'), ['version' => config('privacy.version'), 'maps' => true, 'analytics' => false])
             ->assertStatus(419);
         $this->assertDatabaseCount('privacy_receipts', 0);
     }
@@ -86,10 +85,18 @@ class PrivacyControlsTest extends TestCase
     {
         foreach (['privacy', 'terms', 'cookies'] as $route) {
             $this->get(route($route))->assertOk()->assertSee('Privacy choices')
+                ->assertDontSee('edonate-chatbot')->assertDontSee('name="ai"')
                 ->assertHeader('Referrer-Policy', 'no-referrer')
                 ->assertHeader('X-Content-Type-Options', 'nosniff')
                 ->assertHeader('X-Frame-Options', 'DENY');
         }
+    }
+
+    public function test_gemini_chat_api_endpoints_are_retired(): void
+    {
+        $this->getJson('/api/chat')->assertNotFound();
+        $this->postJson('/api/chat', ['message' => 'Hello'])->assertNotFound();
+        $this->deleteJson('/api/chat')->assertNotFound();
     }
 
     public function test_optional_replication_and_geocoding_do_not_send_by_default(): void

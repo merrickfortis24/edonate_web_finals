@@ -18,9 +18,6 @@
         <fieldset>
             <legend>Optional services</legend>
             <label><input type="checkbox" name="maps"> External maps — OpenStreetMap receives your IP address and requested map area.</label>
-            @if(config('privacy.ai_enabled') && (int) session('admin_id') > 0)
-                <label><input type="checkbox" name="ai"> AI assistant — messages are saved by eDonate and sent to Google Gemini. Do not send anyone's personal or medical information.</label>
-            @endif
             @if(config('privacy.analytics_enabled'))
                 <label><input type="checkbox" name="analytics"> Usage analytics (optional).</label>
             @else

@@ -27,6 +27,10 @@ class AppointmentBookingService
     {
         $messages = [];
 
+        if (app(AppointmentRestrictionService::class)->isRestricted($donor)) {
+            $messages[] = 'Your appointment privileges are temporarily restricted. Please contact the administrator or submit a justification for review.';
+        }
+
         if (! $this->donorAccountActive($donor)) {
             $messages[] = 'Your donor login account must be verified before booking an appointment.';
         }
@@ -73,6 +77,10 @@ class AppointmentBookingService
 
             if (! $event) {
                 $this->fail('event_id', 'The selected donation event could not be found.');
+            }
+
+            if (app(AppointmentRestrictionService::class)->isRestricted($donor)) {
+                $this->fail('event_id', 'Your appointment privileges are temporarily restricted. Please contact the administrator or submit a justification for review.');
             }
 
             $readiness = $this->bookingReadiness($donor, Carbon::parse($event->event_date));
@@ -137,9 +145,18 @@ class AppointmentBookingService
     public function cancel(Donor $donor, int $appointmentId, ?string $reason = null, ?Request $request = null): Appointment
     {
         return DB::transaction(function () use ($donor, $appointmentId, $reason, $request): Appointment {
+            $lockedDonor = Donor::query()
+                ->where('donor_id', $donor->donor_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (trim((string) $reason) === '') {
+                $this->fail('cancellation_reason', 'Please provide a reason for cancelling this appointment.');
+            }
+
             $appointment = Appointment::query()
                 ->where('appointment_id', $appointmentId)
-                ->where('donor_id', $donor->donor_id)
+                ->where('donor_id', $lockedDonor->donor_id)
                 ->lockForUpdate()
                 ->first();
 
@@ -164,10 +181,17 @@ class AppointmentBookingService
             ]);
             $appointment->save();
 
+            app(AppointmentRestrictionService::class)->recordDonorCancellation(
+                $lockedDonor,
+                $appointment,
+                (string) $reason,
+                $request
+            );
+
             $appointmentCode = $this->appointmentCode((int) $appointment->appointment_id);
 
             $this->createDonorNotification(
-                (int) $donor->donor_id,
+                (int) $lockedDonor->donor_id,
                 'appointment_cancelled',
                 "Your appointment {$appointmentCode} has been cancelled."
             );
@@ -175,12 +199,12 @@ class AppointmentBookingService
             app(AdminNotificationService::class)->createAdminEvent(
                 'appointment_cancelled',
                 'Appointment Cancelled',
-                $this->donorName($donor) . " cancelled appointment {$appointmentCode}.",
+                $this->donorName($lockedDonor) . " cancelled appointment {$appointmentCode}.",
                 'appointment',
                 (int) $appointment->appointment_id
             );
 
-            $this->logAudit($request, $donor, 'appointment_cancelled', "Cancelled appointment {$appointmentCode}.", (int) $appointment->appointment_id, [
+            $this->logAudit($request, $lockedDonor, 'appointment_cancelled', "Cancelled appointment {$appointmentCode}.", (int) $appointment->appointment_id, [
                 'appointment_id' => (int) $appointment->appointment_id,
                 'donor_id' => (int) $donor->donor_id,
                 'previous_status' => $normalizedStatus,
@@ -201,6 +225,11 @@ class AppointmentBookingService
     public function reschedule(int $appointmentId, int $eventId, string $appointmentTime, int $adminId, ?Request $request = null): array
     {
         return DB::transaction(function () use ($appointmentId, $eventId, $appointmentTime, $adminId, $request): array {
+            $initialDonorId = DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+            $donor = is_numeric($initialDonorId)
+                ? Donor::query()->where('donor_id', (int) $initialDonorId)->lockForUpdate()->first()
+                : null;
+
             $appointment = Appointment::query()
                 ->where('appointment_id', $appointmentId)
                 ->lockForUpdate()
@@ -208,6 +237,10 @@ class AppointmentBookingService
 
             if (! $appointment) {
                 $this->fail('appointment', 'Appointment not found.');
+            }
+
+            if ($donor && app(AppointmentRestrictionService::class)->isRestricted($donor)) {
+                $this->fail('appointment', 'This donor has restricted appointment privileges and cannot be rescheduled into a new appointment.');
             }
 
             $statuses = app(AppointmentStatusService::class);
