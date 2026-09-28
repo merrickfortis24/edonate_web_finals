@@ -86,6 +86,10 @@ class AdminAuthController extends BaseController
 
     private const TWO_FACTOR_SETUP_SECRET_SESSION_KEY = 'admin_2fa_setup_secret';
 
+    private const RECOVERY_CODES_ONCE_SESSION_KEY = 'admin_recovery_codes_once';
+
+    private const RECOVERY_CODES_RETURN_SESSION_KEY = 'admin_recovery_codes_return_to';
+
     private const TWO_FACTOR_PENDING_TTL_MINUTES = 5;
 
     private const TWO_FACTOR_MAX_ATTEMPTS = 5;
@@ -108,10 +112,8 @@ class AdminAuthController extends BaseController
             $twoFactorSetupModal = $this->buildDashboardTwoFactorModalData($request);
 
             $requiresEnrollment = (bool) ($twoFactorSetupModal['required'] ?? false);
-            $hasRecoveryCodes = is_array($twoFactorSetupModal['recoveryCodes'] ?? null)
-                && ($twoFactorSetupModal['recoveryCodes'] ?? []) !== [];
 
-            if ($requiresEnrollment || $hasRecoveryCodes) {
+            if ($requiresEnrollment) {
                 return view('admin.admin_login', [
                     'loginStats' => $loginStats,
                     'twoFactorSetupModal' => $twoFactorSetupModal,
@@ -460,14 +462,11 @@ class AdminAuthController extends BaseController
             ->with('success', 'Two-factor verification was cancelled. You may sign in again.');
     }
 
-    /**
-     * Verify admin Google Authenticator (or recovery) code and complete login.
-     */
+    /** Verify an admin Google Authenticator code and complete login. */
     public function verifyTwoFactorChallenge(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'code' => ['nullable', 'digits:6', 'required_without:recovery_code'],
-            'recovery_code' => ['nullable', 'string', 'max:64', 'required_without:code'],
+            'code' => ['required', 'digits:6'],
             'trust_device' => ['nullable', 'boolean'],
         ]);
 
@@ -508,20 +507,10 @@ class AdminAuthController extends BaseController
                 ->with('error', 'Two-factor authentication is not configured for this account. Please log in again.');
         }
 
-        $code = trim((string) ($validated['code'] ?? ''));
-        $recoveryCode = trim((string) ($validated['recovery_code'] ?? ''));
-
-        $isValid = false;
-        $usedRecoveryCode = false;
-
-        if ($code !== '') {
-            $decryptedSecret = $this->decryptTwoFactorSecret((string) ($admin->two_factor_secret ?? ''));
-            $isValid = $decryptedSecret !== null
-                && $this->verifyTotpCode($decryptedSecret, $code);
-        } elseif ($recoveryCode !== '') {
-            $isValid = $this->consumeRecoveryCode($admin, $recoveryCode);
-            $usedRecoveryCode = $isValid;
-        }
+        $code = trim((string) $validated['code']);
+        $decryptedSecret = $this->decryptTwoFactorSecret((string) ($admin->two_factor_secret ?? ''));
+        $isValid = $decryptedSecret !== null
+            && $this->verifyTotpCode($decryptedSecret, $code);
 
         if (! $isValid) {
             $pending['attempts'] = $attempts + 1;
@@ -542,7 +531,7 @@ class AdminAuthController extends BaseController
             $request,
             $pending,
             $admin,
-            $usedRecoveryCode ? 'recovery_code' : 'totp',
+            'totp',
             (bool) ($validated['trust_device'] ?? false)
         );
     }
@@ -674,64 +663,112 @@ class AdminAuthController extends BaseController
         $validated = $request->validate([
             'email' => ['required', 'email', 'max:150'],
             'token' => ['required', 'string', 'size:64'],
+            'recovery_code' => ['required', 'string', 'max:64'],
             'password' => ['required', 'string', 'min:8', 'max:72', 'confirmed'],
         ]);
 
-        if (! $this->isValidPasswordResetToken($validated['email'], $validated['token'])) {
-            return redirect()
-                ->route('admin.password.request')
-                ->withErrors(['email' => 'This reset link is invalid or has expired.']);
-        }
-
-        $updatePayload = [
-            'password' => Hash::make($validated['password']),
-        ];
-
-        if ($this->supportsRememberMeStorage()) {
-            $updatePayload['remember_token'] = null;
-            $updatePayload['remember_token_expires_at'] = null;
-        }
-
-        [$targetAdminId, $updatedRows, $revokedTrustedDevices] = DB::transaction(function () use ($validated, $updatePayload): array {
-            $targetId = DB::table('admins')
-                ->where('email', $validated['email'])
+        $email = Str::lower(trim((string) $validated['email']));
+        $resetCache = Cache::store(self::RESET_CACHE_STORE);
+        $resetCacheKey = $this->makePasswordResetCacheKey($email);
+        [$resetSucceeded, $targetAdminId, $revokedTrustedDevices] = DB::transaction(function () use ($validated, $email, $resetCache, $resetCacheKey): array {
+            $admin = DB::table('admins')
+                ->whereRaw('LOWER(email) = ?', [$email])
                 ->lockForUpdate()
-                ->value('admin_id');
+                ->first();
 
-            if (! is_numeric($targetId)) {
-                return [null, 0, 0];
+            if (! $admin) {
+                return [false, null, 0];
+            }
+
+            // Recheck the link while holding the account row lock, so a
+            // concurrent request cannot reuse it after another reset.
+            if (! $this->isValidPasswordResetToken($email, (string) $validated['token'])
+                || ! $this->isTwoFactorEnabledForAdmin($admin)) {
+                return [false, (int) $admin->admin_id, 0];
+            }
+
+            $hashes = $this->parseRecoveryCodeHashes($admin);
+            $normalizedCode = Str::upper(trim((string) $validated['recovery_code']));
+            $matchedIndex = null;
+
+            foreach ($hashes as $index => $hash) {
+                if (Hash::check($normalizedCode, $hash)) {
+                    $matchedIndex = $index;
+                    break;
+                }
+            }
+
+            if ($matchedIndex === null) {
+                return [false, (int) $admin->admin_id, 0];
+            }
+
+            unset($hashes[$matchedIndex]);
+            $updatePayload = [
+                'password' => Hash::make($validated['password']),
+                'two_factor_recovery_codes' => json_encode(array_values($hashes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ];
+
+            if (Schema::hasColumn('admins', 'auth_version')) {
+                $updatePayload['auth_version'] = (int) ($admin->auth_version ?? 0) + 1;
+            }
+
+            if ($this->supportsRememberMeStorage()) {
+                $updatePayload['remember_token'] = null;
+                $updatePayload['remember_token_expires_at'] = null;
             }
 
             $updated = DB::table('admins')
-                ->where('admin_id', (int) $targetId)
+                ->where('admin_id', (int) $admin->admin_id)
                 ->update($updatePayload);
-            $revoked = $updated > 0
-                ? $this->revokeTrustedDevicesForAdmin((int) $targetId)
-                : 0;
 
-            return [(int) $targetId, $updated, $revoked];
+            if ($updated !== 1) {
+                return [false, (int) $admin->admin_id, 0];
+            }
+
+            $revoked = $this->revokeTrustedDevicesForAdmin((int) $admin->admin_id);
+
+            // Clearing while the database row is locked prevents a
+            // concurrent request from reusing the same reset link. If the
+            // transaction later fails, the user can safely request a new link.
+            $resetCache->forget($resetCacheKey);
+
+            return [true, (int) $admin->admin_id, $revoked];
         });
 
-        Cache::store(self::RESET_CACHE_STORE)->forget($this->makePasswordResetCacheKey($validated['email']));
+        if (! $resetSucceeded || ! is_numeric($targetAdminId)) {
+            $this->recordPasswordResetRecoveryAttempt($request, is_numeric($targetAdminId) ? (int) $targetAdminId : null, 'failed');
 
-        if ($updatedRows === 0) {
-            return redirect()
-                ->route('admin.password.request')
-                ->withErrors(['email' => 'Unable to reset password for this account.']);
+            return $this->passwordResetFailure();
         }
 
-        if (is_numeric($targetAdminId)) {
-            $this->clearTrustedDeviceCookieForAdmin($request, (int) $targetAdminId);
-            if ($revokedTrustedDevices > 0) {
-                $this->recordTrustedDeviceSecurityEvent(
-                    $request,
-                    'admin_all_trusted_devices_revoked',
-                    (int) $targetAdminId,
-                    null,
-                    ['reason' => 'password_reset', 'revoked_count' => $revokedTrustedDevices]
-                );
-            }
+        $this->recordPasswordResetRecoveryAttempt($request, (int) $targetAdminId, 'success');
+        $this->logRbacAdminAudit(
+            $request,
+            'admin_password_reset_success',
+            'Admin password reset completed using an email link and a recovery code.',
+            (int) $targetAdminId,
+            [
+                'security_event' => 'admin_password_reset_success',
+                'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+            ]
+        );
+
+        $this->clearTrustedDeviceCookieForAdmin($request, (int) $targetAdminId);
+        if ($revokedTrustedDevices > 0) {
+            $this->recordTrustedDeviceSecurityEvent(
+                $request,
+                'admin_all_trusted_devices_revoked',
+                (int) $targetAdminId,
+                null,
+                ['reason' => 'password_reset', 'revoked_count' => $revokedTrustedDevices]
+            );
         }
+
+        // This custom admin session is not managed by Laravel's auth guard.
+        // The auth_version update above invalidates other sessions; invalidate
+        // this browser as well and never sign the administrator back in here.
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect()
             ->route('admin.login')
@@ -3116,7 +3153,6 @@ class AdminAuthController extends BaseController
             'confirmedAt' => ! empty($admin->two_factor_confirmed_at)
                 ? Carbon::parse((string) $admin->two_factor_confirmed_at)
                 : null,
-            'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
         ];
     }
 
@@ -3132,7 +3168,6 @@ class AdminAuthController extends BaseController
             'maskedEmail' => '',
             'secret' => null,
             'qrSvg' => null,
-            'recoveryCodes' => $request->session()->get('two_factor_recovery_codes', []),
         ];
 
         if (! $this->isGlobalTwoFactorRequired() || ! $this->supportsTwoFactorStorage()) {
@@ -3151,9 +3186,6 @@ class AdminAuthController extends BaseController
             'maskedEmail' => (string) ($setupData['maskedEmail'] ?? ''),
             'secret' => $setupData['secret'] ?? null,
             'qrSvg' => $setupData['qrSvg'] ?? null,
-            'recoveryCodes' => is_array($setupData['recoveryCodes'] ?? null)
-                ? $setupData['recoveryCodes']
-                : [],
         ];
     }
 
@@ -3243,7 +3275,14 @@ class AdminAuthController extends BaseController
         $this->clearTrustedDeviceCookie();
 
         $request->session()->forget(self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY);
-        $request->session()->flash('two_factor_recovery_codes', $recoveryCodes);
+        $this->stageOneTimeRecoveryCodes(
+            $request,
+            $recoveryCodes,
+            (bool) ($validated['return_to_dashboard'] ?? false)
+                ? $this->dashboardRouteForRole((string) ($admin->role ?? 'admin'))
+                : 'admin.2fa.setup',
+            'two_factor_enabled'
+        );
 
         $this->logRbacAdminAudit(
             $request,
@@ -3270,15 +3309,131 @@ class AdminAuthController extends BaseController
             );
         }
 
-        if ((bool) ($validated['return_to_dashboard'] ?? false)) {
-            return redirect()
-                ->route('admin.login')
-                ->with('success', 'Google Authenticator has been enabled. Save your recovery codes below.');
+        return redirect()
+            ->route('admin.2fa.recovery-codes.show');
+    }
+
+    /** Display one-time recovery codes after 2FA enrollment or regeneration. */
+    public function showOneTimeRecoveryCodes(Request $request)
+    {
+        $codes = $request->session()->get(self::RECOVERY_CODES_ONCE_SESSION_KEY);
+        if (! is_array($codes) || $codes === []) {
+            return redirect()->route('admin.2fa.setup');
         }
 
-        return redirect()
-            ->route('admin.2fa.setup')
-            ->with('success', 'Google Authenticator has been enabled. Save your recovery codes below.');
+        return response()
+            ->view('admin.recovery_codes', [
+                'recoveryCodes' => $codes,
+                'recoveryCodePurpose' => (string) $request->session()->get(self::RECOVERY_CODES_RETURN_SESSION_KEY, 'admin.2fa.setup'),
+            ])
+            ->header('Cache-Control', 'no-store, private, max-age=0')
+            ->header('Pragma', 'no-cache');
+    }
+
+    /** Require an explicit acknowledgement before releasing the admin back into the site. */
+    public function acknowledgeOneTimeRecoveryCodes(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'saved_codes' => ['required', 'accepted'],
+        ]);
+
+        $codes = $request->session()->get(self::RECOVERY_CODES_ONCE_SESSION_KEY);
+        if (! is_array($codes) || $codes === []) {
+            return redirect()->route('admin.2fa.setup');
+        }
+
+        $adminId = (int) $request->session()->get('admin_id', 0);
+        $purpose = (string) $request->session()->get(self::RECOVERY_CODES_RETURN_SESSION_KEY, 'admin.2fa.setup');
+        $request->session()->forget([
+            self::RECOVERY_CODES_ONCE_SESSION_KEY,
+            self::RECOVERY_CODES_RETURN_SESSION_KEY,
+        ]);
+
+        $this->logRbacAdminAudit(
+            $request,
+            'admin_recovery_codes_acknowledged',
+            'Administrator acknowledged saving the one-time recovery codes.',
+            $adminId > 0 ? $adminId : null,
+            ['security_event' => 'admin_recovery_codes_acknowledged']
+        );
+
+        return redirect()->route(in_array($purpose, ['admin.dashboard', 'staff.dashboard'], true) ? $purpose : 'admin.2fa.setup');
+    }
+
+    /** Regenerate recovery codes only after a fresh authenticator verification. */
+    public function regenerateRecoveryCodes(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'otp' => ['required', 'digits:6'],
+        ]);
+
+        $admin = $this->getCurrentAdminForTwoFactor($request);
+        if (! $this->isTwoFactorEnabledForAdmin($admin)) {
+            $this->recordRecoveryCodeRegenerationAttempt($request, $admin, false);
+
+            return back()->withErrors(['otp' => 'Unable to verify this request. Check the authenticator code and try again.']);
+        }
+
+        $secret = $this->decryptTwoFactorSecret((string) ($admin->two_factor_secret ?? ''));
+        if ($secret === null || ! $this->verifyTotpCode($secret, (string) $validated['otp'])) {
+            $this->recordRecoveryCodeRegenerationAttempt($request, $admin, false);
+
+            return back()->withErrors(['otp' => 'Unable to verify this request. Check the authenticator code and try again.']);
+        }
+
+        $codes = $this->generateRecoveryCodes();
+        $hashes = array_map(static fn (string $code): string => Hash::make($code), $codes);
+
+        DB::transaction(function () use ($admin, $hashes): void {
+            DB::table('admins')
+                ->where('admin_id', (int) $admin->admin_id)
+                ->lockForUpdate()
+                ->update([
+                    'two_factor_recovery_codes' => json_encode($hashes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                ]);
+        });
+
+        $this->stageOneTimeRecoveryCodes($request, $codes, 'admin.2fa.setup', 'recovery_codes_regenerated');
+        $this->recordRecoveryCodeRegenerationAttempt($request, $admin, true);
+
+        return redirect()->route('admin.2fa.recovery-codes.show');
+    }
+
+    /** Keep recovery-code lifecycle events free of plaintext codes and OTP values. */
+    private function recordRecoveryCodeRegenerationAttempt(Request $request, ?object $admin, bool $succeeded): void
+    {
+        $event = $succeeded ? 'admin_recovery_codes_regenerated' : 'admin_recovery_code_regeneration_failed';
+        $this->logRbacAdminAudit(
+            $request,
+            $event,
+            $succeeded
+                ? 'Administrator regenerated the one-time two-factor recovery codes.'
+                : 'A two-factor recovery-code regeneration attempt failed verification.',
+            isset($admin->admin_id) ? (int) $admin->admin_id : null,
+            [
+                'security_event' => $event,
+                'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+            ],
+            $succeeded ? 'success' : 'failed'
+        );
+    }
+
+    /** Store the plaintext codes only in the current encrypted session until acknowledgement. */
+    private function stageOneTimeRecoveryCodes(Request $request, array $codes, string $returnRoute, string $reason): void
+    {
+        $request->session()->put([
+            self::RECOVERY_CODES_ONCE_SESSION_KEY => array_values($codes),
+            self::RECOVERY_CODES_RETURN_SESSION_KEY => $returnRoute,
+        ]);
+        $request->session()->forget('two_factor_recovery_codes');
+
+        $this->logRbacAdminAudit(
+            $request,
+            'admin_recovery_codes_issued',
+            'One-time two-factor recovery codes were issued.',
+            (int) $request->session()->get('admin_id', 0) ?: null,
+            ['security_event' => 'admin_recovery_codes_issued', 'reason' => $reason]
+        );
     }
 
     /**
@@ -3576,6 +3731,9 @@ class AdminAuthController extends BaseController
     private function setAdminSession(Request $request, object $admin, ?string $role = null): void
     {
         $normalizedRole = $this->normalizeRole($role ?? (string) ($admin->role ?? ''));
+        $authVersion = Schema::hasColumn('admins', 'auth_version')
+            ? (int) DB::table('admins')->where('admin_id', (int) $admin->admin_id)->value('auth_version')
+            : 0;
 
         $request->session()->regenerate();
         $request->session()->put([
@@ -3583,6 +3741,7 @@ class AdminAuthController extends BaseController
             'admin_username' => $admin->username,
             'admin_full_name' => $admin->full_name,
             'admin_role' => $normalizedRole,
+            'admin_auth_version' => $authVersion,
         ]);
     }
 
@@ -3964,44 +4123,6 @@ class AdminAuthController extends BaseController
             static fn (mixed $value): string => is_string($value) ? $value : '',
             $decoded
         )));
-    }
-
-    /**
-     * Validate and consume a single recovery code.
-     */
-    private function consumeRecoveryCode(object $admin, string $recoveryCode): bool
-    {
-        if (! $this->supportsTwoFactorStorage()) {
-            return false;
-        }
-
-        $normalizedInput = Str::upper(trim($recoveryCode));
-        if ($normalizedInput === '') {
-            return false;
-        }
-
-        $hashes = $this->parseRecoveryCodeHashes($admin);
-        if ($hashes === []) {
-            return false;
-        }
-
-        foreach ($hashes as $index => $hash) {
-            if (! Hash::check($normalizedInput, $hash)) {
-                continue;
-            }
-
-            unset($hashes[$index]);
-
-            DB::table('admins')
-                ->where('admin_id', (int) ($admin->admin_id ?? 0))
-                ->update([
-                    'two_factor_recovery_codes' => json_encode(array_values($hashes), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                ]);
-
-            return true;
-        }
-
-        return false;
     }
 
     /**
@@ -6909,6 +7030,32 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
         return Hash::check($token, (string) $cacheData['token_hash']);
     }
 
+    /** Keep reset-link and recovery-code failures indistinguishable to the requester. */
+    private function passwordResetFailure(): RedirectResponse
+    {
+        return redirect()
+            ->route('admin.password.request')
+            ->withErrors(['reset' => 'The supplied reset details could not be verified. Check the reset link and recovery code, or request a new link.']);
+    }
+
+    /** Audit reset recovery-code attempts without logging the email, token, or code. */
+    private function recordPasswordResetRecoveryAttempt(Request $request, ?int $targetAdminId, string $result): void
+    {
+        $this->logRbacAdminAudit(
+            $request,
+            'admin_password_reset_recovery_attempt',
+            $result === 'success'
+                ? 'A password reset recovery code was verified.'
+                : 'A password reset recovery-code verification attempt failed.',
+            $targetAdminId,
+            [
+                'security_event' => 'admin_password_reset_recovery_attempt',
+                'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+            ],
+            $result
+        );
+    }
+
     /**
      * Log admin out.
      */
@@ -6926,8 +7073,11 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'admin_username',
             'admin_full_name',
             'admin_role',
+            'admin_auth_version',
             self::TWO_FACTOR_PENDING_SESSION_KEY,
             self::TWO_FACTOR_SETUP_SECRET_SESSION_KEY,
+            self::RECOVERY_CODES_ONCE_SESSION_KEY,
+            self::RECOVERY_CODES_RETURN_SESSION_KEY,
             'two_factor_recovery_codes',
         ]);
         $request->session()->invalidate();

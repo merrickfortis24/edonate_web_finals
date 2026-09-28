@@ -1,7 +1,7 @@
 @php
     $twoFactorChallengeModal = is_array($twoFactorChallengeModal ?? null) ? $twoFactorChallengeModal : [];
     $isPendingChallenge = (bool) ($twoFactorChallengeModal['show'] ?? false);
-    $showChallengeErrors = $errors->has('code') || $errors->has('recovery_code');
+    $showChallengeErrors = $errors->has('code');
     $showChallengeModal = $isPendingChallenge || $showChallengeErrors;
 
     $maskedEmail = trim((string) ($twoFactorChallengeModal['maskedEmail'] ?? ''));
@@ -34,7 +34,7 @@
 
                     @if ($showChallengeErrors)
                         <div class="alert alert-danger" role="alert">
-                            {{ $errors->first('code') ?: $errors->first('recovery_code') }}
+                            {{ $errors->first('code') }}
                         </div>
                     @endif
 
@@ -66,27 +66,6 @@
                                 autocomplete="one-time-code"
                                 autofocus
                             >
-                        </div>
-
-                        <div class="d-flex align-items-center gap-2 mb-3 text-secondary" aria-hidden="true">
-                            <span class="flex-grow-1 border-top"></span>
-                            <span class="small">or</span>
-                            <span class="flex-grow-1 border-top"></span>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="loginChallengeRecoveryCode" class="form-label">Recovery Code</label>
-                            <input
-                                id="loginChallengeRecoveryCode"
-                                name="recovery_code"
-                                type="text"
-                                maxlength="64"
-                                class="form-control"
-                                value="{{ old('recovery_code') }}"
-                                placeholder="Enter a recovery code"
-                                autocomplete="off"
-                            >
-                            <div class="form-text">Use one recovery code if you cannot access Google Authenticator. Each code works once.</div>
                         </div>
 
                         @if ((bool) ($twoFactorChallengeModal['trustedDevicesAvailable'] ?? false))

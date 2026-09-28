@@ -176,6 +176,14 @@ class AppServiceProvider extends ServiceProvider
                 ->by('admin-2fa|'.$identity.'|ip:'.$this->clientIp($request));
         });
 
+        RateLimiter::for('admin-recovery', function (Request $request) {
+            $adminId = (int) $request->session()->get('admin_id', 0);
+            $identity = $adminId > 0 ? 'admin:'.$adminId : 'ip:'.$this->clientIp($request);
+
+            return Limit::perMinutes(10, $this->rateLimit('admin_recovery_per_ten_minutes', 5))
+                ->by('admin-recovery|'.$identity.'|ip:'.$this->clientIp($request));
+        });
+
         RateLimiter::for('otp-send', function (Request $request) {
             $email = $this->normalizedAccountIdentifier($request);
             $ip = $this->clientIp($request);

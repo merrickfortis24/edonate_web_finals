@@ -566,12 +566,10 @@
 					$challengeModalPayload = is_array($twoFactorChallengeModal ?? null) ? $twoFactorChallengeModal : [];
 
 					$setupModalActive = (bool) ($setupModalPayload['required'] ?? false)
-						|| (is_array($setupModalPayload['recoveryCodes'] ?? null) && ($setupModalPayload['recoveryCodes'] ?? []) !== [])
 						|| $errors->has('otp');
 
 					$challengeModalActive = (bool) ($challengeModalPayload['show'] ?? false)
-						|| $errors->has('code')
-						|| $errors->has('recovery_code');
+						|| $errors->has('code');
 
 					$suppressLoginAlerts = $setupModalActive || $challengeModalActive;
 				@endphp

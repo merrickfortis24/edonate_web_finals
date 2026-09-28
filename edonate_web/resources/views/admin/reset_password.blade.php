@@ -163,7 +163,23 @@
                 <input type="hidden" name="email" value="{{ $email }}">
                 <input type="hidden" name="token" value="{{ $token }}">
 
-                <label for="password" class="form-label">New Password</label>
+                <div class="alert alert-warning" role="alert">
+                    Enter one unused recovery code from your Google Authenticator setup. The code is consumed only if your password is successfully changed.
+                </div>
+
+                <label for="recovery_code" class="form-label">Recovery Code</label>
+                <input
+                    type="text"
+                    id="recovery_code"
+                    name="recovery_code"
+                    class="form-control"
+                    placeholder="Enter an unused recovery code"
+                    autocomplete="off"
+                    maxlength="64"
+                    required
+                >
+
+                <label for="password" class="form-label mt-3">New Password</label>
                 <input
                     type="password"
                     id="password"

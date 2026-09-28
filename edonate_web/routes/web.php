@@ -138,6 +138,10 @@ Route::post('/admin/reset-password', [AdminAuthController::class, 'resetPassword
 Route::middleware('admin.auth')->group(function () {
     Route::get('/admin/unauthorized', [AdminAuthController::class, 'unauthorized'])->name('admin.unauthorized');
     Route::post('/admin/logout', [AdminAuthController::class, 'destroy'])->name('admin.logout');
+    Route::get('/admin/security/recovery-codes', [AdminAuthController::class, 'showOneTimeRecoveryCodes'])
+        ->name('admin.2fa.recovery-codes.show');
+    Route::post('/admin/security/recovery-codes/acknowledge', [AdminAuthController::class, 'acknowledgeOneTimeRecoveryCodes'])
+        ->name('admin.2fa.recovery-codes.acknowledge');
     Route::get('/admin/settings/2fa', [AdminAuthController::class, 'setupTwoFactor'])->name('admin.2fa.setup');
     Route::post('/admin/settings/2fa', [AdminAuthController::class, 'enableTwoFactor'])
         ->middleware('throttle:admin-write')
@@ -145,6 +149,9 @@ Route::middleware('admin.auth')->group(function () {
     Route::post('/admin/settings/2fa/disable', [AdminAuthController::class, 'disableTwoFactor'])
         ->middleware('throttle:admin-write')
         ->name('admin.2fa.disable');
+    Route::post('/admin/settings/2fa/recovery-codes/regenerate', [AdminAuthController::class, 'regenerateRecoveryCodes'])
+        ->middleware('throttle:admin-recovery')
+        ->name('admin.2fa.recovery-codes.regenerate');
     Route::post('/admin/settings/2fa/trusted-devices/{trustedDevice}/revoke', [AdminAuthController::class, 'revokeTrustedDevice'])
         ->whereNumber('trustedDevice')
         ->middleware('throttle:admin-write')

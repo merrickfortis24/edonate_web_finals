@@ -28,26 +28,6 @@
                 <div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
             @endif
 
-            @php
-                $codes = is_array($recoveryCodes ?? null) ? $recoveryCodes : [];
-            @endphp
-
-            @if ($codes !== [])
-                <section class="card border-success mb-3">
-                    <header class="card-header bg-success-subtle text-success-emphasis fw-semibold">Recovery Codes (Save These Now)</header>
-                    <div class="card-body">
-                        <p class="mb-2">Each code can be used once if you lose access to Google Authenticator.</p>
-                        <div class="row g-2">
-                            @foreach ($codes as $code)
-                                <div class="col-12 col-md-6">
-                                    <div class="form-control bg-body-secondary fw-semibold">{{ $code }}</div>
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                </section>
-            @endif
-
             <section class="card shadow-sm mb-3">
                 <header class="card-header fw-semibold">Google Authenticator Status</header>
                 <div class="card-body">
@@ -119,6 +99,25 @@
                     </div>
                 </section>
             @else
+                <section class="card border-warning shadow-sm mb-3">
+                    <header class="card-header fw-semibold">Regenerate Recovery Codes</header>
+                    <div class="card-body">
+                        <p class="text-body-secondary">Regeneration invalidates every previously issued recovery code. Verify your identity with a fresh Google Authenticator code to continue.</p>
+                        <form method="POST" action="{{ route('admin.2fa.recovery-codes.regenerate') }}" novalidate>
+                            @csrf
+                            <div class="row align-items-end g-3">
+                                <div class="col-12 col-md-6">
+                                    <label for="regenerate_recovery_otp" class="form-label">6-digit Authenticator Code</label>
+                                    <input id="regenerate_recovery_otp" name="otp" type="text" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" class="form-control" autocomplete="one-time-code" required>
+                                </div>
+                                <div class="col-12 col-md-auto">
+                                    <button type="submit" class="btn btn-outline-danger">Verify &amp; Regenerate Codes</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
                 <section class="card shadow-sm">
                     <header class="card-header fw-semibold">Disable Two-Factor Authentication</header>
                     <div class="card-body">

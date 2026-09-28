@@ -24,7 +24,7 @@ class EnsureAdminAuthenticated
         }
 
         $columns = ['admin_id'];
-        foreach (['role', 'username', 'full_name', 'two_factor_enabled', 'two_factor_secret', 'is_active'] as $column) {
+        foreach (['role', 'username', 'full_name', 'two_factor_enabled', 'two_factor_secret', 'is_active', 'auth_version'] as $column) {
             if (Schema::hasColumn('admins', $column)) {
                 $columns[] = $column;
             }
@@ -35,6 +35,16 @@ class EnsureAdminAuthenticated
         if (! $admin || ! in_array($role, ['admin', 'staff'], true)
             || (isset($admin->is_active) && ! (bool) $admin->is_active)) {
             return $this->terminateSession($request, 'Your account session is no longer valid. Please log in again.');
+        }
+
+        if (isset($admin->auth_version)
+            && (int) $request->session()->get('admin_auth_version', 0) !== (int) $admin->auth_version) {
+            return $this->terminateSession($request, 'Your account credentials changed. Please log in again.');
+        }
+
+        if ($request->session()->has('admin_recovery_codes_once')
+            && ! $request->routeIs('admin.2fa.recovery-codes.show', 'admin.2fa.recovery-codes.acknowledge')) {
+            return redirect()->route('admin.2fa.recovery-codes.show');
         }
 
         $request->session()->put([
@@ -109,21 +119,12 @@ class EnsureAdminAuthenticated
      */
     private function supportsTwoFactorStorage(): bool
     {
-        static $supportsTwoFactorStorage;
-
-        if (is_bool($supportsTwoFactorStorage)) {
-            return $supportsTwoFactorStorage;
-        }
-
-        if (!Schema::hasTable('admins')) {
-            $supportsTwoFactorStorage = false;
+        if (! Schema::hasTable('admins')) {
             return false;
         }
 
-        $supportsTwoFactorStorage = Schema::hasColumn('admins', 'two_factor_enabled')
+        return Schema::hasColumn('admins', 'two_factor_enabled')
             && Schema::hasColumn('admins', 'two_factor_secret');
-
-        return $supportsTwoFactorStorage;
     }
 
     /**
@@ -152,19 +153,10 @@ class EnsureAdminAuthenticated
      */
     private function supportsGlobalSecuritySettingsStorage(): bool
     {
-        static $supportsSecuritySettingsStorage;
-
-        if (is_bool($supportsSecuritySettingsStorage)) {
-            return $supportsSecuritySettingsStorage;
-        }
-
-        if (!Schema::hasTable(self::SECURITY_SETTINGS_TABLE)) {
-            $supportsSecuritySettingsStorage = false;
+        if (! Schema::hasTable(self::SECURITY_SETTINGS_TABLE)) {
             return false;
         }
 
-        $supportsSecuritySettingsStorage = Schema::hasColumn(self::SECURITY_SETTINGS_TABLE, 'enforce_two_factor');
-
-        return $supportsSecuritySettingsStorage;
+        return Schema::hasColumn(self::SECURITY_SETTINGS_TABLE, 'enforce_two_factor');
     }
 }

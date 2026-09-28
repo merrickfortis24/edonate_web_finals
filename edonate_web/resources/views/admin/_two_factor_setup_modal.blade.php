@@ -4,13 +4,8 @@
     $maskedEmail = trim((string) ($twoFactorSetupModal['maskedEmail'] ?? ''));
     $secret = trim((string) ($twoFactorSetupModal['secret'] ?? ''));
     $qrSvg = (string) ($twoFactorSetupModal['qrSvg'] ?? '');
-    $recoveryCodes = is_array($twoFactorSetupModal['recoveryCodes'] ?? null)
-        ? $twoFactorSetupModal['recoveryCodes']
-        : [];
-
-    $hasRecoveryCodes = $recoveryCodes !== [];
     $showOtpError = $errors->has('otp');
-    $showModal = $requiresEnrollment || $hasRecoveryCodes || $showOtpError;
+    $showModal = $requiresEnrollment || $showOtpError;
     $postLoginDashboardUrl = trim((string) ($postLoginDashboardUrl ?? ''));
 @endphp
 
@@ -36,22 +31,6 @@
 
                     @if (session('success'))
                         <div class="alert alert-success" role="alert">{{ session('success') }}</div>
-                    @endif
-
-                    @if ($hasRecoveryCodes)
-                        <section class="card border-success mb-3">
-                            <header class="card-header bg-success-subtle text-success-emphasis fw-semibold">Recovery Codes (Save These Now)</header>
-                            <div class="card-body">
-                                <p class="mb-2">Each code can be used once if you lose access to Google Authenticator.</p>
-                                <div class="row g-2">
-                                    @foreach ($recoveryCodes as $code)
-                                        <div class="col-12 col-md-6">
-                                            <div class="form-control bg-body-secondary fw-semibold">{{ $code }}</div>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            </div>
-                        </section>
                     @endif
 
                     @if ($requiresEnrollment)

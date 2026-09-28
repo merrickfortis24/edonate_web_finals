@@ -352,7 +352,7 @@ class AdminTrustedDeviceTest extends TestCase
                 'admin_2fa_setup_secret' => self::SECRET,
             ])
             ->post(route('admin.2fa.enable'), ['otp' => $this->validOtp()])
-            ->assertRedirect(route('admin.2fa.setup'));
+            ->assertRedirect(route('admin.2fa.recovery-codes.show'));
 
         $this->assertNotNull(DB::table('admin_trusted_devices')->where('id', $deviceId)->value('revoked_at'));
     }
