@@ -60,7 +60,7 @@
     <div class="col-12">
         <label class="form-label" for="facilityPinMap">Facility map position</label>
         <p class="form-text mb-2" id="facilityPinHelp">Click the map to place the pin. Drag the pin to fine-tune its position. The coordinates are saved with this facility.</p>
-        <div class="alert alert-info py-2 mb-2" id="facilityMapPrivacyNotice" role="status">External map tiles are off. Allow maps in <button type="button" class="btn btn-link p-0 align-baseline" data-privacy-open>Privacy choices</button> to use the pin picker.</div>
+        <div class="alert alert-info py-2 mb-2" id="facilityMapPrivacyNotice" role="status">External map tiles are off. Allow maps in <button type="button" class="btn btn-link facility-privacy-link p-0 align-baseline" data-privacy-open>Privacy choices</button> to use the pin picker.</div>
         <div id="facilityPinMap" class="facility-pin-map" role="region" aria-label="Facility location pin map" aria-describedby="facilityPinHelp facilityPinStatus" hidden></div>
         <div id="facilityPinStatus" class="small mt-2" role="status" aria-live="polite">Choose a pin position on the map.</div>
         <input type="hidden" name="location_pin_selected" value="0">
