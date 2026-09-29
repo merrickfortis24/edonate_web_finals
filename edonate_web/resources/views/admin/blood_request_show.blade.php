@@ -85,6 +85,32 @@
 </main>
 
 @if($details['request']['status'] === 'pending_review')
+<div class="modal fade" id="approveRequestModal" tabindex="-1" aria-labelledby="approveRequestTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" id="approveRequestForm">
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title fs-5" id="approveRequestTitle">Approve Blood Request?</h2>
+                    <p class="text-muted small mb-0 mt-1">Review the request before opening it for fulfillment.</p>
+                </div>
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="border rounded p-3 mb-3">
+                    <div class="fw-semibold">{{ $details['request']['request_reference'] }}</div>
+                    <div>{{ $details['request']['facility_name'] }}</div>
+                    <div class="small text-muted">{{ $details['request']['needed_blood_type'] }} · {{ Str::headline($details['request']['urgency']) }} urgency</div>
+                </div>
+                <p class="mb-0">Approving changes the status to <strong>Open</strong>, allowing eligible donors to respond. This will not create a donation record or deduct inventory.</p>
+                <div class="alert alert-danger d-none mt-3 mb-0" id="approveRequestError" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-success" type="submit" id="confirmApproveRequest">Approve &amp; Open Request</button>
+            </div>
+        </form>
+    </div>
+</div>
 <div class="modal fade" id="rejectRequestModal" tabindex="-1" aria-labelledby="rejectRequestTitle" aria-hidden="true">
     <div class="modal-dialog"><form class="modal-content" id="rejectRequestForm">
         <div class="modal-header"><h2 class="modal-title fs-5" id="rejectRequestTitle">Reject Blood Request</h2><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button></div>
@@ -93,11 +119,345 @@
     </form></div>
 </div>
 @endif
+
+@if($details['request']['status'] !== 'pending_review')
+<div class="modal fade" id="bloodRequestActionModal" tabindex="-1" aria-labelledby="bloodRequestActionTitle" aria-describedby="bloodRequestActionMessage" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <form class="modal-content" id="bloodRequestActionForm" novalidate>
+            <div class="modal-header">
+                <div>
+                    <h2 class="modal-title fs-5" id="bloodRequestActionTitle">Confirm action</h2>
+                    <p class="text-muted small mb-0 mt-1">Blood request {{ $details['request']['request_reference'] }}</p>
+                </div>
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="bloodRequestActionMessage" class="mb-0"></p>
+                <div class="mt-3 d-none" id="bloodRequestActionFieldWrap">
+                    <label class="form-label" id="bloodRequestActionFieldLabel" for="bloodRequestActionField"></label>
+                    <textarea class="form-control" id="bloodRequestActionField" rows="4" maxlength="500" aria-describedby="bloodRequestActionFieldError"></textarea>
+                    <div class="invalid-feedback" id="bloodRequestActionFieldError"></div>
+                </div>
+                <div class="alert alert-danger d-none mt-3 mb-0" id="bloodRequestActionError" role="alert" aria-live="polite"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline-secondary" type="button" id="bloodRequestActionDismiss" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary" type="submit" id="bloodRequestActionSubmit">Continue</button>
+            </div>
+        </form>
+    </div>
+</div>
+@endif
 @endsection
 
 @push('admin_scripts')
 <script>
-(function(){'use strict';const csrf=document.querySelector('meta[name="csrf-token"]').content,base=@json(url('/admin/blood-requests/'.$bloodRequest->request_id)),rows=document.getElementById('candidateRows');let cache=[];const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),head=v=>String(v??'').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());async function req(url,opt={}){const res=await fetch(url,{...opt,headers:{Accept:'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':csrf,'Content-Type':'application/json',...(opt.headers||{})}}),data=await res.json().catch(()=>({}));if(!res.ok)throw data;return data}function rowActions(r){if(r.status==='interested'||r.status==='responded')return `<button class="btn btn-sm btn-outline-success" data-status="confirmed" data-donor="${esc(r.donor_id)}" type="button">Confirm</button><button class="btn btn-sm btn-outline-secondary" data-status="declined" data-donor="${esc(r.donor_id)}" type="button">Decline</button>`;if(r.status==='confirmed'||r.status==='scheduled')return `<button class="btn btn-sm btn-outline-danger" data-status="completed" data-donor="${esc(r.donor_id)}" type="button">Complete</button>`;return ''}async function load(){if(!rows)return;rows.innerHTML='<tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>';try{const f=document.getElementById('candidateFilter').value,data=await req(`${base}/candidates?filter=${encodeURIComponent(f)}`);cache=data.data||[];rows.innerHTML=cache.length?cache.map(r=>`<tr><td>${r.status==='candidate'?`<input type="checkbox" value="${esc(r.donor_id)}">`:''}</td><td>${esc(r.donor_name)}</td><td>${esc(r.blood_type)}<br><small class="text-muted">${esc(head(r.blood_type_status))}</small></td><td>${esc([r.barangay,r.city].filter(Boolean).join(', '))}</td><td>${esc(head(r.eligibility_status))}</td><td>${esc(head(r.match_type))}</td><td>${esc(head(r.status))}</td><td><div class="btn-group btn-group-sm">${rowActions(r)}</div></td></tr>`).join(''):'<tr><td colspan="8" class="text-center text-muted py-4">No candidates found.</td></tr>'}catch(e){rows.innerHTML='<tr><td colspan="8" class="text-center text-danger py-4">Could not load candidates.</td></tr>'}}document.getElementById('candidateFilter')?.addEventListener('change',load);document.getElementById('checkAll')?.addEventListener('change',e=>rows.querySelectorAll('input[type=checkbox]').forEach(cb=>cb.checked=e.target.checked));rows?.addEventListener('click',async e=>{const btn=e.target.closest('[data-status][data-donor]');if(!btn)return;if(!confirm(`Set donor status to ${btn.dataset.status}?`))return;await req(`${base}/donors/${btn.dataset.donor}/status`,{method:'PATCH',body:JSON.stringify({status:btn.dataset.status})});load()});document.getElementById('notifySelected')?.addEventListener('click',async()=>{const ids=[...rows.querySelectorAll('input[type=checkbox]:checked')].map(cb=>Number(cb.value));if(!ids.length){alert('Select at least one candidate.');return}if(!confirm(`Notify ${ids.length} selected candidate(s)?`))return;const data=await req(`${base}/notify`,{method:'POST',body:JSON.stringify({donor_ids:ids})});alert(data.message||'Candidates notified.');load()});document.getElementById('cancelRequest')?.addEventListener('click',async()=>{const reason=prompt('Cancellation reason');if(!reason)return;await req(`${base}/cancel`,{method:'PATCH',body:JSON.stringify({reason})});location.reload()});document.getElementById('fulfillRequest')?.addEventListener('click',async()=>{const note=prompt('Fulfillment note');if(!note)return;await req(`${base}/fulfill`,{method:'PATCH',body:JSON.stringify({note})});location.reload()});
-const showReviewError=message=>{const alert=document.getElementById('reviewError');if(alert){alert.textContent=message;alert.classList.remove('d-none')}};document.getElementById('approveRequest')?.addEventListener('click',async()=>{if(!confirm('Approve this request and open it for fulfillment?'))return;try{await req(`${base}/approve`,{method:'PATCH',body:JSON.stringify({})});location.reload()}catch(error){showReviewError(error.message||'The request could not be approved.')}});const rejectModal=document.getElementById('rejectRequestModal'),rejectForm=document.getElementById('rejectRequestForm');document.getElementById('openRejectRequest')?.addEventListener('click',()=>window.bootstrap?.Modal.getOrCreateInstance(rejectModal).show());rejectForm?.addEventListener('submit',async event=>{event.preventDefault();const reason=document.getElementById('rejectRequestReason'),fieldError=document.getElementById('rejectRequestReasonError'),formError=document.getElementById('rejectRequestError'),button=document.getElementById('confirmRejectRequest');reason.classList.remove('is-invalid');fieldError.textContent='';formError.textContent='';formError.classList.add('d-none');button.disabled=true;try{await req(`${base}/reject`,{method:'PATCH',body:JSON.stringify({reason:reason.value})});location.reload()}catch(error){if(error.errors?.reason){reason.classList.add('is-invalid');fieldError.textContent=error.errors.reason[0]}else{formError.textContent=error.message||'The request could not be rejected.';formError.classList.remove('d-none')}}finally{button.disabled=false}});if(rows)load();}());
+(function () {
+    'use strict';
+
+    const csrf = document.querySelector('meta[name="csrf-token"]').content;
+    const base = @json(url('/admin/blood-requests/'.$bloodRequest->request_id));
+    const rows = document.getElementById('candidateRows');
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[character]));
+    const head = value => String(value ?? '').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
+
+    async function req(url, options = {}) {
+        const response = await fetch(url, {
+            ...options,
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrf,
+                'Content-Type': 'application/json',
+                ...(options.headers || {}),
+            },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw data;
+        return data;
+    }
+
+    function rowActions(row) {
+        if (row.status === 'interested' || row.status === 'responded') {
+            return `<button class="btn btn-sm btn-outline-success" data-status="confirmed" data-donor="${esc(row.donor_id)}" type="button">Confirm</button>
+                <button class="btn btn-sm btn-outline-secondary" data-status="declined" data-donor="${esc(row.donor_id)}" type="button">Decline</button>`;
+        }
+        if (row.status === 'confirmed' || row.status === 'scheduled') {
+            return `<button class="btn btn-sm btn-outline-danger" data-status="completed" data-donor="${esc(row.donor_id)}" type="button">Complete</button>`;
+        }
+        return '';
+    }
+
+    async function load() {
+        if (!rows) return;
+        rows.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading...</td></tr>';
+        try {
+            const filter = document.getElementById('candidateFilter').value;
+            const data = await req(`${base}/candidates?filter=${encodeURIComponent(filter)}`);
+            const candidates = data.data || [];
+            rows.innerHTML = candidates.length ? candidates.map(row => `<tr>
+                <td>${row.status === 'candidate' ? `<input type="checkbox" value="${esc(row.donor_id)}" aria-label="Select ${esc(row.donor_name)}">` : ''}</td>
+                <td>${esc(row.donor_name)}</td>
+                <td>${esc(row.blood_type)}<br><small class="text-muted">${esc(head(row.blood_type_status))}</small></td>
+                <td>${esc([row.barangay, row.city].filter(Boolean).join(', '))}</td>
+                <td>${esc(head(row.eligibility_status))}</td>
+                <td>${esc(head(row.match_type))}</td>
+                <td>${esc(head(row.status))}</td>
+                <td><div class="btn-group btn-group-sm">${rowActions(row)}</div></td>
+            </tr>`).join('') : '<tr><td colspan="8" class="text-center text-muted py-4">No candidates found.</td></tr>';
+        } catch (error) {
+            rows.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Could not load candidates.</td></tr>';
+        }
+    }
+
+    const actionModalElement = document.getElementById('bloodRequestActionModal');
+    const actionModal = actionModalElement && window.bootstrap?.Modal.getOrCreateInstance(actionModalElement, { backdrop: 'static', keyboard: false });
+    const actionForm = document.getElementById('bloodRequestActionForm');
+    const actionTitle = document.getElementById('bloodRequestActionTitle');
+    const actionMessage = document.getElementById('bloodRequestActionMessage');
+    const actionFieldWrap = document.getElementById('bloodRequestActionFieldWrap');
+    const actionFieldLabel = document.getElementById('bloodRequestActionFieldLabel');
+    const actionField = document.getElementById('bloodRequestActionField');
+    const actionFieldError = document.getElementById('bloodRequestActionFieldError');
+    const actionError = document.getElementById('bloodRequestActionError');
+    const actionDismiss = document.getElementById('bloodRequestActionDismiss');
+    const actionClose = actionModalElement?.querySelector('.btn-close');
+    const actionSubmit = document.getElementById('bloodRequestActionSubmit');
+    let activeAction = null;
+
+    function clearActionErrors() {
+        actionError.textContent = '';
+        actionError.classList.add('d-none');
+        actionError.classList.remove('alert-success');
+        actionError.classList.add('alert-danger');
+        actionError.setAttribute('role', 'alert');
+        actionField.classList.remove('is-invalid');
+        actionFieldError.textContent = '';
+    }
+
+    function openAction(options) {
+        if (!actionModal) return;
+        activeAction = options;
+        clearActionErrors();
+        actionTitle.textContent = options.title;
+        actionMessage.textContent = options.message;
+        actionFieldWrap.classList.toggle('d-none', !options.fieldLabel);
+        actionFieldLabel.textContent = options.fieldLabel || '';
+        actionField.value = '';
+        actionField.placeholder = options.placeholder || '';
+        actionField.maxLength = options.maxLength || 500;
+        actionSubmit.className = `btn ${options.buttonClass || 'btn-primary'}`;
+        actionSubmit.textContent = options.submitLabel || 'Continue';
+        actionSubmit.hidden = Boolean(options.infoOnly);
+        actionSubmit.disabled = false;
+        actionDismiss.textContent = options.infoOnly ? 'Got it' : 'Cancel';
+        actionDismiss.classList.toggle('btn-primary', Boolean(options.infoOnly));
+        actionDismiss.classList.toggle('btn-outline-secondary', !options.infoOnly);
+        actionModal.show();
+    }
+
+    function showActionResult(message) {
+        activeAction = null;
+        actionFieldWrap.classList.add('d-none');
+        actionSubmit.hidden = true;
+        actionSubmit.disabled = false;
+        actionDismiss.disabled = false;
+        actionDismiss.textContent = 'Close';
+        actionDismiss.classList.add('btn-primary');
+        actionDismiss.classList.remove('btn-outline-secondary');
+        actionClose.disabled = false;
+        actionError.textContent = message;
+        actionError.classList.remove('d-none', 'alert-danger');
+        actionError.classList.add('alert-success');
+        actionError.setAttribute('role', 'status');
+    }
+
+    actionModalElement?.addEventListener('shown.bs.modal', () => {
+        if (!actionFieldWrap.classList.contains('d-none')) actionField.focus();
+    });
+    actionModalElement?.addEventListener('hidden.bs.modal', () => {
+        activeAction = null;
+    });
+
+    actionForm?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const action = activeAction;
+        if (!action) return;
+
+        const value = actionField.value.trim();
+        if (action.fieldLabel && value.length < (action.minLength || 3)) {
+            actionField.classList.add('is-invalid');
+            actionFieldError.textContent = `Please enter at least ${action.minLength || 3} characters.`;
+            actionField.focus();
+            return;
+        }
+
+        actionSubmit.disabled = true;
+        actionSubmit.textContent = action.loadingLabel || 'Processing...';
+        actionDismiss.disabled = true;
+        actionClose.disabled = true;
+        clearActionErrors();
+        try {
+            const result = await action.run(value);
+            if (action.onSuccess) action.onSuccess(result);
+            else showActionResult(result.message || 'Action completed successfully.');
+        } catch (error) {
+            const validationMessage = action.fieldName && error.errors?.[action.fieldName]?.[0];
+            if (validationMessage) {
+                actionField.classList.add('is-invalid');
+                actionFieldError.textContent = validationMessage;
+                actionField.focus();
+            } else {
+                actionError.textContent = error.message || 'The action could not be completed. Please try again.';
+                actionError.classList.remove('d-none');
+            }
+        } finally {
+            if (activeAction === action) {
+                actionSubmit.disabled = false;
+                actionSubmit.textContent = action.submitLabel || 'Continue';
+                actionDismiss.disabled = false;
+                actionClose.disabled = false;
+            }
+        }
+    });
+
+    document.getElementById('candidateFilter')?.addEventListener('change', load);
+    document.getElementById('checkAll')?.addEventListener('change', event => {
+        rows?.querySelectorAll('input[type="checkbox"]').forEach(checkbox => { checkbox.checked = event.target.checked; });
+    });
+    rows?.addEventListener('click', event => {
+        const button = event.target.closest('[data-status][data-donor]');
+        if (!button) return;
+        const status = button.dataset.status;
+        openAction({
+            title: 'Update donor response?',
+            message: `Change this donor's response to ${head(status)}?`,
+            submitLabel: `Set ${head(status)}`,
+            buttonClass: status === 'declined' ? 'btn-outline-secondary' : 'btn-success',
+            loadingLabel: 'Updating...',
+            run: () => req(`${base}/donors/${encodeURIComponent(button.dataset.donor)}/status`, {
+                method: 'PATCH', body: JSON.stringify({ status }),
+            }),
+            onSuccess: result => {
+                showActionResult(result.message || 'Donor response updated.');
+                load();
+            },
+        });
+    });
+    document.getElementById('notifySelected')?.addEventListener('click', () => {
+        const ids = [...(rows?.querySelectorAll('input[type="checkbox"]:checked') || [])]
+            .map(checkbox => Number(checkbox.value)).filter(Number.isInteger);
+        if (!ids.length) {
+            openAction({
+                title: 'Select candidates first',
+                message: 'Choose at least one eligible candidate from the list before sending notifications.',
+                infoOnly: true,
+            });
+            return;
+        }
+        openAction({
+            title: 'Notify selected donors?',
+            message: `Send an in-app notification to ${ids.length} selected candidate${ids.length === 1 ? '' : 's'} about this blood request?`,
+            submitLabel: 'Send Notifications',
+            loadingLabel: 'Sending...',
+            buttonClass: 'btn-danger',
+            run: () => req(`${base}/notify`, { method: 'POST', body: JSON.stringify({ donor_ids: ids }) }),
+            onSuccess: result => {
+                showActionResult(result.message || 'Selected donors were notified.');
+                load();
+            },
+        });
+    });
+    document.getElementById('cancelRequest')?.addEventListener('click', () => openAction({
+        title: 'Cancel this blood request?',
+        message: 'The request will be marked Cancelled, and invited donors will be notified. Add a reason for the review history.',
+        fieldLabel: 'Cancellation reason',
+        placeholder: 'Explain why this request is being cancelled',
+        fieldName: 'reason',
+        submitLabel: 'Cancel Request',
+        loadingLabel: 'Cancelling...',
+        buttonClass: 'btn-danger',
+        run: reason => req(`${base}/cancel`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
+        onSuccess: () => location.reload(),
+    }));
+    document.getElementById('fulfillRequest')?.addEventListener('click', () => openAction({
+        title: 'Mark this request fulfilled?',
+        message: 'This records fulfillment and its note in the audit history. It does not create a donation record or deduct physical inventory.',
+        fieldLabel: 'Fulfillment note',
+        placeholder: 'Add a short note about how this request was fulfilled',
+        fieldName: 'note',
+        submitLabel: 'Mark Fulfilled',
+        loadingLabel: 'Saving...',
+        buttonClass: 'btn-success',
+        run: note => req(`${base}/fulfill`, { method: 'PATCH', body: JSON.stringify({ note }) }),
+        onSuccess: () => location.reload(),
+    }));
+
+    const approveModal = document.getElementById('approveRequestModal');
+    const approveForm = document.getElementById('approveRequestForm');
+    document.getElementById('approveRequest')?.addEventListener('click', () => {
+        const error = document.getElementById('approveRequestError');
+        error.textContent = '';
+        error.classList.add('d-none');
+        window.bootstrap?.Modal.getOrCreateInstance(approveModal).show();
+    });
+    approveForm?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const button = document.getElementById('confirmApproveRequest');
+        const error = document.getElementById('approveRequestError');
+        button.disabled = true;
+        button.textContent = 'Approving...';
+        error.textContent = '';
+        error.classList.add('d-none');
+        try {
+            await req(`${base}/approve`, { method: 'PATCH', body: JSON.stringify({}) });
+            location.reload();
+        } catch (exception) {
+            error.textContent = exception.message || 'The request could not be approved. Please try again.';
+            error.classList.remove('d-none');
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Approve & Open Request';
+        }
+    });
+
+    const rejectModal = document.getElementById('rejectRequestModal');
+    const rejectForm = document.getElementById('rejectRequestForm');
+    document.getElementById('openRejectRequest')?.addEventListener('click', () => window.bootstrap?.Modal.getOrCreateInstance(rejectModal).show());
+    rejectForm?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const reason = document.getElementById('rejectRequestReason');
+        const fieldError = document.getElementById('rejectRequestReasonError');
+        const formError = document.getElementById('rejectRequestError');
+        const button = document.getElementById('confirmRejectRequest');
+        reason.classList.remove('is-invalid');
+        fieldError.textContent = '';
+        formError.textContent = '';
+        formError.classList.add('d-none');
+        button.disabled = true;
+        try {
+            await req(`${base}/reject`, { method: 'PATCH', body: JSON.stringify({ reason: reason.value }) });
+            location.reload();
+        } catch (error) {
+            if (error.errors?.reason) {
+                reason.classList.add('is-invalid');
+                fieldError.textContent = error.errors.reason[0];
+            } else {
+                formError.textContent = error.message || 'The request could not be rejected.';
+                formError.classList.remove('d-none');
+            }
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    if (rows) load();
+}());
+const approveModal=document.getElementById('approveRequestModal'),approveForm=document.getElementById('approveRequestForm');
+document.getElementById('approveRequest')?.addEventListener('click',()=>{const error=document.getElementById('approveRequestError');error.textContent='';error.classList.add('d-none');window.bootstrap?.Modal.getOrCreateInstance(approveModal).show()});
+approveForm?.addEventListener('submit',async event=>{event.preventDefault();const button=document.getElementById('confirmApproveRequest'),error=document.getElementById('approveRequestError');button.disabled=true;button.textContent='Approving...';error.textContent='';error.classList.add('d-none');try{await req(`${base}/approve`,{method:'PATCH',body:JSON.stringify({})});location.reload()}catch(exception){error.textContent=exception.message||'The request could not be approved. Please try again.';error.classList.remove('d-none')}finally{button.disabled=false;button.textContent='Approve & Open Request'}});
+const rejectModal=document.getElementById('rejectRequestModal'),rejectForm=document.getElementById('rejectRequestForm');document.getElementById('openRejectRequest')?.addEventListener('click',()=>window.bootstrap?.Modal.getOrCreateInstance(rejectModal).show());rejectForm?.addEventListener('submit',async event=>{event.preventDefault();const reason=document.getElementById('rejectRequestReason'),fieldError=document.getElementById('rejectRequestReasonError'),formError=document.getElementById('rejectRequestError'),button=document.getElementById('confirmRejectRequest');reason.classList.remove('is-invalid');fieldError.textContent='';formError.textContent='';formError.classList.add('d-none');button.disabled=true;try{await req(`${base}/reject`,{method:'PATCH',body:JSON.stringify({reason:reason.value})});location.reload()}catch(error){if(error.errors?.reason){reason.classList.add('is-invalid');fieldError.textContent=error.errors.reason[0]}else{formError.textContent=error.message||'The request could not be rejected.';formError.classList.remove('d-none')}}finally{button.disabled=false}});if(rows)load();}());
 </script>
 @endpush

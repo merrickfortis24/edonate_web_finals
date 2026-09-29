@@ -161,39 +161,53 @@ class AdminLteLayoutTest extends TestCase
 
     public function test_blood_request_details_has_a_direct_back_to_list_action(): void
     {
-        $html = view('admin.blood_request_show', [
-            'bloodRequest' => (object) ['request_id' => 1],
-            'details' => [
-                'request' => [
-                    'request_reference' => 'DEMO-BR-0001',
-                    'facility_name' => 'Demo Facility',
-                    'requester_name' => 'Facility/Admin request',
-                    'requester_email' => '',
-                    'requester_contact' => '',
-                    'request_source' => 'admin',
-                    'created_at' => null,
-                    'request_type' => 'blood_request',
-                    'needed_blood_type' => 'O+',
-                    'required_donors' => 1,
-                    'specific_match_required' => 'Yes',
-                    'allow_other_blood_types' => false,
-                    'urgency' => 'normal',
-                    'status' => 'open',
-                    'reviewed_at' => null,
-                    'review_reason' => '',
-                ],
-                'inventory' => ['available_units' => 0],
-                'summary' => [
-                    'exact_matches_found' => 0,
-                    'other_eligible_candidates' => 0,
-                    'notified' => 0,
-                    'interested' => 0,
-                ],
+        $bloodRequest = (object) ['request_id' => 1];
+        $details = [
+            'request' => [
+                'request_reference' => 'DEMO-BR-0001',
+                'facility_name' => 'Demo Facility',
+                'requester_name' => 'Facility/Admin request',
+                'requester_email' => '',
+                'requester_contact' => '',
+                'request_source' => 'admin',
+                'created_at' => null,
+                'request_type' => 'blood_request',
+                'needed_blood_type' => 'O+',
+                'required_donors' => 1,
+                'specific_match_required' => 'Yes',
+                'allow_other_blood_types' => false,
+                'urgency' => 'normal',
+                'status' => 'pending_review',
+                'reviewed_at' => null,
+                'review_reason' => '',
             ],
-        ])->render();
+            'inventory' => ['available_units' => 0],
+            'summary' => [
+                'exact_matches_found' => 0,
+                'other_eligible_candidates' => 0,
+                'notified' => 0,
+                'interested' => 0,
+            ],
+        ];
+        $html = view('admin.blood_request_show', compact('bloodRequest', 'details'))->render();
 
         $this->assertStringContainsString('Back to Blood Requests', $html);
         $this->assertStringContainsString(route('admin.blood-requests.index'), $html);
+        $this->assertStringContainsString('id="approveRequestModal"', $html);
+        $this->assertStringContainsString('id="confirmApproveRequest"', $html);
+        $this->assertStringContainsString('Approve &amp; Open Request', $html);
+        $this->assertStringNotContainsString("confirm('Approve this request and open it for fulfillment?')", $html);
+
+        $details['request']['status'] = 'open';
+        $actionHtml = view('admin.blood_request_show', compact('bloodRequest', 'details'))->render();
+        $this->assertStringContainsString('id="bloodRequestActionModal"', $actionHtml);
+        $this->assertStringContainsString('id="bloodRequestActionField"', $actionHtml);
+        $this->assertStringContainsString('Select candidates first', $actionHtml);
+        $this->assertStringContainsString('Cancellation reason', $actionHtml);
+        $this->assertStringContainsString('Fulfillment note', $actionHtml);
+        $this->assertStringNotContainsString('confirm(', $actionHtml);
+        $this->assertStringNotContainsString('prompt(', $actionHtml);
+        $this->assertStringNotContainsString('alert(', $actionHtml);
     }
 
     public function test_appointment_management_is_the_attendance_action_page(): void
