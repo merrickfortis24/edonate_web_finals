@@ -1613,7 +1613,8 @@ class AdminAuthController extends BaseController
     /**
      * Display the protected completion workspace opened from Donation
      * Processing. The page is intentionally limited to checked-in
-     * appointments and reuses the donor detail query used by Digital Donor ID.
+     * appointments. Admins may also open a completed donation to enter its
+     * laboratory-confirmed blood type without creating a second record.
      */
     public function completeDonationPage(Request $request, int $appointment)
     {
@@ -1626,7 +1627,14 @@ class AdminAuthController extends BaseController
         }
 
         $status = Str::lower(trim((string) ($entry->normalized_status ?? '')));
-        if ($status !== 'checked_in') {
+        $canVerifyBloodType = Str::lower(trim((string) $request->session()->get('admin_role'))) === 'admin';
+        $verificationOnly = $status === 'completed'
+            && $canVerifyBloodType
+            && ! empty($entry->donation_id)
+            && Str::lower(trim((string) ($entry->donation_status ?? ''))) === 'completed'
+            && empty($entry->verified_blood_type_id);
+
+        if ($status !== 'checked_in' && ! $verificationOnly) {
             abort(422, 'Only checked-in appointments can be completed.');
         }
 
@@ -1637,6 +1645,7 @@ class AdminAuthController extends BaseController
 
         return view('admin.complete_donation', [
             'completionPayload' => [
+                'mode' => $verificationOnly ? 'verify_blood_type' : 'complete',
                 'appointment' => [
                     'appointment_id' => (int) $entry->appointment_id,
                     'appointment_code' => 'AP'.str_pad((string) ((int) $entry->appointment_id), 3, '0', STR_PAD_LEFT),
@@ -1647,10 +1656,11 @@ class AdminAuthController extends BaseController
                     'center_label' => trim((string) ($entry->donation_center ?: $entry->event_location_name ?: 'N/A')),
                 ],
                 'donor' => $donor,
-                'canVerifyBloodType' => Str::lower(trim((string) $request->session()->get('admin_role'))) === 'admin',
+                'canVerifyBloodType' => $canVerifyBloodType,
                 'verificationBloodTypes' => $this->userManagementBloodTypeFormOptions(),
                 'api' => [
                     'completeUrl' => route('admin.appointments.complete', ['appointment' => $appointment]),
+                    'verifyBloodTypeUrl' => route('admin.appointments.verify-blood-type', ['appointment' => $appointment]),
                     'returnUrl' => route('admin.donation-records'),
                 ],
             ],
@@ -1686,6 +1696,39 @@ class AdminAuthController extends BaseController
                 : 'Donation completed and record created.',
             'inventory_status' => $result['inventory_status'] ?? 'manual_reconciliation',
             'inventory_message' => $result['inventory_message'] ?? 'Facility inventory needs manual reconciliation.',
+            'donation_id' => $result['record']->donation_id ?? null,
+            'donor' => $donorPayload,
+        ]);
+    }
+
+    /** Verify a laboratory blood type for an existing completed donation. */
+    public function verifyCompletedDonationBloodType(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
+    {
+        if (Str::lower(trim((string) $request->session()->get('admin_role'))) !== 'admin') {
+            abort(403, 'Only an administrator may verify a donor blood type.');
+        }
+
+        $validated = $request->validate([
+            'verified_blood_type_id' => ['required', 'integer', Rule::exists('blood_types', 'blood_type_id')],
+            'confirm_blood_type_change' => ['nullable', 'boolean'],
+            'blood_type_change_reason' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $result = $service->verifyCompletedDonationBloodType(
+            $appointment,
+            $this->currentAdminId($request),
+            $validated,
+            $request
+        );
+
+        $donorPayload = Schema::hasTable('locations')
+            ? $this->getUserManagementDonorDetail((int) $result['appointment']->donor_id)
+            : null;
+
+        return response()->json([
+            'message' => ($result['already'] ?? false)
+                ? 'This donation already has that verified blood type.'
+                : 'The laboratory-confirmed blood type was saved. The availability map will include this donor if their identity, account, and barangay also meet map requirements.',
             'donation_id' => $result['record']->donation_id ?? null,
             'donor' => $donorPayload,
         ]);
@@ -1785,6 +1828,7 @@ class AdminAuthController extends BaseController
                     'checkInUrlTemplate' => route('admin.appointments.check-in', ['appointment' => '__ID__']),
                     'completeUrlTemplate' => route('admin.appointments.complete', ['appointment' => '__ID__']),
                     'completePageUrlTemplate' => route('admin.appointments.complete-page', ['appointment' => '__ID__']),
+                    'verifyBloodTypeUrlTemplate' => route('admin.appointments.complete-page', ['appointment' => '__ID__']),
                     'returnUrl' => route('admin.donation-records'),
                     'deferUrlTemplate' => route('admin.appointments.defer', ['appointment' => '__ID__']),
                     'initialAppointmentId' => $request->integer('appointment_id') ?: null,
@@ -2049,9 +2093,10 @@ class AdminAuthController extends BaseController
         $data = $availability->getMapData($this->bloodAvailabilityFilters($request, $availability));
 
         return response()->json([
-            'total_donors' => $data['summary']['available_donors'],
-            'mapped_locations' => $data['data_quality']['mapped_available_donors'],
-            'unmapped_donors' => $data['data_quality']['available_donors_missing_coordinates'],
+            'total_donors' => $data['summary']['verified_donors'],
+            'verified_donors' => $data['summary']['verified_donors'],
+            'mapped_locations' => $data['data_quality']['mapped_verified_donors'],
+            'unmapped_donors' => $data['data_quality']['verified_donors_missing_coordinates'],
             'blood_type_breakdown' => collect($data['blood_types'])->map(
                 static fn (int $count, string $bloodType): array => ['blood_type' => $bloodType, 'count' => $count]
             )->values(),
@@ -4570,6 +4615,16 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'actions' => [
                 'can_check_in' => $preCheckIn && $appointmentDateReached,
                 'can_complete' => $status === 'checked_in',
+                'can_verify_blood_type' => $status === 'completed'
+                    && ! empty($entry->donation_id)
+                    && Str::lower(trim((string) ($entry->donation_status ?? ''))) === 'completed'
+                    && empty($entry->verified_blood_type_id)
+                    && (
+                        Str::lower(trim((string) ($entry->blood_type_status ?? 'not_yet_determined'))) !== 'verified'
+                        || ! in_array(strtoupper(trim((string) ($entry->blood_type ?? ''))), [
+                            'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
+                        ], true)
+                    ),
                 'can_defer' => ($preCheckIn && $appointmentDateReached) || $status === 'checked_in',
                 'awaiting_appointment_date' => $preCheckIn && ! $appointmentDateReached,
             ],

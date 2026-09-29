@@ -41,7 +41,7 @@
 <div class="main container-fluid px-0">
   <main class="page-body container-fluid py-3">
     <div id="processingCompletionNotice" class="alert alert-success d-none align-items-center justify-content-between gap-3" role="status" aria-live="polite">
-      <span><i class="bi bi-check-circle me-2" aria-hidden="true"></i>Donation completed successfully.</span>
+      <span id="processingCompletionNoticeText"><i class="bi bi-check-circle me-2" aria-hidden="true"></i>Donation completed successfully.</span>
       <button type="button" class="btn-close" aria-label="Dismiss completion notice"></button>
     </div>
 
@@ -284,6 +284,10 @@
         var completionUrl = esc(actionUrl(api.completePageUrlTemplate, row.appointment_id));
         buttons.push('<a href="' + completionUrl + '" class="btn btn-sm btn-success" title="Complete Donation" aria-label="Complete Donation">Complete Donation</a>');
       }
+      if (config.canVerifyBloodType === true && row.actions && row.actions.can_verify_blood_type) {
+        var verifyTypeUrl = esc(actionUrl(api.verifyBloodTypeUrlTemplate || api.completePageUrlTemplate, row.appointment_id));
+        buttons.push('<a href="' + verifyTypeUrl + '" class="btn btn-sm btn-outline-primary" title="Record the laboratory-confirmed blood type" aria-label="Verify blood type">Verify Blood Type</a>');
+      }
       if (row.actions && row.actions.can_defer) {
         buttons.push('<button class="btn btn-sm btn-warning" title="Defer Donation On Site" aria-label="Defer Donation On Site" data-action="defer" data-id="' + row.appointment_id + '">Defer On Site</button>');
       } else if (row.actions && row.actions.awaiting_appointment_date) {
@@ -302,12 +306,17 @@
         return;
       }
 
-      if (params.get('completed') !== '1') return;
+      var verified = params.get('verified') === '1';
+      if (params.get('completed') !== '1' && !verified) return;
       notice.classList.remove('d-none');
       notice.classList.add('d-flex');
+      if (verified) {
+        qs('processingCompletionNoticeText').innerHTML = '<i class="bi bi-shield-check me-2" aria-hidden="true"></i>Laboratory-confirmed blood type saved. Map visibility depends on the donor also passing identity, account, and barangay checks.';
+      }
 
       try {
         params.delete('completed');
+        params.delete('verified');
         var query = params.toString();
         window.history.replaceState({}, document.title, window.location.pathname + (query ? '?' + query : '') + window.location.hash);
       } catch (error) {
@@ -327,8 +336,11 @@
           : (row.inventory_status === 'manual_reconciliation'
             ? '<span class="d-block text-warning small">Inventory: Manual reconciliation required</span>'
             : '');
+        var mapTypeNotice = row.donation_status === 'completed' && !row.verified_blood_type
+          ? '<span class="d-block text-warning small">Map count requires a lab-confirmed supported blood type.</span>'
+          : '';
         var record = row.donation_code
-          ? '<span class="fw-semibold">' + esc(row.donation_code) + '</span><span class="d-block text-muted small">' + esc(row.donation_status || '-') + (row.blood_units !== null ? ' · ' + esc(row.blood_units) + ' unit(s)' : '') + '</span><span class="d-block text-muted small">Verified type: ' + esc(row.verified_blood_type || 'Not yet determined') + '</span>' + inventory
+          ? '<span class="fw-semibold">' + esc(row.donation_code) + '</span><span class="d-block text-muted small">' + esc(row.donation_status || '-') + (row.blood_units !== null ? ' · ' + esc(row.blood_units) + ' unit(s)' : '') + '</span><span class="d-block text-muted small">Verified type: ' + esc(row.verified_blood_type || 'Not yet determined') + '</span>' + mapTypeNotice + inventory
           : '<span class="text-muted">Not recorded</span>';
         var note = row.deferred_reason || row.remarks || '';
         return '<tr>'

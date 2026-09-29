@@ -204,6 +204,111 @@ class DonationProcessingService
     }
 
     /**
+     * Verify a laboratory blood type against an already completed donation.
+     * This never creates a duplicate donation record or receives inventory twice.
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    public function verifyCompletedDonationBloodType(int $appointmentId, int $adminId, array $data, ?Request $request = null): array
+    {
+        return DB::transaction(function () use ($appointmentId, $adminId, $data, $request): array {
+            $appointment = $this->lockedAppointment($appointmentId);
+            $record = $this->lockedDonationRecord($appointmentId);
+            $donor = Donor::query()
+                ->where('donor_id', (int) $appointment->donor_id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($this->statuses->normalize((string) $appointment->status) !== AppointmentStatusService::COMPLETED
+                || ! $record
+                || strtolower(trim((string) ($record->donation_status ?? ''))) !== 'completed') {
+                throw ValidationException::withMessages([
+                    'appointment' => 'A completed donation record is required before verifying its blood type.',
+                ]);
+            }
+
+            if (! $donor) {
+                throw ValidationException::withMessages([
+                    'donor' => 'The donor for this donation could not be found.',
+                ]);
+            }
+
+            $bloodType = $this->verifiedBloodType($data, $request);
+            if (! $bloodType) {
+                throw ValidationException::withMessages([
+                    'verified_blood_type_id' => 'Select the blood type confirmed by the laboratory result.',
+                ]);
+            }
+
+            $existingVerifiedTypeId = is_numeric($record->verified_blood_type_id ?? null)
+                ? (int) $record->verified_blood_type_id
+                : null;
+            if ($existingVerifiedTypeId !== null) {
+                if ($existingVerifiedTypeId === (int) $bloodType->blood_type_id
+                    && strtolower(trim((string) ($donor->blood_type_status ?? ''))) === 'verified'
+                    && (int) ($donor->blood_type_id ?? 0) === (int) $bloodType->blood_type_id) {
+                    return ['appointment' => $appointment, 'record' => $record, 'already' => true];
+                }
+
+                throw ValidationException::withMessages([
+                    'verified_blood_type_id' => 'This donation already has a verified blood type. Use the blood type correction workflow to change it.',
+                ]);
+            }
+
+            $change = $this->prepareBloodTypeChange($donor, $bloodType, $data);
+            $verifiedPayload = ['blood_type_id' => (int) $bloodType->blood_type_id];
+            foreach ([
+                'blood_type_status' => 'verified',
+                'blood_type_verified_by_admin_id' => $adminId,
+                'blood_type_verified_at' => now(),
+            ] as $column => $value) {
+                if (Schema::hasColumn('donors', $column)) {
+                    $verifiedPayload[$column] = $value;
+                }
+            }
+            $donor->forceFill($verifiedPayload)->saveOrFail();
+
+            if (! Schema::hasColumn('donation_records', 'verified_blood_type_id')) {
+                throw ValidationException::withMessages([
+                    'verified_blood_type_id' => 'Blood type verification storage is not available. Please contact the system administrator.',
+                ]);
+            }
+
+            DB::table('donation_records')
+                ->where('donation_id', $record->donation_id)
+                ->update([
+                    'verified_blood_type_id' => (int) $bloodType->blood_type_id,
+                    'updated_at' => now(),
+                ]);
+
+            $this->auditBloodTypeVerification(
+                $request,
+                $adminId,
+                $donor,
+                $appointment,
+                (int) $record->donation_id,
+                $bloodType,
+                $change
+            );
+
+            if ($change['initial_verification']) {
+                $this->donorNotification(
+                    (int) $donor->donor_id,
+                    'blood_type_verified',
+                    'Your blood type has been verified from the laboratory result associated with your completed donation.'
+                );
+            }
+
+            return [
+                'appointment' => $appointment->refresh(),
+                'record' => DB::table('donation_records')->where('donation_id', $record->donation_id)->first(),
+                'already' => false,
+            ];
+        });
+    }
+
+    /**
      * @param array<string, mixed> $data
      * @return array<string, mixed>
      */

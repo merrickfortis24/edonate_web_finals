@@ -47,8 +47,8 @@ class BloodAvailabilityService
     public function getMapData(array $filters = []): array
     {
         $bloodTypes = $this->bloodTypeNames();
-        $availableRows = $this->aggregateRows(
-            $this->availableDonorsQuery(),
+        $verifiedRows = $this->aggregateRows(
+            $this->buildAvailabilityQuery(),
             $filters
         );
         $scheduledRows = $this->aggregateRows(
@@ -56,9 +56,9 @@ class BloodAvailabilityService
             $filters
         );
 
-        $available = $this->mergeAggregateRows($availableRows, $bloodTypes, 'available_donors');
+        $verified = $this->mergeAggregateRows($verifiedRows, $bloodTypes, 'verified_donors');
         $scheduled = $this->mergeAggregateRows($scheduledRows, $bloodTypes, 'scheduled_donors');
-        $barangays = $this->mergeBarangayAggregates($available, $scheduled, $bloodTypes);
+        $barangays = $this->mergeBarangayAggregates($verified, $scheduled, $bloodTypes);
 
         $bloodTypeTotals = array_fill_keys($bloodTypes, 0);
         foreach ($barangays as $barangay) {
@@ -67,22 +67,25 @@ class BloodAvailabilityService
             }
         }
 
-        $availableDonors = array_sum($bloodTypeTotals);
+        $verifiedDonors = array_sum($bloodTypeTotals);
         $mapPoints = array_values(array_filter($barangays, fn (array $barangay): bool =>
             $this->validCoordinate($barangay['latitude'], $barangay['longitude'])
         ));
 
         $mappedDonors = 0;
         foreach ($mapPoints as $point) {
-            $mappedDonors += (int) $point['available_donors'];
+            $mappedDonors += (int) $point['verified_donors'];
         }
 
-        $nonMappedDonors = max(0, $availableDonors - $mappedDonors);
+        $nonMappedDonors = max(0, $verifiedDonors - $mappedDonors);
 
         return [
             'summary' => [
-                'available_donors' => $availableDonors,
-                'barangays' => count(array_filter($barangays, static fn (array $row): bool => (int) $row['available_donors'] > 0)),
+                'verified_donors' => $verifiedDonors,
+                // Preserve the existing API key for clients that have not yet
+                // migrated; it now reflects the same canonical population.
+                'available_donors' => $verifiedDonors,
+                'barangays' => count(array_filter($barangays, static fn (array $row): bool => (int) $row['verified_donors'] > 0)),
                 'most_available_blood_type' => $this->extremeBloodType($bloodTypeTotals, true),
                 'lowest_available_blood_type' => $this->extremeBloodType($bloodTypeTotals, false),
                 'scheduled_donors' => array_sum(array_map(static fn (array $row): int => (int) $row['scheduled_donors'], $barangays)),
@@ -91,6 +94,9 @@ class BloodAvailabilityService
             'barangays' => array_values($barangays),
             'map_points' => array_values($mapPoints),
             'data_quality' => [
+                'mapped_verified_donors' => $mappedDonors,
+                'verified_donors_missing_coordinates' => $nonMappedDonors,
+                // Legacy aliases kept in sync with the canonical names above.
                 'mapped_available_donors' => $mappedDonors,
                 'available_donors_missing_coordinates' => $nonMappedDonors,
                 'barangays_without_coordinates' => count(array_filter(
@@ -112,13 +118,9 @@ class BloodAvailabilityService
      */
     public function buildAvailabilityQuery(): Builder
     {
-        return $this->availableDonorsQuery();
-    }
-
-    private function availableDonorsQuery(): Builder
-    {
-        return $this->qualifiedDonorsQuery()
-            ->whereNotExists(fn (Builder $query): Builder => $this->upcomingAppointmentSubquery($query));
+        // A future appointment or waiting-period date does not erase a donor's
+        // completed donation history from this coverage view.
+        return $this->qualifiedDonorsQuery();
     }
 
     private function scheduledDonorsQuery(): Builder
@@ -143,6 +145,7 @@ class BloodAvailabilityService
             ->leftJoin('locations AS l', 'l.location_id', '=', 'd.location_id')
             ->whereRaw("LOWER(TRIM(COALESCE(d.verification_status, ''))) = ?", ['verified'])
             ->whereRaw("LOWER(TRIM(COALESCE(d.blood_type_status, ''))) = ?", ['verified'])
+            ->whereIn(DB::raw("UPPER(TRIM(COALESCE(bt.blood_type, '')))"), self::SUPPORTED_BLOOD_TYPES)
             ->whereNotNull('d.blood_type_id')
             ->where(function (Builder $query): void {
                 $query->where(function (Builder $eligible): void {
@@ -190,7 +193,7 @@ class BloodAvailabilityService
         $city = $this->normalizeFilter($filters['city'] ?? null);
 
         if ($bloodType !== null) {
-            $query->where('bt.blood_type', $bloodType);
+            $query->whereRaw('UPPER(TRIM(bt.blood_type)) = ?', [strtoupper($bloodType)]);
         }
 
         if ($barangay !== null) {
@@ -209,10 +212,10 @@ class BloodAvailabilityService
                 'l.province',
                 DB::raw('AVG(l.latitude) AS representative_latitude'),
                 DB::raw('AVG(l.longitude) AS representative_longitude'),
-                'bt.blood_type',
+                DB::raw('UPPER(TRIM(bt.blood_type)) AS blood_type'),
                 DB::raw('COUNT(DISTINCT d.donor_id) AS donor_count')
             )
-            ->groupBy('l.barangay_code', 'l.barangay_name', 'l.city', 'l.province', 'bt.blood_type')
+            ->groupBy('l.barangay_code', 'l.barangay_name', 'l.city', 'l.province', DB::raw('UPPER(TRIM(bt.blood_type))'))
             ->get();
     }
 
@@ -328,14 +331,14 @@ class BloodAvailabilityService
     }
 
     /**
-     * @param array<string, array<string, mixed>> $available
+     * @param array<string, array<string, mixed>> $verified
      * @param array<string, array<string, mixed>> $scheduled
      * @param array<int, string> $bloodTypes
      * @return array<string, array<string, mixed>>
      */
-    private function mergeBarangayAggregates(array $available, array $scheduled, array $bloodTypes): array
+    private function mergeBarangayAggregates(array $verified, array $scheduled, array $bloodTypes): array
     {
-        $merged = $available;
+        $merged = $verified;
 
         foreach ($scheduled as $key => $row) {
             if (!isset($merged[$key])) {
@@ -346,7 +349,7 @@ class BloodAvailabilityService
                     'province' => $row['province'],
                     'latitude' => $row['latitude'],
                     'longitude' => $row['longitude'],
-                    'available_donors' => 0,
+                    'verified_donors' => 0,
                     'scheduled_donors' => 0,
                     'blood_types' => array_fill_keys($bloodTypes, 0),
                 ];
@@ -361,8 +364,10 @@ class BloodAvailabilityService
 
         foreach ($merged as &$row) {
             $row['scheduled_donors'] = (int) ($row['scheduled_donors'] ?? 0);
-            $row['available_donors'] = (int) ($row['available_donors'] ?? 0);
-            $row['availability_level'] = $this->availabilityLevel($row['available_donors']);
+            $row['verified_donors'] = (int) ($row['verified_donors'] ?? 0);
+            // Keep the original per-barangay key as a backwards-compatible alias.
+            $row['available_donors'] = $row['verified_donors'];
+            $row['availability_level'] = $this->availabilityLevel($row['verified_donors']);
             $row['mapped'] = $this->validCoordinate($row['latitude'], $row['longitude']);
         }
         unset($row);

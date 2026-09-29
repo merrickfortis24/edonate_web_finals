@@ -539,6 +539,118 @@ class Phase7DonationProcessingTest extends TestCase
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'blood_type_verified')->count());
     }
 
+    public function test_admin_can_verify_type_after_completion_and_make_donor_visible_on_map(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+        $locationId = (int) DB::table('locations')->insertGetId([
+            'barangay_code' => '042101001',
+            'barangay_name' => 'Balintawak',
+            'city' => 'City of Lipa',
+            'province' => 'Batangas',
+            'latitude' => null,
+            'longitude' => null,
+        ], 'location_id');
+        DB::table('donors')->where('donor_id', $donorId)->update(['location_id' => $locationId]);
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'AB+']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, DB::table('donation_records')->where('appointment_id', $appointmentId)->count());
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.verified_donors', 0);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?status=completed&per_page=100')
+            ->assertOk()
+            ->assertJsonPath('data.0.appointment_id', $appointmentId)
+            ->assertJsonPath('data.0.actions.can_verify_blood_type', true);
+
+        $this->withSession($this->adminSession())
+            ->get('/admin/donation-records')
+            ->assertOk()
+            ->assertSee('Map count requires a lab-confirmed supported blood type.', false)
+            ->assertSee('Verify Blood Type', false);
+
+        $this->withSession($this->adminSession())
+            ->get("/admin/appointments/{$appointmentId}/complete")
+            ->assertOk()
+            ->assertSee('Verify blood type for completed donation');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/verify-blood-type", [
+                'verified_blood_type_id' => 2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('donor.blood_type_status', 'verified')
+            ->assertJsonPath('donor.barangay_name', 'Balintawak');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/verify-blood-type", [
+                'verified_blood_type_id' => 2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'This donation already has that verified blood type.');
+
+        $this->assertSame(1, DB::table('donation_records')->where('appointment_id', $appointmentId)->count());
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'donor_id' => $donorId,
+            'donation_status' => 'completed',
+            'verified_blood_type_id' => 2,
+        ]);
+        $this->assertDatabaseHas('donors', [
+            'donor_id' => $donorId,
+            'blood_type_id' => 2,
+            'blood_type_status' => 'verified',
+            'blood_type_verified_by_admin_id' => 1,
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.verified_donors', 1)
+            ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
+            ->assertJsonPath('barangays.0.blood_types.AB+', 1);
+    }
+
+    public function test_staff_cannot_verify_blood_type_for_a_completed_donation(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'AB+']);
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", ['blood_units' => 1])
+            ->assertOk();
+
+        $this->withSession(array_merge($this->adminSession(), ['admin_role' => 'staff']))
+            ->patchJson("/admin/appointments/{$appointmentId}/verify-blood-type", [
+                'verified_blood_type_id' => 2,
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'verified_blood_type_id' => null,
+        ]);
+    }
+
     public function test_not_yet_determined_does_not_verify_donor_blood_type(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);

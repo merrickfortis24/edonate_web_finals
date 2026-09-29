@@ -1,9 +1,9 @@
 @extends('layouts.admin')
 
-@section('title', 'eDonate - Complete Donation')
+@section('title', data_get($completionPayload ?? [], 'mode') === 'verify_blood_type' ? 'eDonate - Verify Donation Blood Type' : 'eDonate - Complete Donation')
 @section('admin_page_class', 'admin-complete-donation-page')
-@section('header_title', 'Complete Donation')
-@section('header_subtitle', 'Securely record the checked-in donor\'s completed donation')
+@section('header_title', data_get($completionPayload ?? [], 'mode') === 'verify_blood_type' ? 'Verify Donation Blood Type' : 'Complete Donation')
+@section('header_subtitle', data_get($completionPayload ?? [], 'mode') === 'verify_blood_type' ? 'Add the lab-confirmed type to an existing completed donation' : 'Securely record the checked-in donor\'s completed donation')
 
 @section('header_actions')
     <a class="btn btn-outline-secondary" href="{{ route('admin.donation-records') }}">
@@ -26,8 +26,8 @@
     <section class="completion-context-bar" aria-label="Donation completion context">
         <div class="completion-context-bar__identity">
             <span class="completion-kicker">Checked-in appointment</span>
-            <h2>Finish the donation record</h2>
-            <p>Review the donor's Digital ID and save the verified donation outcome.</p>
+            <h2 id="completionContextTitle">Finish the donation record</h2>
+            <p id="completionContextDescription">Review the donor's Digital ID and save the verified donation outcome.</p>
         </div>
         <div class="completion-context-bar__meta">
             <span class="completion-appointment-code" id="completionAppointmentCode">-</span>
@@ -123,7 +123,7 @@
                 <div>
                     <span class="completion-kicker">Donation record</span>
                     <h2 id="completionFormTitle" class="h5 mb-1">Record donation outcome</h2>
-                    <p class="text-body-secondary small mb-0">Confirm the details below to finish this checked-in appointment.</p>
+                    <p id="completionFormDescription" class="text-body-secondary small mb-0">Confirm the details below to finish this checked-in appointment.</p>
                 </div>
             </div>
             <span class="completion-status-chip" id="completionCurrentStatus"><span></span> Checked In</span>
@@ -131,11 +131,11 @@
 
         <form id="completeDonationWindowForm">
             <div class="completion-form-grid">
-                <div class="completion-form-field">
+                <div class="completion-form-field" id="completionBloodUnitsField">
                     <label class="form-label" for="completionBloodUnits">Blood Units</label>
                     <input class="form-control" id="completionBloodUnits" type="number" min="1" max="10" value="1" required>
                 </div>
-                <div class="completion-form-field">
+                <div class="completion-form-field" id="completionDonationDateField">
                     <label class="form-label" for="completionDonationDate">Donation Date</label>
                     <input class="form-control" id="completionDonationDate" type="date" required>
                 </div>
@@ -150,6 +150,9 @@
                     </select>
                     <div class="form-text" id="completionBloodTypeHelp">Only an administrator may record a verified blood type.</div>
                 </div>
+                <div class="completion-form-field--wide">
+                    <div class="alert alert-info d-none mb-0" id="completionMapReadiness" role="status" aria-live="polite"></div>
+                </div>
                 <div class="completion-form-field--wide d-none" id="completionBloodTypeChangeFields">
                     <div class="alert alert-warning py-2 small mb-2">This result differs from the donor's current verified blood type. Confirm the correction and record its reason.</div>
                     <div class="form-check mb-2">
@@ -159,7 +162,7 @@
                     <label class="form-label" for="completionBloodTypeChangeReason">Reason for change</label>
                     <textarea class="form-control" id="completionBloodTypeChangeReason" rows="2" maxlength="1000"></textarea>
                 </div>
-                <div class="completion-form-field--wide">
+                <div class="completion-form-field--wide" id="completionRemarksField">
                     <label class="form-label" for="completionRemarks">Remarks</label>
                     <textarea class="form-control" id="completionRemarks" rows="3" maxlength="1000"></textarea>
                 </div>
@@ -193,6 +196,8 @@
         var submitButton = document.getElementById('completeDonationSubmit');
         var bloodTypeSelect = document.getElementById('completionVerifiedBloodType');
         var changeFields = document.getElementById('completionBloodTypeChangeFields');
+        var mapReadiness = document.getElementById('completionMapReadiness');
+        var verificationOnly = config.mode === 'verify_blood_type';
 
         function text(id, value, fallback) {
             var element = document.getElementById(id);
@@ -259,6 +264,28 @@
 
             bloodTypeSelect.setAttribute('data-current-id', donor.blood_type_id || '');
             bloodTypeSelect.setAttribute('data-current-status', donor.blood_type_status || 'not_yet_determined');
+            updateMapReadiness();
+        }
+
+        function updateMapReadiness() {
+            var reasons = [];
+            if (String(donor.verification_status || 'unverified').toLowerCase() !== 'verified') reasons.push('identity verification must be approved');
+            if (String(donor.blood_type_status || 'not_yet_determined').toLowerCase() !== 'verified') reasons.push('a laboratory-confirmed blood type must be recorded');
+            if (!String(donor.barangay_name || '').trim()) reasons.push('a barangay must be present in the donor profile');
+            if (donor.is_active === false || donor.is_active === 0) reasons.push('the donor account must be active');
+
+            if (!mapReadiness) return;
+            mapReadiness.classList.remove('d-none', 'alert-info', 'alert-warning', 'alert-success');
+            if (reasons.length) {
+                mapReadiness.classList.add('alert-warning');
+                mapReadiness.textContent = verificationOnly
+                    ? 'This completed donation will appear in donor availability only after ' + reasons.join(', ') + '. Select only the type shown by the laboratory result.'
+                    : 'Map readiness: ' + reasons.join(', ') + '. A self-reported profile blood type alone is not used for the map. If a lab result is available, record it below; otherwise it can be verified later from the completed donation row.';
+                return;
+            }
+
+            mapReadiness.classList.add('alert-success');
+            mapReadiness.textContent = 'This donor meets the map’s identity, blood type, account, and barangay checks. The open map refreshes automatically.';
         }
 
         function populateBloodTypes() {
@@ -271,8 +298,29 @@
             });
             bloodTypeSelect.disabled = config.canVerifyBloodType !== true;
             document.getElementById('completionBloodTypeHelp').textContent = config.canVerifyBloodType === true
-                ? 'Only enter a confirmed laboratory result.'
+                ? 'Use the laboratory-confirmed result, not an unverified profile value.'
                 : 'Only an administrator may record a verified blood type.';
+        }
+
+        function configureMode() {
+            if (!verificationOnly) return;
+
+            document.getElementById('completionContextTitle').textContent = 'Verify blood type for completed donation';
+            document.getElementById('completionContextDescription').textContent = 'This donation is already saved. Record its laboratory-confirmed blood type without creating a duplicate donation.';
+            document.getElementById('completionFormTitle').textContent = 'Record laboratory result';
+            document.getElementById('completionFormDescription').textContent = 'This updates the donor’s verified blood type and map eligibility only; donation history and inventory will not be changed.';
+            document.getElementById('completionCurrentStatus').innerHTML = '<span></span> Donation Completed';
+            document.getElementById('completionBloodUnitsField').classList.add('d-none');
+            document.getElementById('completionDonationDateField').classList.add('d-none');
+            document.getElementById('completionRemarksField').classList.add('d-none');
+            document.getElementById('completionBloodUnits').disabled = true;
+            document.getElementById('completionBloodUnits').required = false;
+            document.getElementById('completionDonationDate').disabled = true;
+            document.getElementById('completionDonationDate').required = false;
+            bloodTypeSelect.required = true;
+            bloodTypeSelect.setAttribute('aria-describedby', 'completionBloodTypeHelp completionMapReadiness');
+            document.getElementById('completionBloodTypeHelp').textContent = 'Required: select the result confirmed by the laboratory.';
+            submitButton.innerHTML = '<i class="bi bi-shield-check me-1" aria-hidden="true"></i> Save Verified Blood Type';
         }
 
         function showStatus(message, kind) {
@@ -292,33 +340,41 @@
             }
         }
 
-        function returnToProcessing() {
+        function returnToProcessing(flag) {
             if (!api.returnUrl) return;
 
             var separator = api.returnUrl.indexOf('?') === -1 ? '?' : '&';
-            window.location.replace(api.returnUrl + separator + 'completed=1');
+            window.location.replace(api.returnUrl + separator + encodeURIComponent(flag) + '=1');
         }
 
         form.addEventListener('submit', function (event) {
             event.preventDefault();
             submitButton.disabled = true;
-            showStatus('Saving donation completion...', 'info');
+            showStatus(verificationOnly ? 'Saving laboratory-confirmed blood type...' : 'Saving donation completion...', 'info');
 
-            fetch(api.completeUrl, {
-                method: 'PATCH',
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': token
-                },
-                body: JSON.stringify({
+            var requestBody = verificationOnly
+                ? {
+                    verified_blood_type_id: bloodTypeSelect.value || null,
+                    confirm_blood_type_change: document.getElementById('completionConfirmBloodTypeChange').checked,
+                    blood_type_change_reason: document.getElementById('completionBloodTypeChangeReason').value
+                }
+                : {
                     blood_units: document.getElementById('completionBloodUnits').value,
                     donation_date: document.getElementById('completionDonationDate').value,
                     verified_blood_type_id: bloodTypeSelect.value || null,
                     confirm_blood_type_change: document.getElementById('completionConfirmBloodTypeChange').checked,
                     blood_type_change_reason: document.getElementById('completionBloodTypeChangeReason').value,
                     remarks: document.getElementById('completionRemarks').value
-                })
+                };
+
+            fetch(verificationOnly ? api.verifyBloodTypeUrl : api.completeUrl, {
+                method: 'PATCH',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': token
+                },
+                body: JSON.stringify(requestBody)
             })
                 .then(function (response) {
                     return response.json().then(function (body) {
@@ -331,9 +387,11 @@
                         donor = body.donor;
                         renderDonor();
                     }
-                    showStatus(body.message || 'Donation completed successfully.', 'success');
-                    submitButton.innerHTML = '<i class="bi bi-check2-circle me-1" aria-hidden="true"></i> Donation Completed';
-                    window.setTimeout(returnToProcessing, 650);
+                    showStatus(body.message || (verificationOnly ? 'Verified blood type saved.' : 'Donation completed successfully.'), 'success');
+                    submitButton.innerHTML = verificationOnly
+                        ? '<i class="bi bi-check2-circle me-1" aria-hidden="true"></i> Blood Type Verified'
+                        : '<i class="bi bi-check2-circle me-1" aria-hidden="true"></i> Donation Completed';
+                    window.setTimeout(function () { returnToProcessing(verificationOnly ? 'verified' : 'completed'); }, 650);
                 })
                 .catch(function (error) {
                     var message = error && error.message ? error.message : 'The donation could not be completed.';
@@ -349,6 +407,7 @@
         bloodTypeSelect.addEventListener('change', updateBloodTypeCorrectionFields);
 
         document.getElementById('completionDonationDate').value = dateInputValue(appointment.appointment_date);
+        configureMode();
         renderDonor();
         populateBloodTypes();
     }());

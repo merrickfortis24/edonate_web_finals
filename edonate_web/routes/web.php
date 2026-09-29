@@ -192,6 +192,10 @@ Route::middleware('admin.auth')->group(function () {
             ->whereNumber('appointment')
             ->middleware('throttle:admin-write')
             ->name('admin.appointments.complete');
+        Route::patch('/admin/appointments/{appointment}/verify-blood-type', [AdminAuthController::class, 'verifyCompletedDonationBloodType'])
+            ->whereNumber('appointment')
+            ->middleware('throttle:admin-write')
+            ->name('admin.appointments.verify-blood-type');
         Route::patch('/admin/appointments/{appointment}/defer', [AdminAuthController::class, 'deferAppointmentOnSite'])
             ->whereNumber('appointment')
             ->middleware('throttle:admin-write')
