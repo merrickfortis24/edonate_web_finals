@@ -671,7 +671,21 @@
     gap: 0.5rem;
 }
 
+.edonate-admin-page.admin-blood-requests-page .request-origin-tabs {
+    gap: 0.35rem;
+}
+
+.edonate-admin-page.admin-blood-requests-page .request-origin-tabs .nav-link {
+    align-items: center;
+    display: inline-flex;
+    gap: 0.5rem;
+}
+
 .edonate-admin-page.admin-users-page .user-account-tabs .nav-link:not(.active) {
+    color: var(--bs-body-color);
+}
+
+.edonate-admin-page.admin-blood-requests-page .request-origin-tabs .nav-link:not(.active) {
     color: var(--bs-body-color);
 }
 
@@ -680,7 +694,16 @@
     outline-offset: 2px;
 }
 
+.edonate-admin-page.admin-blood-requests-page .request-origin-tabs .nav-link:focus-visible {
+    outline: 2px solid var(--edonate-red);
+    outline-offset: 2px;
+}
+
 .edonate-admin-page.admin-users-page .account-status-count {
+    min-width: 1.6rem;
+}
+
+.edonate-admin-page.admin-blood-requests-page .request-origin-count {
     min-width: 1.6rem;
 }
 
@@ -694,6 +717,19 @@
         flex: 1 1 auto;
         justify-content: center;
         padding-inline: 0.55rem;
+    }
+
+    .edonate-admin-page.admin-blood-requests-page .request-origin-tabs .nav-link {
+        flex: 0 0 auto;
+        justify-content: center;
+        padding-inline: 0.55rem;
+        white-space: nowrap;
+    }
+
+    .edonate-admin-page.admin-blood-requests-page .request-origin-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
     }
 }
 

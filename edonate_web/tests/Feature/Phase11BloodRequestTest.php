@@ -122,6 +122,14 @@ class Phase11BloodRequestTest extends TestCase
     public function test_app_origin_pending_review_request_is_searchable_visible_and_nullable_relations_are_preserved(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->withSession($this->adminSession())
+            ->get('/admin/blood-requests')
+            ->assertOk()
+            ->assertSee('Admin Requests')
+            ->assertSee('Donor Requests')
+            ->assertDontSee('id="requestSource"')
+            ->assertDontSee('<th>Source</th>', false);
+
         $donorId = (int) DB::table('donors')->insertGetId([
             'first_name' => 'Mika',
             'last_name' => 'Santos',
@@ -157,7 +165,10 @@ class Phase11BloodRequestTest extends TestCase
             ->getJson('/admin/blood-requests/data?per_page=1&page=1')
             ->assertOk()
             ->assertJsonPath('meta.total', 2)
-            ->assertJsonPath('meta.last_page', 2);
+            ->assertJsonPath('meta.last_page', 2)
+            ->assertJsonPath('summary.sources.all', 2)
+            ->assertJsonPath('summary.sources.admin', 1)
+            ->assertJsonPath('summary.sources.app', 1);
 
         $filtered = $this->withSession($this->adminSession())
             ->getJson('/admin/blood-requests/data?status=pending_review&source=app&search=mika.santos%40example.test')
@@ -190,6 +201,12 @@ class Phase11BloodRequestTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.request_id', $adminRequestId)
             ->assertJsonPath('data.0.request_source', 'admin');
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-requests/data?source=app')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.request_id', $appRequestId);
     }
 
     public function test_admin_can_approve_or_reject_only_pending_requests_and_rejection_requires_reason(): void

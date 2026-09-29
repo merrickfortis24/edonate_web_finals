@@ -8,6 +8,7 @@ use App\Models\BloodType;
 use App\Models\Facility;
 use App\Services\BloodRequestService;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -18,6 +19,8 @@ use Throwable;
 
 class BloodRequestController extends Controller
 {
+    private const DONOR_REQUEST_SOURCES = ['app', 'mobile', 'mobile_app', 'donor_app'];
+
     public function __construct(private readonly BloodRequestService $service)
     {
     }
@@ -76,17 +79,9 @@ class BloodRequestController extends Controller
         }
 
         if (($validated['source'] ?? '') === 'app') {
-            $query->where(function ($builder): void {
-                $builder->whereNotNull('requested_by_donor_id')
-                    ->orWhereIn('request_source', ['app', 'mobile', 'mobile_app', 'donor_app']);
-            });
+            $this->whereDonorSubmitted($query);
         } elseif (($validated['source'] ?? '') === 'admin') {
-            $query->where(function ($builder): void {
-                $builder->where('request_source', 'admin')
-                    ->orWhere(function ($legacy): void {
-                        $legacy->whereNull('request_source')->whereNotNull('created_by_admin_id');
-                    });
-            });
+            $this->whereAdminCreated($query);
         }
 
         if (! empty($validated['facility_id'])) {
@@ -121,6 +116,11 @@ class BloodRequestController extends Controller
                 'emergency' => BloodRequest::query()->where('urgency', 'emergency')->whereIn('status', ['open', 'in_progress'])->count(),
                 'fulfilled' => BloodRequest::query()->where('status', 'fulfilled')->count(),
                 'cancelled' => BloodRequest::query()->where('status', 'cancelled')->count(),
+                'sources' => [
+                    'all' => BloodRequest::query()->count(),
+                    'admin' => tap(BloodRequest::query(), fn (Builder $builder) => $this->whereAdminCreated($builder))->count(),
+                    'app' => tap(BloodRequest::query(), fn (Builder $builder) => $this->whereDonorSubmitted($builder))->count(),
+                ],
             ],
             'meta' => [
                 'current_page' => $paginator->currentPage(),
@@ -320,5 +320,30 @@ class BloodRequestController extends Controller
         return response()->json([
             'message' => 'We could not save this blood request due to a temporary server issue. Please try again; if the problem continues, contact an administrator.',
         ], 500);
+    }
+
+    /** @param Builder<BloodRequest> $query */
+    private function whereDonorSubmitted(Builder $query): void
+    {
+        $query->where(function (Builder $builder): void {
+            $builder->whereNotNull('requested_by_donor_id')
+                ->orWhereIn('request_source', self::DONOR_REQUEST_SOURCES);
+        });
+    }
+
+    /**
+     * Admin is the fallback category for legacy requests without donor origin
+     * metadata. A donor ID/source takes precedence so a request is never shown
+     * in both tabs if older rows contain conflicting origin fields.
+     *
+     * @param Builder<BloodRequest> $query
+     */
+    private function whereAdminCreated(Builder $query): void
+    {
+        $query->whereNull('requested_by_donor_id')
+            ->where(function (Builder $builder): void {
+                $builder->whereNull('request_source')
+                    ->orWhereNotIn('request_source', self::DONOR_REQUEST_SOURCES);
+            });
     }
 }
