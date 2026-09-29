@@ -113,7 +113,7 @@ jobs:
     timeout-minutes: 20
     environment:
       name: staging
-      url: https://edonate.online
+      url: https://edonate.online/staging
 
     steps:
       - name: Deploy via SSH
@@ -318,11 +318,26 @@ jobs:
             grep -Fq "RewriteRule ^ index.php" "$DEPLOY_ROOT/.htaccess"
             php artisan route:list --path=admin/login --no-ansi | grep -Fq "admin/login"
 
+            # The domain-root .htaccess otherwise catches /staging/admin/login
+            # and sends it into production's front controller. Install only a
+            # scoped rewrite after verifying the exact public and staging paths.
+            php scripts/install-staging-parent-routing.php
+
             # The repository's privacy:check intentionally requires production
             # APP_ENV and APP_DEBUG=false, so it is not applicable to staging.
             # Keep the two explicitly requested cache clears as final commands.
             php artisan config:clear
             php artisan cache:clear
+
+      - name: Verify staging admin login route
+        shell: bash
+        run: |
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 30 https://edonate.online/staging/admin/login)"
+          if [ "$status" != "200" ]; then
+            echo "Staging admin login route returned HTTP $status; expected 200." >&2
+            exit 1
+          fi
+          echo "Staging admin login route is reachable (HTTP 200)."
 
   inspect-staging-root:
     name: Inspect staging directory (read-only)

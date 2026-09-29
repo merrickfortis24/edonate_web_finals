@@ -29,6 +29,15 @@ DirectoryIndex index.php
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
 
+    # Route requests below /staging through the isolated staging front controller.
+    # Existing files and directories (assets, uploads, and the staging root) remain untouched.
+    # BEGIN eDonate staging front-controller route
+    RewriteCond %{REQUEST_URI} ^/staging(?:/|$) [NC]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^staging(?:/.*)?$ staging/index.php [L,QSA]
+    # END eDonate staging front-controller route
+
     # Send Requests To Front Controller...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
