@@ -81,7 +81,7 @@ class Phase9BloodAvailabilityTest extends TestCase
         $this->assertSame(1, $payload['blood_types']['A+']);
         $this->assertSame(1, $payload['blood_types']['O-']);
         $this->assertCount(2, $payload['barangays']);
-        $this->assertCount(1, $payload['map_points']);
+        $this->assertCount(2, $payload['map_points']);
         $this->assertStringNotContainsString('Scheduled', $response->getContent());
         $this->assertStringNotContainsString('donor_id', $response->getContent());
         $this->assertStringNotContainsString('first_name', $response->getContent());
@@ -150,6 +150,53 @@ class Phase9BloodAvailabilityTest extends TestCase
         $this->assertSame('AB+', $payload['filters']['blood_type']);
         $this->assertStringNotContainsString('donor_id', $response->getContent());
         $this->assertStringNotContainsString('Private', $response->getContent());
+        $this->assertStringNotContainsString('first_name', $response->getContent());
+    }
+
+    public function test_pangao_uses_a_coarse_barangay_reference_marker_when_location_coordinates_are_missing(): void
+    {
+        $pangao = $this->createLocation([
+            'barangay_name' => 'Pangao',
+            'city' => 'City of Lipa',
+            'province' => 'Batangas',
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+        $otherPangao = $this->createLocation([
+            'barangay_name' => 'Pangao',
+            'city' => 'San Juan',
+            'province' => 'Batangas',
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+
+        $firstDonorId = $this->createQualifiedDonor($pangao, 4, ['donor_id' => 9], [
+            'status' => 'temporary_deferred',
+            'next_eligible_date' => Carbon::today()->addDays(56)->toDateString(),
+        ]);
+        $secondDonorId = $this->createQualifiedDonor($otherPangao, 4, ['donor_id' => 10], [
+            'status' => 'temporary_deferred',
+            'next_eligible_date' => Carbon::today()->addDays(56)->toDateString(),
+        ]);
+        DB::table('donation_records')->insert([
+            ['donor_id' => $firstDonorId, 'donation_status' => 'completed'],
+            ['donor_id' => $secondDonorId, 'donation_status' => 'completed'],
+        ]);
+
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $response = $this->getJson('/admin/blood-availability/map-data?blood_type=AB%2B');
+
+        $response->assertOk();
+        $payload = $response->json();
+        $this->assertSame(2, $payload['summary']['available_donors']);
+        $this->assertSame(1, $payload['data_quality']['mapped_available_donors']);
+        $this->assertSame(1, $payload['data_quality']['available_donors_missing_coordinates']);
+        $this->assertCount(1, $payload['map_points']);
+        $this->assertSame('Pangao', $payload['map_points'][0]['barangay_name']);
+        $this->assertSame('City of Lipa', $payload['map_points'][0]['city']);
+        $this->assertSame(13.92, $payload['map_points'][0]['latitude']);
+        $this->assertSame(121.12, $payload['map_points'][0]['longitude']);
+        $this->assertStringNotContainsString('donor_id', $response->getContent());
         $this->assertStringNotContainsString('first_name', $response->getContent());
     }
 

@@ -262,7 +262,69 @@ class BloodAvailabilityService
             }
         }
 
+        // Some legacy location rows contain only an address and no usable pin.
+        // Use an explicitly maintained barangay reference point only when no
+        // valid location coordinate exists for the aggregate.
+        foreach ($aggregates as $key => $aggregate) {
+            if ($this->validCoordinate($aggregate['latitude'], $aggregate['longitude'])) {
+                continue;
+            }
+
+            $reference = $this->barangayMapReferenceCoordinates(
+                $aggregate['barangay_name'],
+                $aggregate['city'],
+                $aggregate['province']
+            );
+
+            if ($reference !== null) {
+                $aggregates[$key]['latitude'] = round($reference['latitude'], 2);
+                $aggregates[$key]['longitude'] = round($reference['longitude'], 2);
+            }
+        }
+
         return $aggregates;
+    }
+
+    /**
+     * Resolve a coarse, public reference point for a barangay with no stored
+     * coordinates. These are never donor-specific coordinates.
+     *
+     * @return array{latitude: float, longitude: float}|null
+     */
+    private function barangayMapReferenceCoordinates(string $barangay, string $city, string $province): ?array
+    {
+        $barangay = strtolower(trim($barangay));
+        $city = strtolower(trim($city));
+        $province = strtolower(trim($province));
+
+        foreach (config('blood_availability.barangay_map_references', []) as $reference) {
+            if (! is_array($reference)) {
+                continue;
+            }
+
+            $referenceCities = array_map(
+                static fn (mixed $value): string => strtolower(trim((string) $value)),
+                $reference['cities'] ?? []
+            );
+
+            if ($barangay !== strtolower(trim((string) ($reference['barangay'] ?? '')))
+                || ! in_array($city, $referenceCities, true)
+                || $province !== strtolower(trim((string) ($reference['province'] ?? '')))) {
+                continue;
+            }
+
+            $latitude = $this->nullableFloat($reference['latitude'] ?? null);
+            $longitude = $this->nullableFloat($reference['longitude'] ?? null);
+
+            if ($this->validCoordinate($latitude, $longitude)) {
+                return [
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                ];
+            }
+        }
+
+        return null;
     }
 
     /**
