@@ -1961,7 +1961,8 @@ class AdminAuthController extends BaseController
      */
     public function mapData(Request $request, BloodAvailabilityService $availability): JsonResponse
     {
-        return response()->json($availability->getMapData($this->bloodAvailabilityFilters($request, $availability)));
+        return response()->json($availability->getMapData($this->bloodAvailabilityFilters($request, $availability)))
+            ->header('Cache-Control', 'private, no-store, no-cache, must-revalidate');
     }
 
     /**
@@ -1972,7 +1973,8 @@ class AdminAuthController extends BaseController
     {
         $data = $availability->getMapData($this->bloodAvailabilityFilters($request, $availability));
 
-        return response()->json($data['map_points']);
+        return response()->json($data['map_points'])
+            ->header('Cache-Control', 'private, no-store, no-cache, must-revalidate');
     }
 
     /**
@@ -2035,7 +2037,8 @@ class AdminAuthController extends BaseController
     {
         $data = $availability->getMapData($this->bloodAvailabilityFilters($request, $availability));
 
-        return response()->json($data['barangays']);
+        return response()->json($data['barangays'])
+            ->header('Cache-Control', 'private, no-store, no-cache, must-revalidate');
     }
 
     /**
@@ -2055,7 +2058,7 @@ class AdminAuthController extends BaseController
             'last_updated' => $data['last_updated'],
             'summary' => $data['summary'],
             'data_quality' => $data['data_quality'],
-        ]);
+        ])->header('Cache-Control', 'private, no-store, no-cache, must-revalidate');
     }
 
     /** @return array{blood_type: string|null, barangay: string|null, city: string|null} */

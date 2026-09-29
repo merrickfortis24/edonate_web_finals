@@ -389,6 +389,83 @@ class Phase7DonationProcessingTest extends TestCase
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'donation_completed')->count());
     }
 
+    public function test_completed_donation_immediately_appears_in_barangay_map_with_verified_blood_type(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $appointmentId = $this->createAppointment([
+            'status' => 'pending',
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/approve")
+            ->assertOk();
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/check-in")
+            ->assertOk();
+
+        $locationId = (int) DB::table('locations')->insertGetId([
+            'barangay_code' => '042101001',
+            'barangay_name' => 'Balintawak',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'latitude' => 13.9521,
+            'longitude' => 121.1234,
+        ], 'location_id');
+        DB::table('donors')->where('donor_id', $donorId)->update(['location_id' => $locationId]);
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'AB+']);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.available_donors', 0);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'verified_blood_type_id' => 2,
+                'donation_date' => Carbon::today()->toDateString(),
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'donor_id' => $donorId,
+            'status' => 'completed',
+        ]);
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'donor_id' => $donorId,
+            'donation_status' => 'completed',
+            'verified_blood_type_id' => 2,
+        ]);
+        $this->assertDatabaseHas('eligibility_status', [
+            'donor_id' => $donorId,
+            'status' => 'temporary_deferred',
+        ]);
+
+        $map = $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.available_donors', 1)
+            ->assertJsonPath('summary.barangays', 1)
+            ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
+            ->assertJsonPath('barangays.0.blood_types.AB+', 1)
+            ->assertJsonPath('map_points.0.latitude', 13.95)
+            ->assertJsonPath('map_points.0.longitude', 121.12);
+
+        $this->assertStringContainsString('no-store', (string) $map->headers->get('Cache-Control'));
+        $this->assertStringNotContainsString('donor_id', $map->getContent());
+        $this->assertStringNotContainsString('Test Donor', $map->getContent());
+        $this->assertStringNotContainsString('contact_number', $map->getContent());
+
+        $this->withSession($this->adminSession())
+            ->get('/admin/blood-availability-mapping')
+            ->assertOk()
+            ->assertSee('Counts include current eligible donors and verified donors with a completed donation history.')
+            ->assertSee('Verified Donor Coverage');
+    }
+
     public function test_completed_donation_is_mirrored_with_status_for_mobile_history(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
@@ -783,6 +860,7 @@ class Phase7DonationProcessingTest extends TestCase
 
         Schema::create('locations', function (Blueprint $table): void {
             $table->increments('location_id');
+            $table->string('barangay_code')->nullable();
             $table->string('city')->nullable();
             $table->string('province')->nullable();
             $table->string('barangay_name')->nullable();
@@ -964,10 +1042,7 @@ class Phase7DonationProcessingTest extends TestCase
             'created_at' => now(),
         ]);
 
-        DB::table('blood_types')->insert([
-            'blood_type_id' => 1,
-            'blood_type' => 'O+',
-        ]);
+        DB::table('blood_types')->insert(['blood_type_id' => 1, 'blood_type' => 'O+']);
     }
 
     private function createAppointment(array $overrides = []): int

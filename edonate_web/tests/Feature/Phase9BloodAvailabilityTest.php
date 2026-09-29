@@ -110,6 +110,49 @@ class Phase9BloodAvailabilityTest extends TestCase
         $this->assertSame(0, $payload['blood_types']['A+']);
     }
 
+    public function test_completed_donor_is_included_during_waiting_period_without_duplicate_counts(): void
+    {
+        $locationId = $this->createLocation([
+            'barangay_code' => '042101001',
+            'barangay_name' => 'Balintawak',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'latitude' => 13.9521,
+            'longitude' => 121.1234,
+        ]);
+        $donorId = $this->createQualifiedDonor($locationId, 4, [
+            'donor_id' => 8,
+            'first_name' => 'Private',
+            'last_name' => 'Donor',
+        ], [
+            'status' => 'temporary_deferred',
+            'next_eligible_date' => Carbon::today()->addDays(56)->toDateString(),
+        ]);
+
+        // Multiple completed records must still contribute only one donor.
+        DB::table('donation_records')->insert([
+            ['donor_id' => $donorId, 'donation_status' => 'completed'],
+            ['donor_id' => $donorId, 'donation_status' => 'Completed'],
+        ]);
+
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $response = $this->getJson('/admin/blood-availability/map-data?blood_type=AB%2B');
+
+        $response->assertOk();
+        $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
+        $payload = $response->json();
+        $this->assertSame(1, $payload['summary']['available_donors']);
+        $this->assertSame(1, $payload['blood_types']['AB+']);
+        $this->assertSame('Balintawak', $payload['barangays'][0]['barangay_name']);
+        $this->assertSame(1, $payload['barangays'][0]['blood_types']['AB+']);
+        $this->assertSame(13.95, $payload['map_points'][0]['latitude']);
+        $this->assertSame(121.12, $payload['map_points'][0]['longitude']);
+        $this->assertSame('AB+', $payload['filters']['blood_type']);
+        $this->assertStringNotContainsString('donor_id', $response->getContent());
+        $this->assertStringNotContainsString('Private', $response->getContent());
+        $this->assertStringNotContainsString('first_name', $response->getContent());
+    }
+
     public function test_unauthenticated_user_cannot_access_map_endpoint(): void
     {
         $this->get('/admin/blood-availability/map-data')->assertRedirect(route('admin.login'));
@@ -118,7 +161,7 @@ class Phase9BloodAvailabilityTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['appointments', 'eligibility_status', 'donors', 'locations', 'blood_types'] as $table) {
+        foreach (['donation_records', 'appointments', 'eligibility_status', 'donors', 'locations', 'blood_types'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();
@@ -131,6 +174,7 @@ class Phase9BloodAvailabilityTest extends TestCase
             ['blood_type_id' => 1, 'blood_type' => 'A+'],
             ['blood_type_id' => 2, 'blood_type' => 'O+'],
             ['blood_type_id' => 3, 'blood_type' => 'O-'],
+            ['blood_type_id' => 4, 'blood_type' => 'AB+'],
         ]);
 
         Schema::create('locations', function (Blueprint $table): void {
@@ -165,6 +209,12 @@ class Phase9BloodAvailabilityTest extends TestCase
             $table->integer('donor_id')->nullable();
             $table->date('appointment_date')->nullable();
             $table->string('status')->nullable();
+        });
+
+        Schema::create('donation_records', function (Blueprint $table): void {
+            $table->increments('donation_id');
+            $table->integer('donor_id')->nullable();
+            $table->string('donation_status')->nullable();
         });
     }
 

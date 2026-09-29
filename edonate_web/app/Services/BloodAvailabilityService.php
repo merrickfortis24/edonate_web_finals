@@ -136,18 +136,27 @@ class BloodAvailabilityService
 
         $query = DB::table('donors AS d')
             ->join('blood_types AS bt', 'bt.blood_type_id', '=', 'd.blood_type_id')
-            ->joinSub($latestEligibility, 'es_latest', function ($join): void {
+            ->leftJoinSub($latestEligibility, 'es_latest', function ($join): void {
                 $join->on('es_latest.donor_id', '=', 'd.donor_id');
             })
-            ->join('eligibility_status AS es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
+            ->leftJoin('eligibility_status AS es', 'es.eligibility_id', '=', 'es_latest.latest_eligibility_id')
             ->leftJoin('locations AS l', 'l.location_id', '=', 'd.location_id')
             ->whereRaw("LOWER(TRIM(COALESCE(d.verification_status, ''))) = ?", ['verified'])
             ->whereRaw("LOWER(TRIM(COALESCE(d.blood_type_status, ''))) = ?", ['verified'])
             ->whereNotNull('d.blood_type_id')
-            ->whereRaw("LOWER(TRIM(COALESCE(es.status, ''))) = ?", ['eligible'])
             ->where(function (Builder $query): void {
-                $query->whereNull('es.next_eligible_date')
-                    ->orWhereDate('es.next_eligible_date', '<=', Carbon::today()->toDateString());
+                $query->where(function (Builder $eligible): void {
+                    $eligible->whereRaw("LOWER(TRIM(COALESCE(es.status, ''))) = ?", ['eligible'])
+                        ->where(function (Builder $date): void {
+                            $date->whereNull('es.next_eligible_date')
+                                ->orWhereDate('es.next_eligible_date', '<=', Carbon::today()->toDateString());
+                        });
+                })->orWhereExists(function (Builder $completed): void {
+                    $completed->select(DB::raw('1'))
+                        ->from('donation_records AS dr')
+                        ->whereColumn('dr.donor_id', 'd.donor_id')
+                        ->whereRaw("LOWER(TRIM(COALESCE(dr.donation_status, ''))) = ?", ['completed']);
+                });
             })
             ->whereNotNull('l.barangay_name')
             ->whereRaw("TRIM(COALESCE(l.barangay_name, '')) <> ''");
@@ -245,8 +254,11 @@ class BloodAvailabilityService
             $longitude = $this->nullableFloat($row->representative_longitude);
             if ($this->validCoordinate($latitude, $longitude)
                 && !$this->validCoordinate($aggregates[$key]['latitude'], $aggregates[$key]['longitude'])) {
-                $aggregates[$key]['latitude'] = $latitude;
-                $aggregates[$key]['longitude'] = $longitude;
+                // These are display-only barangay markers, not donor locations.
+                // Coarsen the aggregate before it leaves the server so a single
+                // donor's stored coordinates cannot be recovered from the API.
+                $aggregates[$key]['latitude'] = round($latitude, 2);
+                $aggregates[$key]['longitude'] = round($longitude, 2);
             }
         }
 
