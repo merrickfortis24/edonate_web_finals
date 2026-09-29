@@ -147,14 +147,26 @@ jobs:
             mkdir -p "$(dirname "$DEPLOY_ROOT")"
             export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
 
+            if [ -e "$DEPLOY_ROOT" ] && { [ -L "$DEPLOY_ROOT" ] || [ "$(realpath -e -- "$DEPLOY_ROOT")" != "$DEPLOY_ROOT" ]; }; then
+              echo "Staging deployment stopped: target is a symlink or resolves outside the expected path." >&2
+              exit 1
+            fi
+
             if [ -d "$DEPLOY_ROOT/.git" ]; then
               cd "$DEPLOY_ROOT"
             elif [ ! -e "$DEPLOY_ROOT" ] || [ -z "$(find "$DEPLOY_ROOT" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
               git clone --branch staging --single-branch "$REPO_URL" "$DEPLOY_ROOT"
               cd "$DEPLOY_ROOT"
             else
-              echo "Staging deployment stopped: target exists but is not the expected Git checkout." >&2
-              exit 1
+              entries="$(find "$DEPLOY_ROOT" -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)"
+              if [ "$entries" != "default.php" ] || [ ! -f "$DEPLOY_ROOT/default.php" ] || [ -L "$DEPLOY_ROOT/default.php" ]; then
+                echo "Staging deployment stopped: unexpected content exists in the staging directory; nothing was removed." >&2
+                exit 1
+              fi
+              rm -- "$DEPLOY_ROOT/default.php"
+              echo "Removed the only inspected Hostinger default file: default.php."
+              git clone --branch staging --single-branch "$REPO_URL" "$DEPLOY_ROOT"
+              cd "$DEPLOY_ROOT"
             fi
 
             if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 || ! git fsck --no-progress >/dev/null 2>&1; then
