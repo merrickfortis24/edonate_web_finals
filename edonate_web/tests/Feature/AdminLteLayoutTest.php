@@ -371,7 +371,7 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('Last Donation Date', $html);
         $this->assertStringContainsString('Next Eligible Donation Date', $html);
         $this->assertStringContainsString('returnToProcessing', $html);
-        $this->assertStringContainsString("window.location.replace(api.returnUrl + separator + 'completed=1')", $html);
+        $this->assertStringContainsString("window.location.replace(api.returnUrl + separator + encodeURIComponent(flag) + '=1')", $html);
     }
 
     public function test_adminlte_theme_is_bootstrapped_before_assets_and_defaults_to_light(): void

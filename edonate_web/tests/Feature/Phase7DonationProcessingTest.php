@@ -549,7 +549,6 @@ class Phase7DonationProcessingTest extends TestCase
         ]);
         $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
         $locationId = (int) DB::table('locations')->insertGetId([
-            'barangay_code' => '042101001',
             'barangay_name' => 'Balintawak',
             'city' => 'City of Lipa',
             'province' => 'Batangas',
