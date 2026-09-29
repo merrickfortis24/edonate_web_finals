@@ -5,6 +5,15 @@ on:
     branches:
       - staging
   workflow_dispatch:
+    inputs:
+      operation:
+        description: Staging operation
+        required: true
+        type: choice
+        options:
+          - deploy
+          - inspect-root
+        default: deploy
 
 permissions:
   contents: read
@@ -95,7 +104,10 @@ jobs:
   deploy:
     name: Deploy the verified staging branch
     needs: quality
-    if: github.ref == 'refs/heads/staging'
+    if: >-
+      github.ref == 'refs/heads/staging' &&
+      ((github.event_name == 'push' && !startsWith(github.event.head_commit.message, '[staging-inspection]')) ||
+       (github.event_name == 'workflow_dispatch' && inputs.operation == 'deploy'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -298,3 +310,47 @@ jobs:
             # Keep the two explicitly requested cache clears as final commands.
             php artisan config:clear
             php artisan cache:clear
+
+  inspect-staging-root:
+    name: Inspect staging directory (read-only)
+    needs: quality
+    if: >-
+      github.ref == 'refs/heads/staging' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.operation == 'inspect-root') ||
+       (github.event_name == 'push' && startsWith(github.event.head_commit.message, '[staging-inspection]')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: staging
+      url: https://edonate.online
+
+    steps:
+      - name: List staging root without changing it
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 65002
+          script: |
+            set -eu
+            DEPLOY_ROOT="/home/u156729731/domains/edonate.online/public_html/staging"
+            EXPECTED_ROOT="/home/u156729731/domains/edonate.online/public_html/staging"
+            if [ "$DEPLOY_ROOT" != "$EXPECTED_ROOT" ]; then
+              echo "Read-only inspection stopped: unexpected target path." >&2
+              exit 1
+            fi
+            if [ ! -e "$DEPLOY_ROOT" ]; then
+              echo "Staging target does not exist yet."
+              exit 0
+            fi
+            if [ "$(realpath -e -- "$DEPLOY_ROOT")" != "$EXPECTED_ROOT" ]; then
+              echo "Read-only inspection stopped: target resolves to an unexpected path." >&2
+              exit 1
+            fi
+            if [ ! -d "$DEPLOY_ROOT" ]; then
+              echo "Staging target exists but is not a directory." >&2
+              exit 1
+            fi
+            echo "Read-only inventory of the exact staging directory (type, relative path, size):"
+            find "$DEPLOY_ROOT" -mindepth 1 -maxdepth 2 -printf '%y %P %s bytes\n' | LC_ALL=C sort
