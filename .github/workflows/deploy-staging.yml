@@ -1,0 +1,300 @@
+name: Deploy to Hostinger Staging
+
+on:
+  push:
+    branches:
+      - staging
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edonate-staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Test, audit, and verify build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: edonate_web
+
+    steps:
+      - name: Check out the release candidate
+        uses: actions/checkout@v6
+
+      - name: Block tracked database and backup artifacts
+        working-directory: .
+        shell: bash
+        run: |
+          tracked_artifacts="$(git ls-files -- '*.sql' '*.zip' '*.bak' '*.dump')"
+          if [ -n "$tracked_artifacts" ]; then
+            echo "Release blocked: database dumps or backup archives are tracked by Git." >&2
+            printf '%s\n' "$tracked_artifacts" >&2
+            exit 1
+          fi
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, intl, pdo_sqlite
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: edonate_web/package-lock.json
+          package-manager-cache: false
+
+      - name: Install locked PHP dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress --optimize-autoloader
+
+      - name: Validate and audit PHP dependencies
+        run: |
+          composer validate --strict
+          composer audit --locked --no-interaction
+
+      - name: Install and audit locked browser dependencies
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+      - name: Run the PHP test suite
+        run: php artisan test
+
+      - name: Export synthetic accessibility fixtures
+        run: php artisan test --filter=AccessibilityFixturesTest
+        env:
+          EDONATE_EXPORT_A11Y_FIXTURES: '1'
+
+      - name: Build production browser assets
+        run: npm run build
+
+      - name: Verify committed build output is current
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- ../public_html/build ../public_html/vendor)" ]; then
+            echo "Committed browser assets do not match the production build." >&2
+            git status --short --untracked-files=all -- ../public_html/build ../public_html/vendor
+            exit 1
+          fi
+
+      - name: Install Playwright Chromium
+        run: npx --no-install playwright install --with-deps chromium
+
+      - name: Run WCAG and browser privacy checks
+        run: npx --no-install playwright test
+
+  deploy:
+    name: Deploy the verified staging branch
+    needs: quality
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: https://edonate.online
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          EDONATE_STAGING_DB_HOST: ${{ secrets.DB_HOST }}
+          EDONATE_STAGING_DB_DATABASE: ${{ secrets.DB_DATABASE }}
+          EDONATE_STAGING_DB_USERNAME: ${{ secrets.DB_USERNAME }}
+          EDONATE_STAGING_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 65002
+          envs: EDONATE_STAGING_DB_HOST,EDONATE_STAGING_DB_DATABASE,EDONATE_STAGING_DB_USERNAME,EDONATE_STAGING_DB_PASSWORD
+          script: |
+            set -euo pipefail
+            umask 077
+
+            DEPLOY_ROOT="/home/u156729731/domains/edonate.online/public_html/staging"
+            APP_ROOT="$DEPLOY_ROOT/edonate_web"
+            REPO_URL="git@github.com:merrickfortis24/edonate_web_finals.git"
+            DEPLOY_SHA="${{ github.sha }}"
+
+            # Fail closed if this script is ever edited to point outside the
+            # dedicated staging directory.
+            if [ "$DEPLOY_ROOT" != "/home/u156729731/domains/edonate.online/public_html/staging" ]; then
+              echo "Staging deployment stopped: unexpected deployment path." >&2
+              exit 1
+            fi
+
+            mkdir -p "$(dirname "$DEPLOY_ROOT")"
+            export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"
+
+            if [ -d "$DEPLOY_ROOT/.git" ]; then
+              cd "$DEPLOY_ROOT"
+            elif [ ! -e "$DEPLOY_ROOT" ] || [ -z "$(find "$DEPLOY_ROOT" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+              git clone --branch staging --single-branch "$REPO_URL" "$DEPLOY_ROOT"
+              cd "$DEPLOY_ROOT"
+            else
+              echo "Staging deployment stopped: target exists but is not the expected Git checkout." >&2
+              exit 1
+            fi
+
+            if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1 || ! git fsck --no-progress >/dev/null 2>&1; then
+              echo "Staging deployment stopped: the staging Git checkout is missing or corrupt." >&2
+              exit 1
+            fi
+            echo "Valid staging Git repository detected."
+
+            if git remote get-url origin >/dev/null 2>&1; then
+              git remote remove origin
+            fi
+
+            git remote add origin "$REPO_URL"
+            git fetch --prune origin staging
+            git cat-file -e "$DEPLOY_SHA^{commit}"
+            git merge-base --is-ancestor "$DEPLOY_SHA" origin/staging
+            git reset --hard "$DEPLOY_SHA"
+            test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+
+            # Install the staging web-root protections before any Composer,
+            # environment, or database work begins in this public_html child.
+            if [ ! -f "$DEPLOY_ROOT/public_html/.htaccess" ]; then
+              echo "Staging deployment stopped: the tracked web-root .htaccess is missing." >&2
+              exit 1
+            fi
+            cp "$DEPLOY_ROOT/public_html/.htaccess" "$DEPLOY_ROOT/.htaccess"
+
+            if [ ! -f "$APP_ROOT/.env" ]; then
+              if [ ! -f "$APP_ROOT/.env.example" ]; then
+                echo "Staging .env and .env.example are both missing." >&2
+                exit 1
+              fi
+              cp "$APP_ROOT/.env.example" "$APP_ROOT/.env"
+              chmod 600 "$APP_ROOT/.env"
+              echo "Created staging .env from the tracked example."
+            fi
+
+            # GitHub Environment secrets are forwarded as process environment
+            # values. They are never interpolated into shell source or printed.
+            php -r '
+              $path = $argv[1];
+              $database = [
+                  "DB_HOST" => getenv("EDONATE_STAGING_DB_HOST"),
+                  "DB_DATABASE" => getenv("EDONATE_STAGING_DB_DATABASE"),
+                  "DB_USERNAME" => getenv("EDONATE_STAGING_DB_USERNAME"),
+                  "DB_PASSWORD" => getenv("EDONATE_STAGING_DB_PASSWORD"),
+              ];
+              foreach ($database as $key => $value) {
+                  if (! is_string($value) || trim($value) === "" || preg_match("/[\r\n\0]/", $value)) {
+                      fwrite(STDERR, "A required staging database secret is missing or malformed.\n");
+                      exit(1);
+                  }
+              }
+              if (preg_match("/(^|[_-])(stage|staging|test)([_-]|$)/i", $database["DB_DATABASE"]) !== 1) {
+                  fwrite(STDERR, "Staging DB_DATABASE must include a stage, staging, or test marker; deployment refused.\n");
+                  exit(1);
+              }
+
+              $updates = [
+                  "APP_ENV" => "staging",
+                  "APP_DEBUG" => "true",
+                  "APP_URL" => "https://edonate.online/staging",
+                  "APP_NAME" => "eDonate Staging",
+                  "DB_CONNECTION" => "mysql",
+                  "SESSION_COOKIE" => "edonate-staging-session",
+                  "SESSION_PATH" => "/staging",
+                  "SESSION_SECURE_COOKIE" => "true",
+                  "SESSION_ENCRYPT" => "true",
+                  "SESSION_DRIVER" => "file",
+                  "CACHE_STORE" => "file",
+                  "QUEUE_CONNECTION" => "sync",
+                  "MAIL_MAILER" => "log",
+                  "BROADCAST_CONNECTION" => "log",
+                  "FIREBASE_CREDENTIALS" => "",
+                  "FIREBASE_DATABASE_URL" => "",
+                  "FIREBASE_WEB_API_KEY" => "",
+                  "FIREBASE_WEB_AUTH_DOMAIN" => "",
+                  "FIREBASE_WEB_PROJECT_ID" => "",
+                  "FIREBASE_WEB_APP_ID" => "",
+                  "ADMIN_GOOGLE_LOGIN_ENABLED" => "false",
+                  "PRIVACY_FIREBASE_SYNC_ENABLED" => "false",
+              ] + $database;
+
+              $contents = file_get_contents($path);
+              if ($contents === false) {
+                  fwrite(STDERR, "Unable to read staging .env.\n");
+                  exit(1);
+              }
+              foreach ($updates as $key => $value) {
+                  $value = (string) $value;
+                  if (preg_match("/[\r\n\0]/", $value)) {
+                      fwrite(STDERR, "A staging environment value is malformed.\n");
+                      exit(1);
+                  }
+                  $encoded = "\"" . str_replace(["\\", "\"", "$"], ["\\\\", "\\\"", "\\$"], $value) . "\"";
+                  $replacement = $key . "=" . $encoded;
+                  $pattern = "/^[ \\t]*" . preg_quote($key, "/") . "[ \\t]*=.*$/m";
+                  $updated = preg_replace($pattern, $replacement, $contents, 1, $count);
+                  if ($updated === null) {
+                      fwrite(STDERR, "Unable to update staging .env.\n");
+                      exit(1);
+                  }
+                  $contents = $count === 0
+                      ? rtrim($contents) . PHP_EOL . $replacement . PHP_EOL
+                      : $updated;
+              }
+              if (file_put_contents($path, $contents, LOCK_EX) === false) {
+                  fwrite(STDERR, "Unable to write staging .env.\n");
+                  exit(1);
+              }
+              chmod($path, 0600);
+              echo "Staging application and isolated database settings updated; secret values were not logged.\n";
+            ' "$APP_ROOT/.env"
+
+            # Hostinger serves DEPLOY_ROOT, while Laravel remains in APP_ROOT.
+            test -f "$DEPLOY_ROOT/public_html/index.php"
+            test -f "$DEPLOY_ROOT/public_html/.htaccess"
+
+            cd "$APP_ROOT"
+            if ! command -v composer >/dev/null 2>&1; then
+              echo "Deployment stopped: Composer is not available on the staging host." >&2
+              exit 1
+            fi
+
+            composer install --no-dev --prefer-dist --no-interaction --no-progress --optimize-autoloader
+
+            # Clear stale configuration before initializing the persistent
+            # staging APP_KEY or connecting to the isolated staging database.
+            php artisan optimize:clear
+            if ! grep -Eq '^APP_KEY=(base64:.+|[^[:space:]]+)$' .env; then
+              php artisan key:generate --force --no-interaction >/dev/null
+              echo "Initialized the staging application key."
+            fi
+
+            php artisan migrate --force
+            php scripts/sync-public-assets.php --web-root="$DEPLOY_ROOT" --skip-cache-clear
+            php artisan view:cache
+
+            test -f "$DEPLOY_ROOT/index.php"
+            test -f "$DEPLOY_ROOT/.htaccess"
+            test -f "$APP_ROOT/vendor/autoload.php"
+            test -f "$DEPLOY_ROOT/build/manifest.json"
+            test -f "$DEPLOY_ROOT/css/privacy-accessibility.css"
+            test -f "$DEPLOY_ROOT/js/privacy-accessibility.js"
+            php -l "$DEPLOY_ROOT/index.php" >/dev/null
+            grep -Eq "vendor/autoload\.php" "$DEPLOY_ROOT/index.php"
+            grep -Eq "bootstrap/app\.php" "$DEPLOY_ROOT/index.php"
+            grep -Fq "RewriteRule ^ index.php" "$DEPLOY_ROOT/.htaccess"
+            php artisan route:list --path=admin/login --no-ansi | grep -Fq "admin/login"
+
+            # The repository's privacy:check intentionally requires production
+            # APP_ENV and APP_DEBUG=false, so it is not applicable to staging.
+            # Keep the two explicitly requested cache clears as final commands.
+            php artisan config:clear
+            php artisan cache:clear
