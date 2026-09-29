@@ -14,6 +14,7 @@ on:
           - deploy
           - inspect-root
           - seed-demo
+          - provision-demo-admin
         default: deploy
 
 permissions:
@@ -417,3 +418,44 @@ jobs:
             cd "$APP_ROOT"
             export EDONATE_ALLOW_STAGING_DEMO_SEED=1
             php artisan db:seed --class='Database\Seeders\DemoDataSeeder' --force --no-interaction
+
+  provision-staging-demo-admin:
+    name: Provision staging-only admin
+    needs: quality
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'workflow_dispatch' && inputs.operation == 'provision-demo-admin'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+      url: https://edonate.online/staging
+
+    steps:
+      - name: Create the dedicated staging test account
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          EDONATE_STAGING_DEMO_ADMIN_PASSWORD: ${{ secrets.STAGING_DEMO_ADMIN_PASSWORD }}
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 65002
+          envs: EDONATE_STAGING_DEMO_ADMIN_PASSWORD
+          script: |
+            set -euo pipefail
+            DEPLOY_ROOT="/home/u156729731/domains/edonate.online/public_html/staging"
+            APP_ROOT="$DEPLOY_ROOT/edonate_web"
+            if [ "$(realpath -e -- "$DEPLOY_ROOT")" != "$DEPLOY_ROOT" ] || [ "$(realpath -e -- "$APP_ROOT")" != "$APP_ROOT" ]; then
+              echo "Demo-admin provisioning stopped: staging paths do not resolve to the expected directories." >&2
+              exit 1
+            fi
+            if [ ! -f "$APP_ROOT/artisan" ] || [ ! -f "$APP_ROOT/.env" ]; then
+              echo "Demo-admin provisioning stopped: the deployed staging application or environment file is missing." >&2
+              exit 1
+            fi
+            if [ -z "${EDONATE_STAGING_DEMO_ADMIN_PASSWORD:-}" ]; then
+              echo "Demo-admin provisioning stopped: the staging-only password secret is not configured." >&2
+              exit 1
+            fi
+            cd "$APP_ROOT"
+            export EDONATE_ALLOW_STAGING_DEMO_ADMIN=1
+            php artisan db:seed --class='Database\Seeders\StagingDemoAdminSeeder' --force --no-interaction
