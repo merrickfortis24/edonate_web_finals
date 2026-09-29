@@ -21,6 +21,8 @@ class DemoDataSeeder extends Seeder
 {
     private const PASSWORD = 'Password123!';
 
+    private const STAGING_DATABASE_MARKER = '/(^|[_-])(stage|staging|test)([_-]|$)/i';
+
     /** @var array<int, string> */
     private const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
@@ -43,6 +45,33 @@ class DemoDataSeeder extends Seeder
         'audit_logs',
         'sessions',
         'migrations',
+    ];
+
+    /** @var array<int, string> */
+    private const REQUIRED_TABLES = [
+        'blood_types',
+        'locations',
+        'donors',
+        'donor_authentication',
+        'donor_verifications',
+        'eligibility_status',
+        'eligibility_submissions',
+        'eligibility_answers',
+        'donor_screening_answers',
+        'donation_events',
+        'appointments',
+        'donation_records',
+        'facilities',
+        'facility_blood_inventory',
+        'facility_blood_inventory_logs',
+        'blood_requests',
+        'blood_request_donors',
+        'notifications',
+        'appointment_cancellations',
+        'appointment_restrictions',
+        'appointment_restriction_appeals',
+        'appointment_restriction_reviews',
+        'screening_questions',
     ];
 
     /** @var array<int, int> */
@@ -81,17 +110,20 @@ class DemoDataSeeder extends Seeder
 
     public function run(): void
     {
-        if (! app()->environment(['local', 'testing'])) {
-            throw new RuntimeException('DemoDataSeeder is restricted to the local or testing environment.');
-        }
+        $staging = app()->environment('staging');
+        $this->assertSeedingEnvironment($staging);
 
         $this->today = Carbon::today();
         $protectedBefore = $this->protectedSnapshot();
 
-        // The supplied dump predates several runtime fields. This only adds
-        // missing non-protected compatibility structures; it never removes or
-        // rewrites existing application data.
-        $this->ensureRuntimeCompatibility();
+        if ($staging) {
+            $this->assertStagingSchemaIsCurrent();
+        } else {
+            // Local/testing fixtures may use an older imported schema. Keep
+            // the existing additive compatibility repair limited to those
+            // non-production environments.
+            $this->ensureRuntimeCompatibility();
+        }
 
         DB::transaction(function () use ($protectedBefore): void {
             $this->seedBloodTypes();
@@ -101,6 +133,7 @@ class DemoDataSeeder extends Seeder
             $this->seedFacilities();
             $this->seedEvents();
             $this->seedAppointmentsAndDonations();
+            $this->seedAppointmentRestrictions();
             $this->seedEligibility();
             $this->seedVerifications();
             $this->seedFacilityInventory();
@@ -115,6 +148,55 @@ class DemoDataSeeder extends Seeder
         $this->printSummary();
     }
 
+    private function assertSeedingEnvironment(bool $staging): void
+    {
+        if (app()->environment(['local', 'testing'])) {
+            return;
+        }
+
+        if (! $staging || ! filter_var(env('EDONATE_ALLOW_STAGING_DEMO_SEED', false), FILTER_VALIDATE_BOOLEAN)) {
+            throw new RuntimeException('Demo data seeding is allowed only in local/testing or explicitly opted-in staging.');
+        }
+
+        $connection = (string) config('database.default');
+        $database = (string) config("database.connections.{$connection}.database");
+        if (DB::getDriverName() !== 'mysql' || preg_match(self::STAGING_DATABASE_MARKER, $database) !== 1) {
+            throw new RuntimeException('Staging demo seeding requires a MySQL database name marked stage, staging, or test.');
+        }
+    }
+
+    private function assertStagingSchemaIsCurrent(): void
+    {
+        foreach (array_diff(self::REQUIRED_TABLES, ['screening_questions']) as $table) {
+            if (! Schema::hasTable($table)) {
+                throw new RuntimeException('Staging demo seeding stopped because the database schema is incomplete. Run migrations first.');
+            }
+        }
+
+        $requiredColumns = [
+            'locations' => ['barangay_code'],
+            'donors' => [
+                'is_active', 'blood_type_status', 'blood_type_verified_by_admin_id', 'blood_type_verified_at',
+                'appointment_restricted', 'consecutive_cancellations', 'restriction_status', 'restriction_reason', 'restricted_at',
+            ],
+            'donation_records' => ['verified_blood_type_id', 'deferred_reason', 'recorded_by_admin_id', 'created_at', 'updated_at'],
+            'notifications' => ['push_sent'],
+            'screening_questions' => [
+                'followup_prompt', 'followup_trigger', 'question_order', 'is_active', 'risk_level',
+                'trigger_answer', 'deferral_days', 'recommendation_message',
+            ],
+            'blood_requests' => ['request_source', 'requested_by_donor_id', 'reviewed_by_admin_id', 'reviewed_at', 'review_reason'],
+        ];
+
+        foreach ($requiredColumns as $table => $columns) {
+            foreach ($columns as $column) {
+                if (! Schema::hasColumn($table, $column)) {
+                    throw new RuntimeException('Staging demo seeding stopped because the database schema is incomplete. Run migrations first.');
+                }
+            }
+        }
+    }
+
     /**
      * Add only the non-protected fields that the current application reads.
      * This is needed because the provided SQL dump has an older Phase 7–11
@@ -123,28 +205,7 @@ class DemoDataSeeder extends Seeder
      */
     private function ensureRuntimeCompatibility(): void
     {
-        $requiredTables = [
-            'blood_types',
-            'locations',
-            'donors',
-            'donor_authentication',
-            'donor_verifications',
-            'eligibility_status',
-            'eligibility_submissions',
-            'eligibility_answers',
-            'donor_screening_answers',
-            'donation_events',
-            'appointments',
-            'donation_records',
-            'facilities',
-            'facility_blood_inventory',
-            'facility_blood_inventory_logs',
-            'blood_requests',
-            'blood_request_donors',
-            'notifications',
-        ];
-
-        foreach ($requiredTables as $table) {
+        foreach (self::REQUIRED_TABLES as $table) {
             if (! Schema::hasTable($table)) {
                 throw new RuntimeException("Required application table [{$table}] is missing.");
             }
@@ -493,6 +554,15 @@ class DemoDataSeeder extends Seeder
                 'blood_type_verified_at' => $bloodTypeStatus === 'verified'
                     ? $this->today->copy()->subDays(20 + $index)->setTime(10, 0)->toDateTimeString()
                     : null,
+                'is_active' => $number <= 75,
+                'appointment_restricted' => false,
+                'consecutive_cancellations' => 0,
+                'restriction_status' => 'clear',
+                'restriction_reason' => null,
+                'restricted_at' => null,
+                'restricted_by' => null,
+                'restriction_lifted_at' => null,
+                'restriction_lifted_by' => null,
                 'location_id' => $this->locationIds[$index % count($this->locationIds)],
                 'date_registered' => $dateRegistered,
                 'verification_status' => $verificationStatus,
@@ -700,6 +770,109 @@ class DemoDataSeeder extends Seeder
                 } elseif ($status === 'deferred_on_site') {
                     $this->seedDonationRecord($appointmentId, $donorId, $appointmentDate, 'deferred', $eventIndex, $slot);
                 }
+            }
+        }
+    }
+
+    private function seedAppointmentRestrictions(): void
+    {
+        foreach ([56 => 'pending', 57 => 'rejected'] as $donorNumber => $appealStatus) {
+            $donorId = (int) ($this->donorIds[$donorNumber - 1] ?? 0);
+            if ($donorId < 1) {
+                throw new RuntimeException('Demo restriction donor was not created.');
+            }
+
+            $cancelledAppointments = DB::table('appointments')
+                ->where('donor_id', $donorId)
+                ->where('status', 'cancelled')
+                ->where('donation_center', 'like', 'DEMO seed:%')
+                ->orderBy('appointment_id')
+                ->limit(3)
+                ->get(['appointment_id']);
+
+            if ($cancelledAppointments->count() !== 3) {
+                throw new RuntimeException('Demo restriction scenario requires three cancelled demo appointments.');
+            }
+
+            foreach ($cancelledAppointments as $index => $appointment) {
+                $consecutiveCount = $index + 1;
+                $cancelledAt = $this->today->copy()->subDays(3 - $consecutiveCount)
+                    ->setTime(10 + $consecutiveCount, 30)->toDateTimeString();
+
+                $this->upsertBy('appointment_cancellations', ['appointment_id' => (int) $appointment->appointment_id], [
+                    'donor_id' => $donorId,
+                    'appointment_id' => (int) $appointment->appointment_id,
+                    'cancelled_at' => $cancelledAt,
+                    'reason' => 'DEMO seed: donor cancellation scenario ' . $consecutiveCount . ' of 3.',
+                    'cancelled_by' => 'donor',
+                    'consecutive_count' => $consecutiveCount,
+                    'created_at' => $cancelledAt,
+                    'updated_at' => $cancelledAt,
+                ], 'cancellation_id');
+            }
+
+            $restrictedAt = $this->today->copy()->setTime(13, 30)->toDateTimeString();
+            DB::table('donors')->where('donor_id', $donorId)->update($this->filterPayload('donors', [
+                'appointment_restricted' => true,
+                'consecutive_cancellations' => 3,
+                'restriction_status' => 'restricted',
+                'restriction_reason' => 'DEMO seed: three consecutive donor-initiated appointment cancellations.',
+                'restricted_at' => $restrictedAt,
+                'restricted_by' => null,
+                'restriction_lifted_at' => null,
+                'restriction_lifted_by' => null,
+            ]));
+
+            $restrictionId = $this->upsertBy('appointment_restrictions', [
+                'donor_id' => $donorId,
+                'status' => 'active',
+            ], [
+                'donor_id' => $donorId,
+                'status' => 'active',
+                'restriction_reason' => 'DEMO seed: three consecutive donor-initiated appointment cancellations.',
+                'restricted_at' => $restrictedAt,
+                'restricted_by' => null,
+                'lifted_at' => null,
+                'lifted_by' => null,
+                'admin_notes' => null,
+                'created_at' => $restrictedAt,
+                'updated_at' => $restrictedAt,
+            ], 'restriction_id');
+
+            $submittedAt = $this->today->copy()->subDays($appealStatus === 'pending' ? 1 : 4)->setTime(9, 15)->toDateTimeString();
+            $reviewedAt = $appealStatus === 'rejected'
+                ? $this->today->copy()->subDays(2)->setTime(11, 0)->toDateTimeString()
+                : null;
+            $appealId = $this->upsertBy('appointment_restriction_appeals', [
+                'restriction_id' => $restrictionId,
+                'status' => $appealStatus,
+            ], [
+                'donor_id' => $donorId,
+                'restriction_id' => $restrictionId,
+                'justification' => 'DEMO seed: sample donor explanation for testing the restriction review workflow.',
+                'status' => $appealStatus,
+                'submitted_at' => $submittedAt,
+                'reviewed_at' => $reviewedAt,
+                'reviewed_by' => null,
+                'admin_notes' => $appealStatus === 'rejected' ? 'DEMO seed: sample rejection note for review history.' : null,
+                'created_at' => $submittedAt,
+                'updated_at' => $reviewedAt ?? $submittedAt,
+            ], 'appeal_id');
+
+            if ($appealStatus === 'rejected') {
+                $this->upsertBy('appointment_restriction_reviews', [
+                    'appeal_id' => $appealId,
+                    'action' => 'appeal_rejected',
+                ], [
+                    'restriction_id' => $restrictionId,
+                    'appeal_id' => $appealId,
+                    'admin_id' => null,
+                    'action' => 'appeal_rejected',
+                    'notes' => 'DEMO seed: sample rejection note for review history.',
+                    'reviewed_at' => $reviewedAt,
+                    'created_at' => $reviewedAt,
+                    'updated_at' => $reviewedAt,
+                ], 'review_id');
             }
         }
     }
@@ -1024,7 +1197,8 @@ class DemoDataSeeder extends Seeder
 
         for ($index = 0; $index < 25; $index++) {
             $number = $index + 1;
-            $status = $statuses[$index % count($statuses)];
+            $isMobileReview = $index < 3;
+            $status = $isMobileReview ? 'pending_review' : $statuses[($index - 3) % count($statuses)];
             $urgency = $index % 7 === 0 ? 'emergency' : ($index % 3 === 0 ? 'urgent' : 'normal');
             $requestType = $index % 2 === 0 ? 'blood_request' : 'replacement_donor';
             $allowOther = $index % 3 === 0;
@@ -1034,7 +1208,7 @@ class DemoDataSeeder extends Seeder
             $createdAt = $this->today->copy()->subDays(3 + (($index * 11) % 160))->setTime(10 + ($index % 6), 15);
 
             $payload = [
-                'facility_id' => $this->facilityIds[$index % count($this->facilityIds)],
+                'facility_id' => $isMobileReview && $index === 2 ? null : $this->facilityIds[$index % count($this->facilityIds)],
                 'request_reference' => $reference,
                 'patient_reference_code' => 'DEMO-PAT-' . str_pad((string) $number, 4, '0', STR_PAD_LEFT),
                 'request_type' => $requestType,
@@ -1049,6 +1223,11 @@ class DemoDataSeeder extends Seeder
                 'status' => $status,
                 'notes' => 'DEMO request for filter, matching, and status testing.',
                 'created_by_admin_id' => null,
+                'request_source' => $isMobileReview ? 'app' : 'admin',
+                'requested_by_donor_id' => $isMobileReview ? ($this->donorIds[$index] ?? null) : null,
+                'reviewed_by_admin_id' => null,
+                'reviewed_at' => null,
+                'review_reason' => null,
                 'expires_at' => $status === 'expired'
                     ? $createdAt->copy()->addDays(2)->toDateTimeString()
                     : $this->today->copy()->addDays(7 + $index)->setTime(17, 0)->toDateTimeString(),
@@ -1084,6 +1263,10 @@ class DemoDataSeeder extends Seeder
             ->where('request_id', $requestId)
             ->whereIn('donor_id', $this->donorIds)
             ->delete();
+
+        if ($requestStatus === 'pending_review') {
+            return;
+        }
 
         $neededBloodTypeId = (int) $request->needed_blood_type_id;
         $exactPool = $this->eligibleMatchingDonors($neededBloodTypeId, true);
@@ -1383,6 +1566,25 @@ class DemoDataSeeder extends Seeder
 
         $this->command->info('DEMO data seeded idempotently.');
         $this->command->line('Donor login: demo.donor001@example.test / ' . self::PASSWORD);
+        $this->command->line('Inactive demo accounts: demo.donor076@example.test through demo.donor080@example.test.');
+        $this->command->line('Donors: ' . DB::table('donor_authentication')->where('email', 'like', 'demo.donor%@example.test')->count());
+        $this->command->line('Facilities: ' . DB::table('facilities')->where('facility_name', 'like', 'DEMO %')->count());
+        $this->command->line('Events: ' . DB::table('donation_events')->where('title', 'like', 'DEMO Event %')->count());
+        $this->command->line('Appointments: ' . DB::table('appointments')->where('donation_center', 'like', 'DEMO seed:%')->count());
+        $this->command->line('Donation records: ' . DB::table('donation_records')->where('remarks', 'like', 'DEMO %')->count());
+        $this->command->line('Pending mobile blood requests: ' . DB::table('blood_requests')
+            ->where('request_reference', 'like', 'DEMO-BR-%')
+            ->where('request_source', 'app')
+            ->where('status', 'pending_review')
+            ->count());
+        $this->command->line('Active demo restrictions: ' . DB::table('appointment_restrictions')
+            ->where('status', 'active')
+            ->where('restriction_reason', 'like', 'DEMO seed:%')
+            ->count());
+        $this->command->line('Pending demo appeals: ' . DB::table('appointment_restriction_appeals')
+            ->where('status', 'pending')
+            ->where('justification', 'like', 'DEMO seed:%')
+            ->count());
         $this->command->line('Protected admin/security/system snapshots unchanged.');
         $this->command->line('Generated data markers: DEMO, demo.donor###@example.test, DEMO-BR-####.');
     }

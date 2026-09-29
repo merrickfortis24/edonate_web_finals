@@ -13,6 +13,7 @@ on:
         options:
           - deploy
           - inspect-root
+          - seed-demo
         default: deploy
 
 permissions:
@@ -366,3 +367,38 @@ jobs:
             fi
             echo "Read-only inventory of the exact staging directory (type, relative path, size):"
             find "$DEPLOY_ROOT" -mindepth 1 -maxdepth 2 -printf '%y %P %s bytes\n' | LC_ALL=C sort
+
+
+  seed-staging-demo-data:
+    name: Seed synthetic staging data
+    needs: quality
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'workflow_dispatch' && inputs.operation == 'seed-demo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: staging
+      url: https://edonate.online/staging
+
+    steps:
+      - name: Run the guarded, idempotent demo seeder
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: 65002
+          script: |
+            set -euo pipefail
+            DEPLOY_ROOT="/home/u156729731/domains/edonate.online/public_html/staging"
+            APP_ROOT="$DEPLOY_ROOT/edonate_web"
+            if [ "$(realpath -e -- "$DEPLOY_ROOT")" != "$DEPLOY_ROOT" ] || [ "$(realpath -e -- "$APP_ROOT")" != "$APP_ROOT" ]; then
+              echo "Demo seeding stopped: staging paths do not resolve to the expected directories." >&2
+              exit 1
+            fi
+            if [ ! -f "$APP_ROOT/artisan" ] || [ ! -f "$APP_ROOT/.env" ]; then
+              echo "Demo seeding stopped: the deployed staging Laravel application or its environment file is missing." >&2
+              exit 1
+            fi
+            cd "$APP_ROOT"
+            export EDONATE_ALLOW_STAGING_DEMO_SEED=1
+            php artisan db:seed --class='Database\Seeders\DemoDataSeeder' --force --no-interaction

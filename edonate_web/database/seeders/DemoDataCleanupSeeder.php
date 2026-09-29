@@ -60,6 +60,18 @@ class DemoDataCleanupSeeder extends Seeder
                 ->pluck('request_id')
                 ->map(fn ($id): int => (int) $id)
                 ->all();
+            $restrictionIds = DB::table('appointment_restrictions')
+                ->whereIn('donor_id', $donorIds)
+                ->where('restriction_reason', 'like', 'DEMO seed:%')
+                ->pluck('restriction_id')
+                ->map(fn ($id): int => (int) $id)
+                ->all();
+            $appealIds = DB::table('appointment_restriction_appeals')
+                ->whereIn('restriction_id', $restrictionIds)
+                ->where('justification', 'like', 'DEMO seed:%')
+                ->pluck('appeal_id')
+                ->map(fn ($id): int => (int) $id)
+                ->all();
             $appointmentIds = DB::table('appointments')
                 ->whereIn('event_id', $eventIds)
                 ->where('donation_center', 'like', 'DEMO seed:%')
@@ -83,6 +95,20 @@ class DemoDataCleanupSeeder extends Seeder
             $counts['notifications'] = $this->deleteWhereIn('notifications', 'donor_id', $donorIds);
             $counts['blood_request_donors'] = $this->deleteWhereIn('blood_request_donors', 'request_id', $requestIds);
             $counts['blood_requests'] = DB::table('blood_requests')->where('request_reference', 'like', 'DEMO-BR-%')->delete();
+            $counts['appointment_restriction_reviews'] = DB::table('appointment_restriction_reviews')
+                ->whereIn('restriction_id', $restrictionIds)
+                ->where('notes', 'like', 'DEMO seed:%')
+                ->delete();
+            $counts['appointment_restriction_appeals'] = DB::table('appointment_restriction_appeals')
+                ->whereIn('appeal_id', $appealIds)
+                ->delete();
+            $counts['appointment_restrictions'] = DB::table('appointment_restrictions')
+                ->whereIn('restriction_id', $restrictionIds)
+                ->delete();
+            $counts['appointment_cancellations'] = DB::table('appointment_cancellations')
+                ->whereIn('donor_id', $donorIds)
+                ->where('reason', 'like', 'DEMO seed:%')
+                ->delete();
             $counts['donation_records'] = $this->deleteWhereIn('donation_records', 'appointment_id', $appointmentIds);
             $counts['appointments'] = $this->deleteWhereIn('appointments', 'appointment_id', $appointmentIds);
             $counts['donor_screening_answers'] = DB::table('donor_screening_answers')
