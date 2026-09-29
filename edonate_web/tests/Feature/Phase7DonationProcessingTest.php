@@ -823,6 +823,7 @@ class Phase7DonationProcessingTest extends TestCase
 
         Schema::create('locations', function (Blueprint $table): void {
             $table->increments('location_id');
+            $table->string('barangay_code')->nullable();
             $table->string('city')->nullable();
             $table->string('province')->nullable();
             $table->string('barangay_name')->nullable();
