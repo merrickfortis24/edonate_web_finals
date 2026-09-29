@@ -56,6 +56,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Asset URL
+    |--------------------------------------------------------------------------
+    |
+    | Use an explicit asset origin when the application is served from a
+    | subdirectory (such as the staging installation at /staging). Without
+    | this, rewritten requests can make Laravel emit asset URLs from the
+    | domain root instead of the application's public directory.
+    |
+    */
+
+    'asset_url' => env('ASSET_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

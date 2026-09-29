@@ -231,6 +231,7 @@ jobs:
                   "APP_ENV" => "staging",
                   "APP_DEBUG" => "true",
                   "APP_URL" => "https://edonate.online/staging",
+                  "ASSET_URL" => "https://edonate.online/staging",
                   "APP_NAME" => "eDonate Staging",
                   "DB_CONNECTION" => "mysql",
                   "SESSION_COOKIE" => "edonate-staging-session",
