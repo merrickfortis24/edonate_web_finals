@@ -3,6 +3,7 @@
 
 declare(strict_types=1);
 
+if (isset($_SERVER['SCRIPT_FILENAME']) && realpath((string) $_SERVER['SCRIPT_FILENAME']) === __FILE__) {
 $projectRoot = realpath(__DIR__ . '/..');
 if ($projectRoot === false) {
     fwrite(STDERR, "Unable to resolve project root.\n");
@@ -115,7 +116,12 @@ foreach ($publicFiles as $file) {
         continue;
     }
 
+    if (is_link($destination)) {
+        fail("Refusing to overwrite a symbolic link with a public file: {$destination}");
+    }
+
     if (! shouldCopyFile($source, $destination)) {
+        setPublicMode($destination, 0644, $dryRun);
         $totals['unchanged']++;
         continue;
     }
@@ -129,6 +135,7 @@ foreach ($publicFiles as $file) {
     }
 
     $totals['copied']++;
+    setPublicMode($destination, 0644, $dryRun);
 }
 
 $requiredWebFiles = ['index.php', '.htaccess'];
@@ -151,6 +158,7 @@ if (! $skipCache) {
 }
 
 writeln($dryRun ? 'Dry run complete.' : 'Deploy asset sync complete.');
+}
 
 function parseOptions(array $argv): array
 {
@@ -296,6 +304,20 @@ function syncDirectory(string $source, string $destination, bool $dryRun): array
 
     writeln("Sync {$source} -> {$destination}");
 
+    if (is_link($destination)) {
+        fail("Refusing to sync public assets through a symbolic link: {$destination}");
+    }
+
+    if (! is_dir($destination)) {
+        if ($dryRun) {
+            writeln("  mkdir {$destination}");
+        } elseif (! mkdir($destination, 0755, true) && ! is_dir($destination)) {
+            fail("Unable to create public asset directory: {$destination}");
+        }
+    }
+
+    setPublicMode($destination, 0755, $dryRun);
+
     $iterator = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS),
         RecursiveIteratorIterator::SELF_FIRST
@@ -307,17 +329,28 @@ function syncDirectory(string $source, string $destination, bool $dryRun): array
         $destinationPath = $destination . DIRECTORY_SEPARATOR . $relativePath;
 
         if ($item->isDir()) {
+            if (is_link($destinationPath)) {
+                fail("Refusing to sync public assets through a symbolic link: {$destinationPath}");
+            }
+
             if (! is_dir($destinationPath)) {
                 if ($dryRun) {
                     writeln("  mkdir {$destinationPath}");
-                } else {
-                    mkdir($destinationPath, 0755, true);
+                } elseif (! mkdir($destinationPath, 0755, true) && ! is_dir($destinationPath)) {
+                    fail("Unable to create public asset directory: {$destinationPath}");
                 }
             }
+
+            setPublicMode($destinationPath, 0755, $dryRun);
             continue;
         }
 
+        if (is_link($destinationPath)) {
+            fail("Refusing to overwrite a symbolic link with a public asset: {$destinationPath}");
+        }
+
         if (! shouldCopyFile($sourcePath, $destinationPath)) {
+            setPublicMode($destinationPath, 0644, $dryRun);
             $unchanged++;
             continue;
         }
@@ -340,12 +373,27 @@ function syncDirectory(string $source, string $destination, bool $dryRun): array
         }
 
         $copied++;
+        setPublicMode($destinationPath, 0644, $dryRun);
     }
 
     return [
         'copied' => $copied,
         'unchanged' => $unchanged,
     ];
+}
+
+function setPublicMode(string $path, int $mode, bool $dryRun): void
+{
+    $formattedMode = sprintf('%04o', $mode);
+
+    if ($dryRun) {
+        writeln("  chmod {$formattedMode} {$path}");
+        return;
+    }
+
+    if (! chmod($path, $mode)) {
+        fail("Unable to set public asset permissions ({$formattedMode}): {$path}");
+    }
 }
 
 function shouldCopyFile(string $sourcePath, string $destinationPath): bool

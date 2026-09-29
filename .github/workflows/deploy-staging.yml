@@ -188,6 +188,11 @@ jobs:
             git reset --hard "$DEPLOY_SHA"
             test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
 
+            # SSH starts with umask 077 so application files and secrets stay
+            # private. The deploy root itself must still be traversable by the
+            # web server to serve the explicitly public asset directories.
+            chmod 0755 "$DEPLOY_ROOT"
+
             # Install the staging web-root protections before any Composer,
             # environment, or database work begins in this public_html child.
             if [ ! -f "$DEPLOY_ROOT/public_html/.htaccess" ]; then
@@ -195,6 +200,7 @@ jobs:
               exit 1
             fi
             cp "$DEPLOY_ROOT/public_html/.htaccess" "$DEPLOY_ROOT/.htaccess"
+            chmod 0644 "$DEPLOY_ROOT/.htaccess"
 
             if [ ! -f "$APP_ROOT/.env" ]; then
               if [ ! -f "$APP_ROOT/.env.example" ]; then
@@ -314,6 +320,11 @@ jobs:
             test -f "$DEPLOY_ROOT/build/manifest.json"
             test -f "$DEPLOY_ROOT/css/privacy-accessibility.css"
             test -f "$DEPLOY_ROOT/js/privacy-accessibility.js"
+            test "$(stat -c '%a' "$DEPLOY_ROOT")" = "755"
+            test "$(stat -c '%a' "$DEPLOY_ROOT/build")" = "755"
+            test "$(stat -c '%a' "$DEPLOY_ROOT/build/assets")" = "755"
+            test "$(stat -c '%a' "$DEPLOY_ROOT/index.php")" = "644"
+            test "$(stat -c '%a' "$DEPLOY_ROOT/.htaccess")" = "644"
             php -l "$DEPLOY_ROOT/index.php" >/dev/null
             grep -Eq "vendor/autoload\.php" "$DEPLOY_ROOT/index.php"
             grep -Eq "bootstrap/app\.php" "$DEPLOY_ROOT/index.php"
@@ -340,6 +351,15 @@ jobs:
             exit 1
           fi
           echo "Staging admin login route is reachable (HTTP 200)."
+
+          manifest="$(curl --silent --show-error --fail --max-time 30 https://edonate.online/staging/build/manifest.json)"
+          adminlte_css="$(printf '%s' "$manifest" | jq -er '."resources/css/adminlte.css".file | select(test("^assets/[^/]+\\.css$"))')"
+          asset_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 30 "https://edonate.online/staging/build/$adminlte_css")"
+          if [ "$asset_status" != "200" ]; then
+            echo "Staging AdminLTE stylesheet returned HTTP $asset_status; expected 200." >&2
+            exit 1
+          fi
+          echo "Staging AdminLTE stylesheet is publicly reachable (HTTP 200)."
 
   inspect-staging-root:
     name: Inspect staging directory (read-only)
