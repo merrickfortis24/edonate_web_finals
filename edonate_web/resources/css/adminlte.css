@@ -11,6 +11,10 @@
 @import 'admin-lte/dist/css/adminlte.css';
 @import './admin.css';
 
+:root {
+    --edonate-static-assets-revision: 2;
+}
+
 /*
  * Option B: compile from source to customise SCSS variables. Comment out
  * the admin-lte CSS import above and use this instead (requires `sass`):
