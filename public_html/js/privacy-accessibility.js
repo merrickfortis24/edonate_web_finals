@@ -8,6 +8,7 @@
     let opener = null;
     let saving = false;
     let channel;
+    const dismissalKey = `edonate-privacy-banner-dismissed:${panel?.dataset.version || 'current'}`;
     const form = panel?.querySelector('form');
     const status = document.getElementById('ed-privacy-status');
     const categories = ['analytics', 'maps'];
@@ -27,8 +28,17 @@
         document.querySelectorAll('[data-privacy-open]').forEach(el => el.setAttribute('aria-expanded', 'true'));
         panel.querySelector('h2').focus();
     }
-    function close() {
+    function wasDismissedThisSession() {
+        try { return sessionStorage.getItem(dismissalKey) === '1'; }
+        catch (_) { return false; }
+    }
+    function rememberDismissalForSession() {
+        try { sessionStorage.setItem(dismissalKey, '1'); }
+        catch (_) { /* If storage is unavailable, optional services remain denied. */ }
+    }
+    function close(rememberForSession = true) {
         if (!panel) return;
+        if (rememberForSession) rememberDismissalForSession();
         panel.hidden = true;
         document.querySelectorAll('[data-privacy-open]').forEach(el => el.setAttribute('aria-expanded', 'false'));
         if (opener?.isConnected) opener.focus();
@@ -51,7 +61,7 @@
             status.textContent = 'Your choices have been saved.';
             announce();
             channel?.postMessage('changed');
-            close();
+            close(false);
             if (revoked) {
                 location.reload(); // Removing script tags alone cannot stop already running trackers.
             }
@@ -93,7 +103,7 @@
         const trigger = event.target.closest('[data-privacy-open]');
         if (trigger) { event.preventDefault(); open(trigger); }
     });
-    panel?.querySelector('[data-privacy-close]').addEventListener('click', close);
+    panel?.querySelector('[data-privacy-close]').addEventListener('click', () => close());
     panel?.addEventListener('keydown', event => { if (event.key === 'Escape' && !saving) { event.stopPropagation(); close(); } });
     panel?.querySelector('[data-privacy-reject]').addEventListener('click', () => save({ analytics: false, maps: false }));
     panel?.querySelector('[data-privacy-accept]').addEventListener('click', () => save(Object.fromEntries(categories.map(name => [name, !!form.elements.namedItem(name)]))));
@@ -110,7 +120,7 @@
         setTimeout(() => location.reload(), Math.min(Math.max(0, choices.expires_at * 1000 - Date.now()), 2147483647));
     }
     announce();
-    if (!choices.decided && panel && enforceBanner) {
+    if (!choices.decided && panel && enforceBanner && !wasDismissedThisSession()) {
         // Show without moving focus away from the page's initial reading position.
         panel.hidden = false;
         document.querySelectorAll('[data-privacy-open]').forEach(el => el.setAttribute('aria-expanded', 'true'));

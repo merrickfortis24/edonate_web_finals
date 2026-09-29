@@ -34,7 +34,7 @@ class PrivacyController extends Controller
             'decided' => true, 'necessary' => true, 'expires_at' => $value['expires_at'],
         ]])->header('Cache-Control', 'no-store, private')->cookie(
             config('privacy.cookie'), json_encode($value, JSON_THROW_ON_ERROR),
-            config('privacy.choice_days') * 24 * 60, '/', null,
+            config('privacy.choice_days') * 24 * 60, config('session.path', '/'), null,
             $request->isSecure() || app()->isProduction(), true, false, 'lax'
         );
     }

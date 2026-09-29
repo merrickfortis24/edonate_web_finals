@@ -49,6 +49,27 @@ test('choices are unchecked, reject works, and keyboard can reopen/escape', asyn
     await expect(open).toBeFocused();
     expect(external).toEqual([]);
 });
+test('closing without consent stays dismissed during this tab session and can be reopened', async ({ page }) => {
+    await mount(page, 'privacy');
+    const panel = page.locator('#ed-privacy-panel');
+
+    await panel.getByRole('button', { name: 'Close for this session' }).click();
+    await expect(panel).toBeHidden();
+    expect(await page.evaluate(() => eDonatePrivacy.allowed('maps'))).toBe(false);
+
+    await page.goto('http://audit.test/fixture?next-page=1');
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('#ed-privacy-panel')).toBeHidden();
+    expect(await page.evaluate(() => eDonatePrivacy.allowed('maps'))).toBe(false);
+
+    await page.getByRole('button', { name: 'Privacy choices', exact: true }).click();
+    await expect(page.locator('#ed-privacy-panel')).toBeVisible();
+    await expect(page.locator('#ed-privacy-form input[name="maps"]')).not.toBeChecked();
+
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    await expect(page.locator('#ed-privacy-panel')).toBeVisible();
+});
 test('map waits for explicit consent; table is still available', async ({ page }) => {
     await mount(page, 'admin-map');
     expect(external).toEqual([]);

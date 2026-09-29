@@ -30,7 +30,7 @@
             <button type="button" data-privacy-reject>Reject optional services</button>
             <button type="submit">Save selected choices</button>
             <button type="button" data-privacy-accept>Accept optional services</button>
-            <button type="button" data-privacy-close>Close</button>
+            <button type="button" data-privacy-close>Close for this session</button>
         </div>
     </form>
 </section>

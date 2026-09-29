@@ -4,6 +4,7 @@ return [
     // Publication details supplied by the operator. "reviewed" remains a separate
     // release gate for the substantive legal-basis and retention approval.
     'version' => '2026-09-28-v3',
+    'asset_version' => '2026-09-29-v1',
     'reviewed' => (bool) env('PRIVACY_POLICY_REVIEWED', false),
     'controller' => env('PRIVACY_CONTROLLER_NAME', 'City Health Office of Lipa City'),
     'address' => env('PRIVACY_CONTROLLER_ADDRESS', 'City Hall Compound, Lipa City, Batangas, Philippines'),
@@ -13,7 +14,11 @@ return [
     'philippines_only' => (bool) env('PRIVACY_PHILIPPINES_ONLY', true),
     // Never permit an environment override to weaken the owner-approved floor.
     'minimum_age' => max(18, (int) env('PRIVACY_MINIMUM_AGE', 18)),
-    'cookie' => 'edonate_privacy_choices',
+    // Staging and production share a hostname, but use different APP_KEYs.
+    // Keep their encrypted consent cookies separate to prevent overwriting.
+    'cookie' => env('PRIVACY_COOKIE', env('APP_ENV') === 'staging'
+        ? 'edonate_staging_privacy_choices'
+        : 'edonate_privacy_choices'),
     'choice_days' => 180,
     // Browser choices cannot authorize disclosure of other people's records.
     'firebase_sync_enabled' => (bool) env('PRIVACY_FIREBASE_SYNC_ENABLED', false),

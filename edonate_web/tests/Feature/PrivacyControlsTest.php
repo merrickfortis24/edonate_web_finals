@@ -54,6 +54,22 @@ class PrivacyControlsTest extends TestCase
         $this->assertArrayNotHasKey('ip_address', $row);
     }
 
+    public function test_staging_preferences_use_the_staging_cookie_name_and_configured_path(): void
+    {
+        config(['privacy.cookie' => 'edonate_staging_privacy_choices', 'session.path' => '/staging']);
+
+        $response = $this->postJson(route('privacy.preferences'), [
+            'version' => config('privacy.version'), 'analytics' => false, 'maps' => false,
+        ])->assertOk()->assertCookie('edonate_staging_privacy_choices');
+
+        $cookie = collect($response->headers->getCookies())
+            ->first(fn ($item) => $item->getName() === 'edonate_staging_privacy_choices');
+
+        $this->assertNotNull($cookie);
+        $this->assertSame('/staging', $cookie->getPath());
+        $this->assertNotSame('edonate_privacy_choices', $cookie->getName());
+    }
+
     public function test_missing_rejected_or_stale_form_acknowledgments_are_rejected_server_side(): void
     {
         $this->postJson('/__test/personal-data', [])->assertUnprocessable()
