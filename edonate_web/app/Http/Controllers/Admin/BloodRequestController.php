@@ -36,14 +36,15 @@ class BloodRequestController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
             'search' => ['nullable', 'string', 'max:150'],
-            'status' => ['nullable', Rule::in(array_merge([''], BloodRequest::STATUSES, ['in_progress']))],
+            'status' => ['nullable', Rule::in(array_merge([''], BloodRequest::STATUSES))],
             'urgency' => ['nullable', Rule::in(array_merge([''], BloodRequest::URGENCIES))],
+            'source' => ['nullable', Rule::in(['', 'admin', 'app'])],
             'facility_id' => ['nullable', 'integer'],
             'blood_type_id' => ['nullable', 'integer'],
         ]);
 
         $query = BloodRequest::query()
-            ->with(['facility', 'bloodType', 'createdBy'])
+            ->with(['facility', 'bloodType', 'createdBy', 'requestedByDonor.latestAuthentication'])
             ->withCount([
                 'donorInvitations AS notified_count' => fn ($builder) => $builder->whereIn('status', ['notified', 'contacted']),
                 'donorInvitations AS interested_count' => fn ($builder) => $builder->whereIn('status', ['interested', 'responded']),
@@ -56,7 +57,15 @@ class BloodRequestController extends Controller
             $query->where(function ($builder) use ($like): void {
                 $builder->where('request_reference', 'like', $like)
                     ->orWhere('patient_reference_code', 'like', $like)
-                    ->orWhereHas('facility', fn ($facility) => $facility->where('facility_name', 'like', $like));
+                    ->orWhereHas('facility', fn ($facility) => $facility->where('facility_name', 'like', $like))
+                    ->orWhereHas('requestedByDonor', function ($donor) use ($like): void {
+                        $donor->where('first_name', 'like', $like)
+                            ->orWhere('middle_initial', 'like', $like)
+                            ->orWhere('last_name', 'like', $like)
+                            ->orWhere('suffix', 'like', $like)
+                            ->orWhere('contact_number', 'like', $like)
+                            ->orWhereHas('latestAuthentication', fn ($auth) => $auth->where('email', 'like', $like));
+                    });
             });
         }
 
@@ -64,6 +73,20 @@ class BloodRequestController extends Controller
             if (! empty($validated[$filter])) {
                 $query->where($filter, $validated[$filter]);
             }
+        }
+
+        if (($validated['source'] ?? '') === 'app') {
+            $query->where(function ($builder): void {
+                $builder->whereNotNull('requested_by_donor_id')
+                    ->orWhereIn('request_source', ['app', 'mobile', 'mobile_app', 'donor_app']);
+            });
+        } elseif (($validated['source'] ?? '') === 'admin') {
+            $query->where(function ($builder): void {
+                $builder->where('request_source', 'admin')
+                    ->orWhere(function ($legacy): void {
+                        $legacy->whereNull('request_source')->whereNotNull('created_by_admin_id');
+                    });
+            });
         }
 
         if (! empty($validated['facility_id'])) {
@@ -94,6 +117,7 @@ class BloodRequestController extends Controller
             'data' => $rows,
             'summary' => [
                 'open' => BloodRequest::query()->whereIn('status', ['open', 'in_progress'])->count(),
+                'pending_review' => BloodRequest::query()->where('status', 'pending_review')->count(),
                 'emergency' => BloodRequest::query()->where('urgency', 'emergency')->whereIn('status', ['open', 'in_progress'])->count(),
                 'fulfilled' => BloodRequest::query()->where('status', 'fulfilled')->count(),
                 'cancelled' => BloodRequest::query()->where('status', 'cancelled')->count(),
@@ -162,7 +186,7 @@ class BloodRequestController extends Controller
 
     public function show(BloodRequest $bloodRequest)
     {
-        $bloodRequest->loadMissing(['facility', 'bloodType', 'createdBy']);
+        $bloodRequest->loadMissing(['facility', 'bloodType', 'createdBy', 'requestedByDonor.latestAuthentication']);
 
         return view('admin.blood_request_show', [
             'bloodRequest' => $bloodRequest,
@@ -172,7 +196,26 @@ class BloodRequestController extends Controller
 
     public function details(BloodRequest $bloodRequest): JsonResponse
     {
+        $bloodRequest->loadMissing(['facility', 'bloodType', 'createdBy', 'requestedByDonor.latestAuthentication']);
         return response()->json($this->service->details($bloodRequest));
+    }
+
+    public function approve(Request $request, BloodRequest $bloodRequest): JsonResponse
+    {
+        $this->service->review($bloodRequest, 'approve', null, $request);
+
+        return response()->json(['message' => 'Blood request approved and opened for fulfillment.']);
+    }
+
+    public function reject(Request $request, BloodRequest $bloodRequest): JsonResponse
+    {
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'min:3', 'max:1000'],
+        ]);
+
+        $this->service->review($bloodRequest, 'reject', trim($validated['reason']), $request);
+
+        return response()->json(['message' => 'Blood request rejected.']);
     }
 
     public function candidates(Request $request, BloodRequest $bloodRequest): JsonResponse

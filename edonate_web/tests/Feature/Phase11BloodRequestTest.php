@@ -119,6 +119,134 @@ class Phase11BloodRequestTest extends TestCase
         );
     }
 
+    public function test_app_origin_pending_review_request_is_searchable_visible_and_nullable_relations_are_preserved(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = (int) DB::table('donors')->insertGetId([
+            'first_name' => 'Mika',
+            'last_name' => 'Santos',
+            'contact_number' => '09170000001',
+        ], 'donor_id');
+        DB::table('donor_authentication')->insert([
+            'donor_id' => $donorId,
+            'email' => 'mika.santos@example.test',
+            'is_verified' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $appRequestId = $this->createBloodRequest([
+            'facility_id' => null,
+            'request_reference' => 'APP-RDR-2026-000001',
+            'patient_reference_code' => 'APP-PATIENT-001',
+            'request_source' => 'app',
+            'requested_by_donor_id' => $donorId,
+            'created_by_admin_id' => null,
+            'status' => 'pending_review',
+            'urgency' => 'urgent',
+        ]);
+        $adminRequestId = $this->createBloodRequest([
+            'request_reference' => 'ADMIN-RDR-2026-000002',
+            'request_source' => 'admin',
+            'requested_by_donor_id' => null,
+            'created_by_admin_id' => 1,
+            'status' => 'open',
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-requests/data?per_page=1&page=1')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('meta.last_page', 2);
+
+        $filtered = $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-requests/data?status=pending_review&source=app&search=mika.santos%40example.test')
+            ->assertOk()
+            ->assertJsonPath('summary.pending_review', 1)
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.request_id', $appRequestId)
+            ->assertJsonPath('data.0.request_reference', 'APP-RDR-2026-000001')
+            ->assertJsonPath('data.0.request_source', 'app')
+            ->assertJsonPath('data.0.status', 'pending_review')
+            ->assertJsonPath('data.0.requester_name', 'Mika Santos')
+            ->assertJsonPath('data.0.requester_email', 'mika.santos@example.test')
+            ->assertJsonPath('data.0.requester_contact', '09170000001')
+            ->assertJsonPath('data.0.facility_id', null)
+            ->assertJsonPath('data.0.facility_name', 'Not specified');
+
+        $this->withSession($this->adminSession())
+            ->get("/admin/blood-requests/{$appRequestId}")
+            ->assertOk()
+            ->assertSee('Review donor-submitted request')
+            ->assertSee('APP-RDR-2026-000001')
+            ->assertSee('Mika Santos');
+
+        $this->assertSame(1, (int) DB::table('blood_requests')->where('request_source', 'admin')->count());
+        $this->assertSame(1, (int) DB::table('blood_requests')->where('request_id', $adminRequestId)->count());
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-requests/data?source=admin')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.request_id', $adminRequestId)
+            ->assertJsonPath('data.0.request_source', 'admin');
+    }
+
+    public function test_admin_can_approve_or_reject_only_pending_requests_and_rejection_requires_reason(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = (int) DB::table('donors')->insertGetId([
+            'first_name' => 'Jules',
+            'last_name' => 'Reyes',
+        ], 'donor_id');
+        $approveId = $this->createBloodRequest([
+            'facility_id' => null,
+            'request_reference' => 'APP-APPROVE-001',
+            'requested_by_donor_id' => $donorId,
+            'created_by_admin_id' => null,
+            'request_source' => 'app',
+            'status' => 'pending_review',
+        ]);
+        $rejectId = $this->createBloodRequest([
+            'facility_id' => null,
+            'request_reference' => 'APP-REJECT-001',
+            'requested_by_donor_id' => $donorId,
+            'created_by_admin_id' => null,
+            'request_source' => 'app',
+            'status' => 'pending_review',
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/blood-requests/{$approveId}/approve")
+            ->assertOk();
+        $this->assertDatabaseHas('blood_requests', [
+            'request_id' => $approveId,
+            'status' => 'open',
+            'reviewed_by_admin_id' => 1,
+        ]);
+        $this->assertNotNull(DB::table('blood_requests')->where('request_id', $approveId)->value('reviewed_at'));
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/blood-requests/{$rejectId}/reject", [])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('reason');
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/blood-requests/{$rejectId}/reject", ['reason' => 'The facility details could not be verified.'])
+            ->assertOk();
+        $this->assertDatabaseHas('blood_requests', [
+            'request_id' => $rejectId,
+            'status' => 'rejected',
+            'reviewed_by_admin_id' => 1,
+            'review_reason' => 'The facility details could not be verified.',
+        ]);
+        $this->assertSame(1, DB::table('audit_logs')->where('action_type', 'blood_request_approved')->count());
+        $this->assertSame(1, DB::table('audit_logs')->where('action_type', 'blood_request_rejected')->count());
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/blood-requests/{$approveId}/approve")
+            ->assertUnprocessable();
+    }
+
     public function test_expiry_command_expires_only_due_open_requests_once_without_changing_inventory(): void
     {
         $facilityId = $this->createFacility();
@@ -413,7 +541,7 @@ class Phase11BloodRequestTest extends TestCase
 
     private function createBloodRequest(array $overrides = []): int
     {
-        $facilityId = $overrides['facility_id'] ?? $this->createFacility();
+        $facilityId = array_key_exists('facility_id', $overrides) ? $overrides['facility_id'] : $this->createFacility();
 
         return (int) DB::table('blood_requests')->insertGetId(array_merge([
             'facility_id' => $facilityId,
@@ -430,6 +558,11 @@ class Phase11BloodRequestTest extends TestCase
             'urgency' => 'emergency',
             'status' => 'open',
             'created_by_admin_id' => 1,
+            'request_source' => 'admin',
+            'requested_by_donor_id' => null,
+            'reviewed_by_admin_id' => null,
+            'reviewed_at' => null,
+            'review_reason' => null,
             'created_at' => now(),
             'updated_at' => now(),
         ], $overrides), 'request_id');
@@ -494,7 +627,7 @@ class Phase11BloodRequestTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['audit_logs', 'admin_notifications', 'notifications', 'blood_request_donors', 'blood_requests', 'facility_blood_inventory', 'facilities', 'donation_records', 'appointments', 'eligibility_status', 'donors', 'locations', 'blood_types', 'admins'] as $table) {
+        foreach (['audit_logs', 'admin_notifications', 'notifications', 'blood_request_donors', 'blood_requests', 'facility_blood_inventory', 'facilities', 'donation_records', 'appointments', 'eligibility_status', 'donor_authentication', 'donors', 'locations', 'blood_types', 'admins'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();
@@ -527,12 +660,23 @@ class Phase11BloodRequestTest extends TestCase
         Schema::create('donors', function (Blueprint $table): void {
             $table->increments('donor_id');
             $table->string('first_name')->nullable();
+            $table->string('middle_initial')->nullable();
             $table->string('last_name')->nullable();
+            $table->string('suffix')->nullable();
+            $table->string('contact_number')->nullable();
             $table->integer('blood_type_id')->nullable();
             $table->string('blood_type_status')->nullable();
             $table->integer('location_id')->nullable();
             $table->string('verification_status')->nullable();
             $table->timestamp('date_registered')->nullable();
+        });
+
+        Schema::create('donor_authentication', function (Blueprint $table): void {
+            $table->increments('auth_id');
+            $table->integer('donor_id');
+            $table->string('email')->unique();
+            $table->boolean('is_verified')->default(false);
+            $table->timestamps();
         });
 
         Schema::create('eligibility_status', function (Blueprint $table): void {
@@ -638,6 +782,7 @@ class Phase11BloodRequestTest extends TestCase
             $table->boolean('is_read')->default(false);
             $table->timestamp('read_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
         });
 
         Schema::create('audit_logs', function (Blueprint $table): void {
@@ -655,5 +800,7 @@ class Phase11BloodRequestTest extends TestCase
             $table->text('metadata')->nullable();
             $table->timestamp('created_at')->nullable();
         });
+
+        (require database_path('migrations/2026_09_29_100000_add_mobile_blood_request_review_fields.php'))->up();
     }
 }

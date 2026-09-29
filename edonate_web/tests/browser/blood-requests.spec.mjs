@@ -12,7 +12,12 @@ async function mount(page, options = {}) {
         const url = new URL(route.request().url());
         if (url.hostname !== 'audit.test') return route.abort();
         if (url.pathname === '/fixture') {
-            return route.fulfill({ contentType: 'text/html', body: await readFile(fixturePath, 'utf8') });
+            let html = await readFile(fixturePath, 'utf8');
+            const manifest = JSON.parse(await readFile(path.resolve('../public_html/build/manifest.json'), 'utf8'));
+            html = html
+                .replace(/build\/assets\/adminlte-[^"']+\.css/g, `build/${manifest['resources/css/adminlte.css'].file}`)
+                .replace(/build\/assets\/adminlte-[^"']+\.js/g, `build/${manifest['resources/js/adminlte.js'].file}`);
+            return route.fulfill({ contentType: 'text/html', body: html });
         }
         if (url.pathname === '/privacy/preferences') {
             return route.fulfill({ json: { choices: { necessary: true, analytics: false, maps: false, decided: true, expires_at: Math.floor(Date.now() / 1000) + 86400 } } });

@@ -1585,6 +1585,252 @@
     color: currentColor;
 }
 
+/* Donor table: align the eight cells to one compact grid and keep its
+ * horizontal overflow inside the keyboard-scrollable table viewport. */
+.edonate-admin-page.admin-users-page .table-inner {
+    width: 100%;
+    min-width: 1180px;
+    overflow: visible;
+}
+
+.edonate-admin-page.admin-users-page .table-grid {
+    grid-template-columns: 92px minmax(170px, 1.45fr) 112px minmax(145px, 1.2fr) minmax(138px, 1.15fr) 112px 84px minmax(156px, 1.05fr);
+}
+
+.edonate-admin-page.admin-users-page .table-thead {
+    padding: 0.9rem 1rem 0.75rem;
+}
+
+.edonate-admin-page.admin-users-page .table-row {
+    height: auto;
+    min-height: 88px;
+    padding: 0.75rem 1rem;
+}
+
+.edonate-admin-page.admin-users-page .table-grid > .table-th,
+.edonate-admin-page.admin-users-page .table-grid > .table-td {
+    box-sizing: border-box;
+    padding-inline: 0.4rem;
+}
+
+.edonate-admin-page.admin-users-page .table-th:last-child {
+    padding-left: 0.65rem;
+    text-align: left;
+}
+
+.edonate-admin-page.admin-users-page .table-td.actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.4rem;
+    justify-content: flex-start;
+    padding-left: 0.65rem;
+}
+
+.edonate-admin-page.admin-users-page .table-body {
+    overflow: visible;
+}
+
+.edonate-admin-page.admin-users-page .btn-action {
+    border-width: 1.5px;
+    border-radius: 0.55rem;
+    flex: 0 0 2.25rem;
+    height: 2.25rem;
+    width: 2.25rem;
+}
+
+.edonate-admin-page.admin-users-page .btn-action:focus-visible {
+    outline: 2px solid var(--edonate-red);
+    outline-offset: 2px;
+}
+
+/* Appointment actions share one compact, wrapping flex row inside their
+ * table cell. The existing status-based action renderer remains authoritative. */
+.edonate-admin-page.admin-appointments-page .admin-standard-table--appointments {
+    min-width: 1140px;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-actions {
+    text-align: left;
+    white-space: normal;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-action-group {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    justify-content: flex-start;
+    min-width: 0;
+    width: 100%;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn {
+    align-items: center;
+    border-radius: 0.55rem;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 0.82rem;
+    font-weight: 600;
+    gap: 0.4rem;
+    height: 2.4rem;
+    justify-content: center;
+    line-height: 1.1;
+    padding: 0 0.8rem;
+    text-decoration: none;
+    transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+    white-space: nowrap;
+    width: auto;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn--reschedule { min-width: 7.7rem; }
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn--approve { min-width: 6.5rem; }
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn--no-show { min-width: 6.1rem; }
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn--cancel { min-width: 5.8rem; }
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn--process { min-width: 9rem; }
+
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn svg {
+    color: currentColor;
+    flex: 0 0 1rem;
+    height: 1rem;
+    width: 1rem;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn:hover:not(:disabled) {
+    box-shadow: 0 0.2rem 0.5rem rgba(15, 23, 42, 0.14);
+    opacity: 1;
+    transform: translateY(-1px);
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn:focus-visible,
+.edonate-admin-page.admin-appointments-page .appointment-view-btn:focus-visible {
+    outline: 2px solid var(--edonate-red);
+    outline-offset: 2px;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-view-btn {
+    align-items: center;
+    display: inline-flex;
+    justify-content: center;
+    min-height: 2.5rem;
+    min-width: 8.25rem;
+    text-decoration: none;
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-view-btn--outline:hover {
+    background: var(--edonate-red-soft);
+    color: var(--edonate-red-dark);
+}
+
+.edonate-admin-page.admin-appointments-page .appointment-calendar-card .card-body {
+    min-width: 0;
+    padding: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+.edonate-admin-page.admin-appointments-page #appointmentCalendar {
+    min-width: 0;
+}
+
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .fc {
+    --fc-border-color: var(--bs-border-color);
+    --fc-page-bg-color: var(--edonate-card-bg);
+    --fc-neutral-bg-color: var(--bs-tertiary-bg);
+    --fc-today-bg-color: rgba(182, 12, 12, 0.075);
+    color: var(--bs-body-color);
+}
+
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .fc .fc-button-primary {
+    background: var(--edonate-red);
+    border-color: var(--edonate-red);
+    color: #fff;
+}
+
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .fc .fc-button-primary:hover,
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .fc .fc-button-primary:focus {
+    background: var(--edonate-red-dark);
+    border-color: var(--edonate-red-dark);
+    box-shadow: 0 0 0 0.2rem rgba(182, 12, 12, 0.2);
+}
+
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .fc-event {
+    border: 0;
+    border-radius: 0.3rem;
+    cursor: pointer;
+    font-size: 0.76rem;
+    padding: 0.12rem 0.25rem;
+}
+
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--pending { background: #9a6700; color: #fff; }
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--confirmed { background: #147547; color: #fff; }
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--rescheduled { background: #0867a5; color: #fff; }
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--checked_in { background: #664d03; color: #fff; }
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--completed { background: #198754; color: #fff; }
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--cancelled,
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--no_show { background: #9b1c1c; color: #fff; }
+.edonate-admin-page.admin-appointments-page #appointmentCalendar .appointment-calendar-event--deferred_on_site { background: #5b6470; color: #fff; }
+
+@media (max-width: 575.98px) {
+    .edonate-admin-page.admin-users-page .table-inner {
+        min-width: 1160px;
+    }
+
+    .edonate-admin-page.admin-users-page .table-thead {
+        padding-inline: 0.75rem;
+    }
+
+    .edonate-admin-page.admin-users-page .table-row {
+        padding-inline: 0.75rem;
+    }
+
+    .edonate-admin-page.admin-users-page .table-grid > .table-th,
+    .edonate-admin-page.admin-users-page .table-grid > .table-td {
+        padding-inline: 0.3rem;
+    }
+
+    .edonate-admin-page.admin-users-page .table-td.actions {
+        gap: 0.3rem;
+        padding-left: 0.35rem;
+    }
+
+    .edonate-admin-page.admin-appointments-page .appointment-header__views {
+        align-self: stretch;
+        width: 100%;
+    }
+
+    .edonate-admin-page.admin-appointments-page .appointment-view-btn {
+        width: 100%;
+    }
+
+    .edonate-admin-page.admin-appointments-page .appointment-action-group .appointment-btn {
+        height: 2.25rem;
+        padding-inline: 0.6rem;
+    }
+
+    .edonate-admin-page.admin-appointments-page #appointmentCalendar .fc-header-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.65rem;
+    }
+
+    .edonate-admin-page.admin-appointments-page #appointmentCalendar .fc-toolbar-chunk {
+        max-width: 100%;
+    }
+
+    .edonate-admin-page.admin-appointments-page #appointmentCalendar .fc-toolbar-title {
+        font-size: 1.1rem;
+    }
+
+    .edonate-admin-page.admin-appointments-page #appointmentCalendar .fc .fc-button {
+        font-size: 0.8rem;
+        padding: 0.35rem 0.55rem;
+    }
+}
+
 @media (max-width: 767.98px) {
     .edonate-admin-page.admin-appointments-page .appointment-pagination {
         align-items: flex-start;

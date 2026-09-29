@@ -140,6 +140,40 @@ class Phase7DonationProcessingTest extends TestCase
         $this->assertDatabaseHas('appointments', ['appointment_id' => $cancelledId, 'status' => 'cancelled']);
     }
 
+    public function test_appointment_calendar_date_range_respects_other_filters_and_validates_bounds(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $fromDate = Carbon::today()->addDays(2)->toDateString();
+        $toDate = Carbon::today()->addDays(8)->toDateString();
+        $matchingId = $this->createAppointment([
+            'status' => 'cancelled',
+            'appointment_date' => $toDate,
+        ]);
+        $differentStatusId = $this->createAppointment([
+            'status' => 'confirmed',
+            'appointment_date' => $fromDate,
+        ]);
+        $outsideRangeId = $this->createAppointment([
+            'status' => 'cancelled',
+            'appointment_date' => Carbon::today()->addDays(9)->toDateString(),
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?from_date='.$fromDate.'&to_date='.$toDate.'&status=cancelled&per_page=100')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.appointment_id', $matchingId);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?from_date='.$toDate.'&to_date='.$fromDate)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('to_date');
+
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $differentStatusId]);
+        $this->assertDatabaseHas('appointments', ['appointment_id' => $outsideRangeId]);
+    }
+
     public function test_approved_appointment_flows_from_pending_to_checked_in_to_completed_across_both_views(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);

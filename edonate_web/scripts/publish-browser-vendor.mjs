@@ -7,6 +7,8 @@ const copies = [
     ['bootstrap/LICENSE', 'bootstrap/LICENSE'],
     ['sweetalert2/dist/sweetalert2.all.min.js', 'sweetalert2/sweetalert2.all.min.js'],
     ['sweetalert2/LICENSE', 'sweetalert2/LICENSE'],
+    ['fullcalendar/index.global.min.js', 'fullcalendar/index.global.min.js'],
+    ['fullcalendar/LICENSE.md', 'fullcalendar/LICENSE.md'],
 ];
 for (const [source, target] of copies) {
     const destination = new URL(`../../public_html/vendor/${target}`, import.meta.url);

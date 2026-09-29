@@ -193,10 +193,14 @@ class AdminLteLayoutTest extends TestCase
     {
         $html = $this->renderPageForRole('admin.appointment_management', 'admin', '/admin/appointments');
 
-        $this->assertStringNotContainsString('Calendar View', $html);
+        $this->assertStringContainsString('id="appointmentViewToggle"', $html);
+        $this->assertStringContainsString('>Calendar View</button>', $html);
+        $this->assertStringContainsString('id="appointmentCalendarPanel"', $html);
+        $this->assertStringContainsString('vendor/fullcalendar/index.global.min.js', $html);
         $this->assertStringNotContainsString('action="#"', $html);
         $this->assertStringContainsString('data-action="check-in"', $html);
         $this->assertStringContainsString('data-action="no-show"', $html);
+        $this->assertStringContainsString('data-action="cancel"', $html);
         $this->assertStringContainsString('Process Donation', $html);
         $this->assertStringContainsString('data-action="reschedule"', $html);
         $this->assertStringNotContainsString('id="completeModal"', $html);
@@ -204,6 +208,18 @@ class AdminLteLayoutTest extends TestCase
         $this->assertStringContainsString('rescheduleOptionsUrl', $html);
         $this->assertTrue(Route::has('admin.appointments.reschedule'));
         $this->assertTrue(Route::has('admin.appointments.reschedule-options'));
+    }
+
+    public function test_user_management_donor_table_uses_a_consistent_scrollable_grid_and_compact_actions(): void
+    {
+        $html = $this->renderPageForRole('admin.user_management', 'admin', '/admin/users');
+        $styles = file_get_contents(resource_path('css/admin.css'));
+
+        $this->assertStringContainsString('class="donor-table-wrapper table-responsive"', $html);
+        $this->assertStringContainsString('aria-label="Scrollable donor records table"', $html);
+        $this->assertStringContainsString('grid-template-columns: 92px minmax(170px, 1.45fr)', $styles);
+        $this->assertStringContainsString('justify-content: flex-start;', $styles);
+        $this->assertStringContainsString('overflow-x: auto;', $styles);
     }
 
     public function test_admin_settings_defaults_to_account_without_the_removed_general_tab(): void

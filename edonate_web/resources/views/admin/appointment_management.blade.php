@@ -7,7 +7,14 @@
 
 @section('header_actions')
     <div class="appointment-header__views" role="group" aria-label="Appointment view mode">
-        <span class="appointment-view-btn appointment-view-btn--active" role="status" aria-label="Current appointment view: List View">List View</span>
+        <button
+            class="appointment-view-btn appointment-view-btn--outline btn"
+            id="appointmentViewToggle"
+            type="button"
+            data-current-view="list"
+            aria-pressed="false"
+            aria-label="List view is active. Switch to Calendar View"
+        >Calendar View</button>
     </div>
 @endsection
 
@@ -120,7 +127,7 @@
             </div>
         </div>
 
-        <div class="card appointment-table-card border-0 shadow-sm" aria-label="Appointment list">
+        <div id="appointmentListView" class="card appointment-table-card border-0 shadow-sm" aria-label="Appointment list" aria-hidden="false">
             <div class="card-header bg-transparent d-flex align-items-center">
                 <h2 class="h5 mb-0">Appointment Records</h2>
             </div>
@@ -146,7 +153,7 @@
                                 <td>-</td>
                                 <td class="appointment-center">-</td>
                                 <td>-</td>
-                                <td class="appointment-actions">-</td>
+                                <td class="appointment-actions"><div class="appointment-action-group">-</div></td>
                             </tr>
                         </tbody>
                     </table>
@@ -159,6 +166,17 @@
                 </div>
             </div>
         </div>
+
+        <section id="appointmentCalendarPanel" class="card appointment-calendar-card border-0 shadow-sm" aria-label="Appointment calendar" aria-hidden="true" hidden>
+            <div class="card-header bg-transparent">
+                <h2 class="h5 mb-0">Appointment Calendar</h2>
+            </div>
+            <div class="card-body">
+                <p class="text-body-secondary small mb-3">Select an appointment to open its available actions in List View. Your search and filters stay applied.</p>
+                <div id="appointmentCalendar" aria-label="Appointments by date"></div>
+                <div id="appointmentCalendarError" class="alert alert-danger mt-3 mb-0 d-none" role="alert"></div>
+            </div>
+        </section>
     </section>
 </main>
 
@@ -330,6 +348,7 @@
 @endsection
 
 @push('admin_scripts')
+<script src="{{ asset('vendor/fullcalendar/index.global.min.js') }}"></script>
 <script>
     (function () {
         var payload = (window.AdminPageData && window.AdminPageData.appointmentManagement)
@@ -345,6 +364,9 @@
         var tableBody = document.getElementById('appointmentTableBody');
         var paginationInfo = document.getElementById('appointmentPaginationInfo');
         var paginationPages = document.getElementById('appointmentPaginationPages');
+        var calendarElement = document.getElementById('appointmentCalendar');
+        var calendarError = document.getElementById('appointmentCalendarError');
+        var appointmentCalendar = null;
 
         var statConfirmed = document.getElementById('appointmentStatConfirmed');
         var statPending = document.getElementById('appointmentStatPending');
@@ -478,7 +500,9 @@
 
             if (normalizedStatus === 'pending') {
                 return ''
-                    + '<button class="appointment-btn appointment-btn--reschedule" data-action="reschedule" type="button">Reschedule</button>'
+                    + '<button class="appointment-btn appointment-btn--reschedule" data-action="reschedule" type="button">'
+                    + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8"></rect><path d="M16 3v4M8 3v4M3 10h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>'
+                    + 'Reschedule</button>'
                     + '<button class="appointment-btn appointment-btn--approve" data-action="approve" type="button">'
                     + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
                     + 'Approve'
@@ -491,7 +515,9 @@
 
             if (normalizedStatus === 'confirmed' || normalizedStatus === 'rescheduled') {
                 var actions = '';
-                actions += '<button class="appointment-btn appointment-btn--reschedule" data-action="reschedule" type="button">Reschedule</button>';
+                actions += '<button class="appointment-btn appointment-btn--reschedule" data-action="reschedule" type="button">'
+                    + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8"></rect><path d="M16 3v4M8 3v4M3 10h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>'
+                    + 'Reschedule</button>';
                 if (!isAppointmentDateInFuture(appointmentDate)) {
                     actions += '<button class="appointment-btn appointment-btn--approve" data-action="check-in" title="Check In Donor" aria-label="Check In Donor" type="button">'
                     + '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>'
@@ -571,7 +597,7 @@
                     + '</td>'
                     + '<td class="appointment-center"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1C4.79086 1 3 2.79086 3 5C3 7.5 7 12.5 7 12.5C7 12.5 11 7.5 11 5C11 2.79086 9.20914 1 7 1Z" stroke="#333" stroke-width="1.2"></path><circle cx="7" cy="5" r="1.5" stroke="#333" stroke-width="1.2"></circle></svg>' + centerLabel + '</td>'
                     + '<td><span class="appointment-badge ' + badgeClass + '">' + badgeLabel + '</span></td>'
-                    + '<td class="appointment-actions">' + actions + '</td>'
+                    + '<td class="appointment-actions"><div class="appointment-action-group">' + (actions || '<span class="text-muted">—</span>') + '</div></td>'
                     + '</tr>';
             }).join('');
 
@@ -663,6 +689,148 @@
             return url.toString();
         }
 
+        function buildCalendarRequestUrl(page, fromDate, toDate) {
+            var url = new URL(listUrl, window.location.origin);
+            var params = url.searchParams;
+            params.set('page', String(page));
+            params.set('per_page', '100');
+            params.set('from_date', fromDate);
+            params.set('to_date', toDate);
+            params.delete('appointment_id');
+
+            if (state.search !== '') { params.set('search', state.search); }
+            else { params.delete('search'); }
+            if (state.center !== '') { params.set('center', state.center); }
+            else { params.delete('center'); }
+            if (state.status !== '') { params.set('status', state.status); }
+            else { params.delete('status'); }
+
+            return url.toString();
+        }
+
+        function formatCalendarDate(date) {
+            var year = date.getFullYear();
+            var month = String(date.getMonth() + 1).padStart(2, '0');
+            var day = String(date.getDate()).padStart(2, '0');
+            return year + '-' + month + '-' + day;
+        }
+
+        function fetchCalendarPage(page, fromDate, toDate, accumulated) {
+            return fetch(buildCalendarRequestUrl(page, fromDate, toDate), {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            }).then(function (response) {
+                if (!response.ok) {
+                    throw new Error('Unable to load calendar appointments. Please try again.');
+                }
+                return response.json();
+            }).then(function (responsePayload) {
+                var rows = Array.isArray(responsePayload.data) ? responsePayload.data : [];
+                accumulated = accumulated.concat(rows);
+                var lastPage = Number(responsePayload.meta && responsePayload.meta.last_page || 1);
+                return page < lastPage
+                    ? fetchCalendarPage(page + 1, fromDate, toDate, accumulated)
+                    : accumulated;
+            });
+        }
+
+        function appointmentCalendarEvents(fetchInfo, successCallback, failureCallback) {
+            var fromDate = formatCalendarDate(fetchInfo.start);
+            var finalVisibleDate = new Date(fetchInfo.end);
+            finalVisibleDate.setDate(finalVisibleDate.getDate() - 1);
+            var toDate = formatCalendarDate(finalVisibleDate);
+
+            if (calendarError) {
+                calendarError.textContent = '';
+                calendarError.classList.add('d-none');
+            }
+
+            fetchCalendarPage(1, fromDate, toDate, []).then(function (rows) {
+                successCallback(rows.map(function (item) {
+                    var status = normalizeStatus(item.status);
+                    var date = String(item.appointment_date || '');
+                    var time = String(item.appointment_time || '00:00:00').slice(0, 8);
+
+                    return {
+                        id: String(item.appointment_id || ''),
+                        title: String(item.appointment_code || 'Appointment') + ' · ' + String(item.donor_name || 'Unknown Donor'),
+                        start: date + 'T' + time,
+                        classNames: ['appointment-calendar-event--' + status],
+                        extendedProps: { status: status }
+                    };
+                }));
+            }).catch(function (error) {
+                if (calendarError) {
+                    calendarError.textContent = error && error.message ? error.message : 'Unable to load calendar appointments.';
+                    calendarError.classList.remove('d-none');
+                }
+                failureCallback(error);
+            });
+        }
+
+        function initializeAppointmentCalendar() {
+            if (!calendarElement || appointmentCalendar) {
+                return;
+            }
+
+            if (!window.FullCalendar || !window.FullCalendar.Calendar) {
+                if (calendarError) {
+                    calendarError.textContent = 'Calendar view could not be loaded. Please switch to List View and try again.';
+                    calendarError.classList.remove('d-none');
+                }
+                return;
+            }
+
+            appointmentCalendar = new window.FullCalendar.Calendar(calendarElement, {
+                initialView: 'dayGridMonth',
+                headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+                height: 'auto',
+                fixedWeekCount: false,
+                dayMaxEvents: true,
+                eventDisplay: 'block',
+                events: appointmentCalendarEvents,
+                eventClick: function (info) {
+                    info.jsEvent.preventDefault();
+                    var appointmentId = Number(info.event.id || 0);
+                    if (!appointmentId) { return; }
+
+                    state.page = 1;
+                    state.focusAppointmentId = appointmentId;
+                    var viewToggle = document.getElementById('appointmentViewToggle');
+                    if (viewToggle && viewToggle.dataset.currentView === 'calendar') {
+                        viewToggle.click();
+                    } else {
+                        loadAppointments();
+                    }
+                }
+            });
+            appointmentCalendar.render();
+        }
+
+        document.addEventListener('edonate:appointment-view-change', function (event) {
+            var nextView = event && event.detail ? event.detail.view : '';
+            if (nextView === 'calendar') {
+                clearTimeout(searchDebounceTimer);
+                state.search = searchInput ? String(searchInput.value || '').trim() : state.search;
+                state.center = centerFilter ? String(centerFilter.value || '').trim() : state.center;
+                state.status = statusFilter ? String(statusFilter.value || '').trim() : state.status;
+                state.page = 1;
+
+                var calendarAlreadyInitialized = Boolean(appointmentCalendar);
+                initializeAppointmentCalendar();
+                if (appointmentCalendar) {
+                    appointmentCalendar.updateSize();
+                    if (calendarAlreadyInitialized) {
+                        appointmentCalendar.refetchEvents();
+                    }
+                }
+            } else if (nextView === 'list' && state.focusAppointmentId > 0) {
+                loadAppointments();
+            }
+        });
+
         function hydrateCenterFilter(centers) {
             if (!centerFilter || !Array.isArray(centers)) {
                 return;
@@ -731,6 +899,7 @@
                     state.search = nextValue;
                     state.page = 1;
                     loadAppointments();
+                    if (appointmentCalendar) { appointmentCalendar.refetchEvents(); }
                 }, 300);
             });
         }
@@ -741,6 +910,7 @@
                 state.center = String(centerFilter.value || '').trim();
                 state.page = 1;
                 loadAppointments();
+                if (appointmentCalendar) { appointmentCalendar.refetchEvents(); }
             });
         }
 
@@ -750,6 +920,7 @@
                 state.status = String(statusFilter.value || '').trim();
                 state.page = 1;
                 loadAppointments();
+                if (appointmentCalendar) { appointmentCalendar.refetchEvents(); }
             });
         }
 

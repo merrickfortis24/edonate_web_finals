@@ -52,6 +52,11 @@ class Donor extends Model
         return $this->belongsTo(BloodType::class, 'blood_type_id', 'blood_type_id');
     }
 
+    public function latestAuthentication()
+    {
+        return $this->hasOne(DonorAuthentication::class, 'donor_id', 'donor_id')->latestOfMany('auth_id');
+    }
+
     public function bloodTypeVerifiedBy()
     {
         return $this->belongsTo(Admin::class, 'blood_type_verified_by_admin_id', 'admin_id');

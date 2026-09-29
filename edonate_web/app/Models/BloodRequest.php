@@ -8,7 +8,7 @@ class BloodRequest extends Model
 {
     public const REQUEST_TYPES = ['blood_request', 'replacement_donor'];
     public const URGENCIES = ['normal', 'urgent', 'emergency'];
-    public const STATUSES = ['draft', 'open', 'in_progress', 'fulfilled', 'cancelled', 'expired'];
+    public const STATUSES = ['draft', 'pending_review', 'open', 'in_progress', 'fulfilled', 'cancelled', 'rejected', 'expired'];
 
     protected $table = 'blood_requests';
 
@@ -31,6 +31,11 @@ class BloodRequest extends Model
         'status',
         'notes',
         'created_by_admin_id',
+        'request_source',
+        'requested_by_donor_id',
+        'reviewed_by_admin_id',
+        'reviewed_at',
+        'review_reason',
         'expires_at',
         'fulfilled_at',
         'cancelled_at',
@@ -44,6 +49,7 @@ class BloodRequest extends Model
         'expires_at' => 'datetime',
         'fulfilled_at' => 'datetime',
         'cancelled_at' => 'datetime',
+        'reviewed_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -61,6 +67,11 @@ class BloodRequest extends Model
     public function createdBy()
     {
         return $this->belongsTo(Admin::class, 'created_by_admin_id', 'admin_id');
+    }
+
+    public function requestedByDonor()
+    {
+        return $this->belongsTo(Donor::class, 'requested_by_donor_id', 'donor_id');
     }
 
     public function donorInvitations()

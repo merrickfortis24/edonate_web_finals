@@ -62,11 +62,13 @@ class BloodRequestService
     {
         $request->loadMissing(['facility', 'bloodType', 'createdBy']);
         $summary = $this->matchingService->summary($request);
-        $inventory = FacilityBloodInventory::query()
-            ->with('bloodType')
-            ->where('facility_id', (int) $request->facility_id)
-            ->where('blood_type_id', (int) $request->needed_blood_type_id)
-            ->first();
+        $inventory = $request->facility_id !== null && $request->needed_blood_type_id !== null
+            ? FacilityBloodInventory::query()
+                ->with('bloodType')
+                ->where('facility_id', (int) $request->facility_id)
+                ->where('blood_type_id', (int) $request->needed_blood_type_id)
+                ->first()
+            : null;
 
         return [
             'request' => $this->transform($request),
@@ -239,6 +241,49 @@ class BloodRequestService
         });
     }
 
+    public function review(BloodRequest $request, string $decision, ?string $reason, Request $httpRequest): void
+    {
+        if (! in_array($decision, ['approve', 'reject'], true)) {
+            throw new \InvalidArgumentException('Unsupported blood request review decision.');
+        }
+
+        DB::transaction(function () use ($request, $decision, $reason, $httpRequest): void {
+            $locked = BloodRequest::query()
+                ->whereKey($request->request_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if (strtolower((string) $locked->status) !== 'pending_review') {
+                throw ValidationException::withMessages([
+                    'request' => 'Only requests awaiting review can be approved or rejected.',
+                ]);
+            }
+
+            $previousStatus = (string) $locked->status;
+            $locked->status = $decision === 'approve' ? 'open' : 'rejected';
+            $locked->reviewed_by_admin_id = is_numeric($httpRequest->session()->get('admin_id'))
+                ? (int) $httpRequest->session()->get('admin_id')
+                : null;
+            $locked->reviewed_at = now();
+            $locked->review_reason = $decision === 'reject' ? trim((string) $reason) : null;
+            $locked->save();
+
+            $this->audit(
+                $httpRequest,
+                $decision === 'approve' ? 'blood_request_approved' : 'blood_request_rejected',
+                sprintf('%s blood request %s.', ucfirst($decision === 'approve' ? 'approved' : 'rejected'), $locked->request_reference),
+                $locked,
+                [
+                    'previous_status' => $previousStatus,
+                    'new_status' => $locked->status,
+                    'review_reason' => $locked->review_reason,
+                    'request_source' => $locked->request_source,
+                    'requested_by_donor_id' => $locked->requested_by_donor_id,
+                ]
+            );
+        });
+    }
+
     public function updateDonorStatus(BloodRequest $request, int $donorId, string $status, Request $httpRequest): BloodRequestDonor
     {
         if (! in_array($status, ['confirmed', 'completed', 'declined'], true)) {
@@ -284,11 +329,29 @@ class BloodRequestService
     /** @return array<string, mixed> */
     public function transform(BloodRequest $request): array
     {
+        $donor = $request->requestedByDonor;
+        $requestSource = strtolower(trim((string) $request->request_source));
+        if (in_array($requestSource, ['mobile', 'mobile_app', 'donor_app'], true)) {
+            $requestSource = 'app';
+        }
+        if ($requestSource === '') {
+            $requestSource = $request->requested_by_donor_id ? 'app' : ($request->created_by_admin_id ? 'admin' : 'unknown');
+        }
+
+        $requesterName = $donor
+            ? trim(implode(' ', array_filter([
+                $donor->first_name,
+                $donor->middle_initial,
+                $donor->last_name,
+                $donor->suffix,
+            ], static fn ($part): bool => trim((string) $part) !== '')))
+            : '';
+
         return [
             'request_id' => (int) $request->request_id,
             'request_reference' => (string) ($request->request_reference ?: $this->referenceFor($request)),
-            'facility_id' => (int) $request->facility_id,
-            'facility_name' => (string) ($request->facility?->facility_name ?? 'Unknown facility'),
+            'facility_id' => $request->facility_id === null ? null : (int) $request->facility_id,
+            'facility_name' => (string) ($request->facility?->facility_name ?? 'Not specified'),
             'facility_location' => trim(implode(', ', array_filter([
                 $request->facility?->barangay_name,
                 $request->facility?->city,
@@ -304,6 +367,14 @@ class BloodRequestService
             'status' => (string) $request->status,
             'notes' => (string) ($request->notes ?? ''),
             'created_by' => (string) ($request->createdBy?->full_name ?? $request->createdBy?->username ?? 'Admin'),
+            'request_source' => $requestSource,
+            'requested_by_donor_id' => $request->requested_by_donor_id === null ? null : (int) $request->requested_by_donor_id,
+            'requester_name' => $requesterName !== '' ? $requesterName : ($request->requested_by_donor_id ? 'Donor #' . $request->requested_by_donor_id : 'Facility/Admin request'),
+            'requester_email' => (string) ($donor?->latestAuthentication?->email ?? $donor?->email ?? ''),
+            'requester_contact' => (string) ($donor?->contact_number ?? ''),
+            'reviewed_by_admin_id' => $request->reviewed_by_admin_id === null ? null : (int) $request->reviewed_by_admin_id,
+            'reviewed_at' => $request->reviewed_at?->toIso8601String(),
+            'review_reason' => (string) ($request->review_reason ?? ''),
             'created_at' => $request->created_at?->toIso8601String(),
             'expires_at' => $request->expires_at?->toIso8601String(),
             'fulfilled_at' => $request->fulfilled_at?->toIso8601String(),
@@ -324,6 +395,7 @@ class BloodRequestService
 
         return [
             'facility_id' => (int) $data['facility_id'],
+            'request_source' => 'admin',
             'submission_key' => $data['submission_key'] ?? null,
             'request_type' => (string) ($data['request_type'] ?? 'replacement_donor'),
             'needed_blood_type_id' => (int) $data['needed_blood_type_id'],

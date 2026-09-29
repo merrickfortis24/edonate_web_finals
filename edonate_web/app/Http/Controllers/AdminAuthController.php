@@ -1380,6 +1380,8 @@ class AdminAuthController extends BaseController
             'center' => ['nullable', 'string', 'max:150'],
             'status' => ['nullable', 'string', Rule::in(['', 'upcoming', 'confirmed', 'pending', 'cancelled', 'rescheduled', 'checked_in', 'completed', 'deferred_on_site', 'no_show'])],
             'appointment_id' => ['nullable', 'integer', 'min:1'],
+            'from_date' => ['nullable', 'date_format:Y-m-d'],
+            'to_date' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from_date'],
         ]);
 
         $focusAppointmentId = (int) ($validated['appointment_id'] ?? 0);
@@ -1418,6 +1420,14 @@ class AdminAuthController extends BaseController
 
         if ($focusAppointmentId === 0 && $center !== '') {
             $query->whereRaw('LOWER('.$centerExpression.') = ?', [Str::lower($center)]);
+        }
+
+        if ($focusAppointmentId === 0 && ! empty($validated['from_date'])) {
+            $query->whereDate('ap.appointment_date', '>=', $validated['from_date']);
+        }
+
+        if ($focusAppointmentId === 0 && ! empty($validated['to_date'])) {
+            $query->whereDate('ap.appointment_date', '<=', $validated['to_date']);
         }
 
         if ($focusAppointmentId > 0) {

@@ -12,6 +12,7 @@ window.bootstrap = bootstrap
 
 // Shared renderer for JSON-backed admin table pagination.
 import './admin-pagination'
+import './admin/appointment-view-toggle'
 
 // OverlayScrollbars — AdminLTE uses it for the sidebar scroller (optional)
 import { OverlayScrollbars } from 'overlayscrollbars'

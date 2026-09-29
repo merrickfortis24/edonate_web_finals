@@ -240,6 +240,14 @@ Route::middleware('admin.auth')->group(function () {
             ->whereNumber('bloodRequest')
             ->middleware('throttle:admin-api')
             ->name('admin.blood-requests.details');
+        Route::patch('/admin/blood-requests/{bloodRequest}/approve', [AdminBloodRequestController::class, 'approve'])
+            ->whereNumber('bloodRequest')
+            ->middleware('throttle:admin-write')
+            ->name('admin.blood-requests.approve');
+        Route::patch('/admin/blood-requests/{bloodRequest}/reject', [AdminBloodRequestController::class, 'reject'])
+            ->whereNumber('bloodRequest')
+            ->middleware('throttle:admin-write')
+            ->name('admin.blood-requests.reject');
         Route::get('/admin/blood-requests/{bloodRequest}/candidates', [AdminBloodRequestController::class, 'candidates'])
             ->whereNumber('bloodRequest')
             ->middleware('throttle:admin-api')
