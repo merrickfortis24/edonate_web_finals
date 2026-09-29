@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\DonationRecord;
 use App\Services\EligibilityWaitingPeriodService;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class DonationRecordObserver
@@ -21,6 +22,7 @@ class DonationRecordObserver
                 'donor_id' => $record->donor_id,
                 'appointment_id' => $record->appointment_id,
                 'donation_date' => (string) $record->donation_date,
+                'donation_status' => (string) ($record->donation_status ?? 'completed'),
                 'blood_units' => $record->blood_units,
                 'remarks' => $record->remarks,
             ]);
@@ -31,17 +33,22 @@ class DonationRecordObserver
 
     public function created(DonationRecord $record): void
     {
-        $this->syncToFirebase($record);
+        DB::afterCommit(fn () => $this->syncToFirebase($record));
         $this->updateEligibilityStatus($record);
     }
 
     public function updated(DonationRecord $record): void
     {
-        $this->syncToFirebase($record);
+        DB::afterCommit(fn () => $this->syncToFirebase($record));
         $this->updateEligibilityStatus($record);
     }
 
     public function deleted(DonationRecord $record): void
+    {
+        DB::afterCommit(fn () => $this->removeFromFirebase($record));
+    }
+
+    private function removeFromFirebase(DonationRecord $record): void
     {
         try {
             $database = app('firebase.database');

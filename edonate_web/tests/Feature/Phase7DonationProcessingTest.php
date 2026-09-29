@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Mockery;
 use Tests\TestCase;
 
 class Phase7DonationProcessingTest extends TestCase
@@ -234,6 +235,28 @@ class Phase7DonationProcessingTest extends TestCase
         $appointmentRow = collect($appointments->json('data'))->firstWhere('appointment_id', $appointmentId);
         $this->assertSame('completed', $appointmentRow['status']);
         $this->assertSame(1, DB::table('donation_records')->where('appointment_id', $appointmentId)->count());
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'status' => 'completed',
+        ]);
+        $this->assertNotNull(DB::table('appointments')->where('appointment_id', $appointmentId)->value('completed_at'));
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'donor_id' => DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id'),
+            'donation_status' => 'completed',
+            'blood_units' => 1,
+        ]);
+
+        // A fresh list request, as after a page refresh or a new login, must
+        // continue to show Completed and never expose the processing action.
+        $refreshedAppointments = $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?status=completed')
+            ->assertOk();
+        $refreshedRow = collect($refreshedAppointments->json('data'))->firstWhere('appointment_id', $appointmentId);
+        $this->assertSame('completed', $refreshedRow['status']);
+        $refreshedProcessingRow = $this->processingRow($appointmentId);
+        $this->assertSame('completed', $refreshedProcessingRow['status']);
+        $this->assertFalse($refreshedProcessingRow['actions']['can_complete']);
     }
 
     public function test_donor_mass_assignment_cannot_set_verified_blood_type_fields(): void
@@ -364,6 +387,54 @@ class Phase7DonationProcessingTest extends TestCase
             'next_eligible_date' => Carbon::today()->addDays(56)->toDateString(),
         ]);
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'donation_completed')->count());
+    }
+
+    public function test_completed_donation_is_mirrored_with_status_for_mobile_history(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+        $firebaseWrites = [];
+
+        $database = Mockery::mock();
+        $database->shouldReceive('getReference')
+            ->atLeast()->once()
+            ->andReturnUsing(function (string $path) use (&$firebaseWrites) {
+                $reference = Mockery::mock();
+                $reference->shouldReceive('set')
+                    ->once()
+                    ->andReturnUsing(function (array $payload) use (&$firebaseWrites, $path): void {
+                        $firebaseWrites[$path] = $payload;
+                    });
+
+                return $reference;
+            });
+        $this->app->instance('firebase.database', $database);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+                'remarks' => 'Successful donation.',
+            ])
+            ->assertOk();
+
+        $donationId = (int) DB::table('donation_records')
+            ->where('appointment_id', $appointmentId)
+            ->value('donation_id');
+        $this->assertSame([
+            'donation_id' => $donationId,
+            'donor_id' => $donorId,
+            'appointment_id' => $appointmentId,
+        ], array_intersect_key(
+            $firebaseWrites['donation_records/'.$donationId] ?? [],
+            array_flip(['donation_id', 'donor_id', 'appointment_id'])
+        ));
+        $this->assertSame('completed', $firebaseWrites['donation_records/'.$donationId]['donation_status'] ?? null);
     }
 
     public function test_successful_donation_completion_resets_the_consecutive_cancellation_streak(): void

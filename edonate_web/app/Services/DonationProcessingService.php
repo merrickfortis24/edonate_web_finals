@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Appointment;
 use App\Models\BloodType;
 use App\Models\Donor;
+use App\Models\DonationRecord;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +97,8 @@ class DonationProcessingService
             $verifiedBloodType = $this->verifiedBloodType($data, $request);
             $bloodTypeChange = $this->prepareBloodTypeChange($donor, $verifiedBloodType, $data);
 
-            $recordId = DB::table('donation_records')->insertGetId([
+            $donationRecord = new DonationRecord;
+            $donationRecord->forceFill([
                 'donor_id' => $appointment->donor_id,
                 'appointment_id' => $appointment->appointment_id,
                 'donation_date' => $donationDate->toDateString(),
@@ -108,7 +110,9 @@ class DonationProcessingService
                 'recorded_by_admin_id' => $adminId,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ], 'donation_id');
+            ]);
+            $donationRecord->saveOrFail();
+            $recordId = (int) $donationRecord->donation_id;
 
             $appointment->forceFill([
                 'status' => AppointmentStatusService::COMPLETED,
@@ -162,7 +166,6 @@ class DonationProcessingService
                 $recordId
             );
 
-            $this->eligibility->markCompletedDonation((int) $appointment->donor_id, $donationDate);
             app(AppointmentRestrictionService::class)->resetStreakAfterCompletion(
                 $donor,
                 (int) $appointment->appointment_id,
