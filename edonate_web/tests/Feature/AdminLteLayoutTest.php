@@ -167,6 +167,11 @@ class AdminLteLayoutTest extends TestCase
                 'request' => [
                     'request_reference' => 'DEMO-BR-0001',
                     'facility_name' => 'Demo Facility',
+                    'requester_name' => 'Facility/Admin request',
+                    'requester_email' => '',
+                    'requester_contact' => '',
+                    'request_source' => 'admin',
+                    'created_at' => null,
                     'request_type' => 'blood_request',
                     'needed_blood_type' => 'O+',
                     'required_donors' => 1,
@@ -174,6 +179,8 @@ class AdminLteLayoutTest extends TestCase
                     'allow_other_blood_types' => false,
                     'urgency' => 'normal',
                     'status' => 'open',
+                    'reviewed_at' => null,
+                    'review_reason' => '',
                 ],
                 'inventory' => ['available_units' => 0],
                 'summary' => [
