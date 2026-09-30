@@ -24,6 +24,8 @@ class QuestionController extends Controller
                     'storeUrl'  => route('admin.eligibility.questions.store'),
                     'updateUrl' => url('/admin/eligibility/questions'),
                     'toggleUrl' => url('/admin/eligibility/questions'),
+                    'showUrl'   => url('/admin/eligibility/questions'),
+                    'deleteUrl' => url('/admin/eligibility/questions'),
                 ],
             ],
         ]);
@@ -50,10 +52,10 @@ class QuestionController extends Controller
 
         $columns = $this->questionColumns($table);
         $orderColumn = $this->questionOrderColumn($columns);
-        $query = DB::table($table);
+        $baseQuery = DB::table($table);
 
         if ($searchTerm !== '') {
-            $query->where(function ($builder) use ($columns, $searchTerm): void {
+            $baseQuery->where(function ($builder) use ($columns, $searchTerm): void {
                 $like = '%'.$searchTerm.'%';
                 $builder->where('question_text', 'like', $like);
 
@@ -67,6 +69,7 @@ class QuestionController extends Controller
             });
         }
 
+        $query = clone $baseQuery;
         if (in_array('is_active', $columns, true) && $isActive !== '' && $isActive !== null) {
             $isActiveBool = filter_var($isActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             if ($isActiveBool !== null) {
@@ -76,6 +79,7 @@ class QuestionController extends Controller
 
         $total = (clone $query)->count();
         $lastPage = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $lastPage);
         $from = $total > 0 ? ($page - 1) * $perPage + 1 : 0;
         $to = min($page * $perPage, $total);
 
@@ -97,10 +101,42 @@ class QuestionController extends Controller
                 'to'           => $to,
             ],
             'stats' => [
-                'total'    => $total,
-                'active'   => in_array('is_active', $columns, true) ? DB::table($table)->where('is_active', true)->count() : $total,
-                'inactive' => in_array('is_active', $columns, true) ? DB::table($table)->where('is_active', false)->count() : 0,
+                'total'    => (clone $baseQuery)->count(),
+                'active'   => in_array('is_active', $columns, true) ? (clone $baseQuery)->where('is_active', true)->count() : (clone $baseQuery)->count(),
+                'inactive' => in_array('is_active', $columns, true) ? (clone $baseQuery)->where('is_active', false)->count() : 0,
             ],
+        ]);
+    }
+
+    public function show(int $id): JsonResponse
+    {
+        $table = $this->questionTable();
+        if ($table === null) {
+            return response()->json(['message' => 'The screening_questions table is not available.'], 409);
+        }
+
+        $columns = $this->questionColumns($table);
+        $question = DB::table($table)
+            ->select($this->questionSelects($columns))
+            ->where('question_id', $id)
+            ->first();
+
+        if (! $question) {
+            return response()->json(['message' => 'Question not found.'], 404);
+        }
+
+        $history = ['answer_count' => 0, 'screening_count' => 0];
+        if (Schema::hasTable('donor_screening_answers') && Schema::hasColumn('donor_screening_answers', 'question_id')) {
+            $answerQuery = DB::table('donor_screening_answers')->where('question_id', $id);
+            $history['answer_count'] = (clone $answerQuery)->count();
+            if (Schema::hasColumn('donor_screening_answers', 'eligibility_id')) {
+                $history['screening_count'] = (int) (clone $answerQuery)->distinct()->count('eligibility_id');
+            }
+        }
+
+        return response()->json([
+            'question' => $this->transformQuestion($question),
+            'history' => $history,
         ]);
     }
 
@@ -122,7 +158,9 @@ class QuestionController extends Controller
                 ->where('question_id', $questionId)
                 ->first();
 
-            $this->writeAudit($request, 'question_created', "Created question: {$question->question_text}", $questionId);
+            $this->writeAudit($request, 'question_created', "Created question: {$question->question_text}", $questionId, [
+                'question' => $this->transformQuestion($question),
+            ]);
 
             return response()->json([
                 'message'     => 'Question created successfully.',
@@ -146,24 +184,36 @@ class QuestionController extends Controller
         }
 
         $columns = $this->questionColumns($table);
-        $question = DB::table($table)->where('question_id', $id)->first();
-        if (! $question) {
+        $existing = DB::table($table)->where('question_id', $id)->first();
+        if (! $existing) {
             return response()->json(['message' => 'Question not found.'], 404);
         }
 
         try {
-            $oldText = (string) $question->question_text;
+            $question = DB::transaction(function () use ($request, $table, $columns, $validated, $id): object {
+                $before = DB::table($table)->where('question_id', $id)->lockForUpdate()->first();
+                if (! $before) {
+                    abort(404);
+                }
 
-            DB::table($table)
-                ->where('question_id', $id)
-                ->update($this->questionWritePayload($validated, $columns, false));
+                $this->snapshotLegacyAnswers($id, $before);
 
-            $question = DB::table($table)
-                ->select($this->questionSelects($columns))
-                ->where('question_id', $id)
-                ->first();
+                DB::table($table)
+                    ->where('question_id', $id)
+                    ->update($this->questionWritePayload($validated, $columns, false));
 
-            $this->writeAudit($request, 'question_updated', "Updated question from: {$oldText}", $id);
+                $updated = DB::table($table)
+                    ->select($this->questionSelects($columns))
+                    ->where('question_id', $id)
+                    ->first();
+
+                $this->writeAudit($request, 'question_updated', "Updated question: {$updated->question_text}", $id, [
+                    'before' => $this->transformQuestion($before),
+                    'after' => $this->transformQuestion($updated),
+                ]);
+
+                return $updated;
+            });
 
             return response()->json([
                 'message'  => 'Question updated successfully.',
@@ -173,6 +223,72 @@ class QuestionController extends Controller
             logger()->error('Failed to update question.', ['error' => $e->getMessage(), 'question_id' => $id]);
 
             return response()->json(['message' => 'Failed to update question.'], 500);
+        }
+    }
+
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $table = $this->questionTable();
+        if ($table === null) {
+            return response()->json(['message' => 'The screening_questions table is not available.'], 409);
+        }
+
+        $columns = $this->questionColumns($table);
+        if (! in_array('is_active', $columns, true)) {
+            return response()->json(['message' => 'This question table does not support safe archiving.'], 422);
+        }
+
+        try {
+            $result = DB::transaction(function () use ($request, $table, $columns, $id): array {
+                $existing = DB::table($table)->where('question_id', $id)->lockForUpdate()->first();
+                if (! $existing) {
+                    return ['not_found' => true];
+                }
+
+                if (! (bool) $existing->is_active) {
+                    return [
+                        'question' => DB::table($table)->select($this->questionSelects($columns))->where('question_id', $id)->first(),
+                        'already_archived' => true,
+                    ];
+                }
+
+                $payload = ['is_active' => false];
+                if (in_array('updated_at', $columns, true)) {
+                    $payload['updated_at'] = now();
+                }
+                DB::table($table)->where('question_id', $id)->update($payload);
+
+                $question = DB::table($table)->select($this->questionSelects($columns))->where('question_id', $id)->first();
+                $answerCount = Schema::hasTable('donor_screening_answers')
+                    && Schema::hasColumn('donor_screening_answers', 'question_id')
+                    ? DB::table('donor_screening_answers')->where('question_id', $id)->count()
+                    : 0;
+
+                $this->writeAudit($request, 'question_archived', "Archived question: {$question->question_text}", $id, [
+                    'previous_is_active' => (bool) $existing->is_active,
+                    'is_active' => false,
+                    'historical_answer_count' => $answerCount,
+                    'record_preserved' => true,
+                ]);
+
+                return ['question' => $question, 'already_archived' => false];
+            });
+
+            if ($result['not_found'] ?? false) {
+                return response()->json(['message' => 'Question not found.'], 404);
+            }
+
+            return response()->json([
+                'message' => ($result['already_archived'] ?? false)
+                    ? 'Question is already archived.'
+                    : 'Question archived successfully. Historical screening records were preserved.',
+                'archived' => true,
+                'question' => $this->transformQuestion($result['question']),
+            ]);
+        } catch (Throwable $e) {
+            logger()->error('Failed to archive question.', ['error' => $e->getMessage(), 'question_id' => $id]);
+
+            return response()->json(['message' => 'Failed to archive question.'], 500);
         }
     }
 
@@ -399,6 +515,31 @@ class QuestionController extends Controller
         return $payload;
     }
 
+    private function snapshotLegacyAnswers(int $questionId, object $question): void
+    {
+        if (! Schema::hasTable('donor_screening_answers')
+            || ! Schema::hasColumn('donor_screening_answers', 'question_snapshot')) {
+            return;
+        }
+
+        $snapshot = [
+            'question_id' => (int) $question->question_id,
+            'question_text' => (string) $question->question_text,
+            'question_order' => (int) ($question->question_order ?? 0),
+            'followup_prompt' => $this->nullableString($question->followup_prompt ?? null),
+            'followup_trigger' => $this->nullableString($question->followup_trigger ?? null),
+            'risk_level' => (string) ($question->risk_level ?? 'safe'),
+            'trigger_answer' => $this->nullableString($question->trigger_answer ?? null),
+            'deferral_days' => $question->deferral_days === null ? null : (int) $question->deferral_days,
+            'recommendation_message' => $this->nullableString($question->recommendation_message ?? null),
+        ];
+
+        DB::table('donor_screening_answers')
+            ->where('question_id', $questionId)
+            ->whereNull('question_snapshot')
+            ->update(['question_snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)]);
+    }
+
     private function nullableString(mixed $value): ?string
     {
         $value = trim((string) ($value ?? ''));
@@ -430,7 +571,8 @@ class QuestionController extends Controller
         Request $request,
         string $actionType,
         string $description,
-        ?int $questionId = null
+        ?int $questionId = null,
+        array $metadata = []
     ): void {
         try {
             if (! Schema::hasTable('audit_logs')) {
@@ -456,7 +598,7 @@ class QuestionController extends Controller
                 'description'  => $description,
                 'ip_address'   => $request->ip(),
                 'result'       => 'success',
-                'metadata'     => null,
+                'metadata'     => $metadata === [] ? null : json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'created_at'   => now(),
             ]);
         } catch (Throwable $e) {

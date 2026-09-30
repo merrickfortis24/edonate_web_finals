@@ -37,9 +37,9 @@ document.addEventListener('DOMContentLoaded', function () {
         triggerAnswerField: '#triggerAnswerField',
         deferralDaysField: '#deferralDaysField',
         recommendationField: '#recommendationMessageField',
-        previewModal: '#questionTextPreviewModal',
-        previewLabel: '#questionTextPreviewLabel',
-        previewContent: '#questionTextPreviewContent',
+        detailModal: '#questionDetailsModal',
+        detailTitle: '#questionDetailsTitle',
+        detailContent: '#questionDetailsContent',
 
         statTotal: '#questionsStatTotal',
         statActive: '#questionsStatActive',
@@ -169,13 +169,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const normalized = safeText(text);
         const fallback = type === 'recommendation' ? 'No recommendation set' : '—';
         const resolved = normalized === '' ? fallback : normalized;
-        const encoded = encodeURIComponent(resolved);
-        const shouldShowView = resolved.length > 100;
 
         return `
             <div class="questions-cell">
                 <span class="questions-cell__text questions-cell__text--${type}" title="${escapeHtml(resolved)}">${escapeHtml(resolved)}</span>
-                ${shouldShowView ? `<button type="button" class="btn btn-link btn-sm questions-cell__view view-text-btn" data-type="${type}" data-text="${encoded}">View</button>` : ''}
             </div>
         `;
     }
@@ -256,14 +253,21 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td>${getDeferralText(pickValue(row, 'deferral_days', 'deferralDays'))}</td>
                 <td>${renderTextCell(pickValue(row, 'recommendation_message', 'recommendationMessage'), 'recommendation')}</td>
                 <td>${getStatusBadge(Boolean(pickValue(row, 'is_active', 'isActive')))}</td>
-                <td class="text-nowrap">
-                    <button type="button" class="btn btn-sm btn-outline-primary edit-btn me-1" data-id="${pickValue(row, 'question_id', 'questionId')}">Edit</button>
-                    <button type="button" class="btn btn-sm ${Boolean(pickValue(row, 'is_active', 'isActive')) ? 'btn-outline-danger' : 'btn-outline-success'} toggle-btn" data-id="${pickValue(row, 'question_id', 'questionId')}">
-                        ${Boolean(pickValue(row, 'is_active', 'isActive')) ? 'Disable' : 'Enable'}
-                    </button>
+                <td>
+                    <div class="questions-actions" role="group" aria-label="Question actions">
+                        <button type="button" class="btn btn-sm btn-outline-secondary view-btn" data-id="${Number(pickValue(row, 'question_id', 'questionId'))}">View</button>
+                        <button type="button" class="btn btn-sm btn-outline-primary edit-btn" data-id="${Number(pickValue(row, 'question_id', 'questionId'))}">Edit</button>
+                        <button type="button" class="btn btn-sm btn-outline-danger delete-btn" data-id="${Number(pickValue(row, 'question_id', 'questionId'))}" ${Boolean(pickValue(row, 'is_active', 'isActive')) ? '' : 'disabled title="Already archived"'}>Delete</button>
+                    </div>
                 </td>
             </tr>
         `).join('');
+
+        tbody.querySelectorAll('.view-btn').forEach((button) => {
+            button.addEventListener('click', (event) => {
+                viewQuestion(Number(event.currentTarget.dataset.id));
+            });
+        });
 
         tbody.querySelectorAll('.edit-btn').forEach((button) => {
             button.addEventListener('click', (event) => {
@@ -271,40 +275,61 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
 
-        tbody.querySelectorAll('.toggle-btn').forEach((button) => {
+        tbody.querySelectorAll('.delete-btn').forEach((button) => {
             button.addEventListener('click', (event) => {
-                toggleQuestion(Number(event.currentTarget.dataset.id));
-            });
-        });
-
-        tbody.querySelectorAll('.view-text-btn').forEach((button) => {
-            button.addEventListener('click', (event) => {
-                const target = event.currentTarget;
-                const type = String(target.dataset.type || 'Text');
-                const text = decodeURIComponent(String(target.dataset.text || ''));
-                openTextPreviewModal(type, text);
+                archiveQuestion(Number(event.currentTarget.dataset.id));
             });
         });
     }
 
-    function openTextPreviewModal(type, text) {
-        const modalLabel = getElement(selectors.previewLabel);
-        const modalContent = getElement(selectors.previewContent);
-        const modalElement = getElement(selectors.previewModal);
-        if (!modalLabel || !modalContent || !modalElement) {
-            return;
+    async function fetchQuestion(id) {
+        const baseUrl = apiUrls().showUrl;
+        if (!baseUrl) {
+            throw new Error('Question detail route is not configured.');
         }
+        const response = await fetch(`${baseUrl}/${id}`, { headers: { Accept: 'application/json' } });
+        if (!response.ok) {
+            throw new Error(await readErrorMessage(response));
+        }
+        return response.json();
+    }
 
-        const labelMap = {
-            question: 'Question',
-            followup: 'Follow-up Prompt',
-            recommendation: 'Recommendation Message',
-        };
+    function detailValue(value) {
+        return value == null || String(value).trim() === '' ? '—' : String(value);
+    }
 
-        modalLabel.textContent = labelMap[type] || 'Text Preview';
-        modalContent.textContent = text || '—';
+    function renderQuestionDetails(question, history = {}) {
+        const fields = [
+            ['Question', question.question_text],
+            ['Question order', question.question_order],
+            ['Status', question.is_active ? 'Active' : 'Inactive / archived'],
+            ['Follow-up trigger', question.followup_trigger ? `When donor answers ${question.followup_trigger.toUpperCase()}` : 'None'],
+            ['Follow-up prompt', question.followup_prompt],
+            ['Risk level', riskLabels[question.risk_level] || question.risk_level],
+            ['Trigger answer', question.trigger_answer],
+            ['Deferral days', question.deferral_days],
+            ['Recommendation', question.recommendation_message],
+            ['Historical answers', history.answer_count ?? 0],
+            ['Screenings with answers', history.screening_count ?? 0],
+        ];
 
-        bootstrap.Modal.getOrCreateInstance(modalElement).show();
+        getElement(selectors.detailTitle).textContent = `Question #${question.question_id}`;
+        getElement(selectors.detailContent).innerHTML = fields.map(([label, value]) => `
+            <div class="question-detail-row">
+                <dt>${escapeHtml(label)}</dt>
+                <dd>${escapeHtml(detailValue(value))}</dd>
+            </div>
+        `).join('');
+    }
+
+    async function viewQuestion(id) {
+        try {
+            const payload = await fetchQuestion(id);
+            renderQuestionDetails(payload.question, payload.history || {});
+            bootstrap.Modal.getOrCreateInstance(getElement(selectors.detailModal)).show();
+        } catch (error) {
+            showToast(error.message || 'Failed to load question details.', 'error');
+        }
     }
 
     function updatePagination(meta) {
@@ -340,11 +365,18 @@ document.addEventListener('DOMContentLoaded', function () {
         [
             selectors.textField,
             selectors.orderField,
+            selectors.followupTriggerField,
+            selectors.promptField,
             selectors.riskField,
             selectors.triggerAnswerField,
             selectors.deferralDaysField,
+            selectors.recommendationField,
         ].forEach((selector) => {
             getElement(selector)?.classList.remove('is-invalid');
+        });
+        document.querySelectorAll('#questionForm .invalid-feedback[data-server-error="true"]').forEach((element) => {
+            element.textContent = '';
+            element.removeAttribute('data-server-error');
         });
     }
 
@@ -378,11 +410,11 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
 
-        if (trigger) {
+        const hasPrompt = Boolean(getElement(selectors.promptField).value.trim());
+        if (trigger || hasPrompt) {
             wrapper.classList.remove('d-none');
         } else {
             wrapper.classList.add('d-none');
-            getElement(selectors.promptField).value = '';
         }
     }
 
@@ -416,10 +448,13 @@ document.addEventListener('DOMContentLoaded', function () {
         modal.show();
     }
 
-    function openEditModal(id) {
-        const question = questionsData.find((item) => Number(pickValue(item, 'question_id', 'questionId')) === id);
-        if (!question) {
-            showToast('Selected question was not found.', 'error');
+    async function openEditModal(id) {
+        let question;
+        try {
+            const payload = await fetchQuestion(id);
+            question = payload.question;
+        } catch (error) {
+            showToast(error.message || 'Failed to load question.', 'error');
             return;
         }
 
@@ -514,6 +549,30 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    function applyServerValidationErrors(errors = {}) {
+        const fields = {
+            question_text: [selectors.textField, '#questionTextError'],
+            question_order: [selectors.orderField, '#questionOrderError'],
+            followup_trigger: [selectors.followupTriggerField, '#followupTriggerError'],
+            followup_prompt: [selectors.promptField, '#followupPromptError'],
+            risk_level: [selectors.riskField, '#riskLevelError'],
+            trigger_answer: [selectors.triggerAnswerField, '#triggerAnswerError'],
+            deferral_days: [selectors.deferralDaysField, '#deferralDaysError'],
+            recommendation_message: [selectors.recommendationField, '#recommendationMessageError'],
+        };
+        Object.entries(errors).forEach(([key, messages]) => {
+            const mapping = fields[key];
+            if (!mapping) return;
+            const field = getElement(mapping[0]);
+            const feedback = getElement(mapping[1]);
+            field?.classList.add('is-invalid');
+            if (feedback) {
+                feedback.textContent = Array.isArray(messages) ? messages[0] : String(messages);
+                feedback.dataset.serverError = 'true';
+            }
+        });
+    }
+
     async function submitForm(event) {
         event.preventDefault();
 
@@ -559,7 +618,10 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             if (!response.ok) {
-                throw new Error(await readErrorMessage(response));
+                const payload = await response.json().catch(() => ({}));
+                if (payload.errors) applyServerValidationErrors(payload.errors);
+                const firstError = payload.errors ? Object.values(payload.errors).flat().find(Boolean) : null;
+                throw new Error(firstError || payload.message || 'Request failed.');
             }
 
             bootstrap.Modal.getInstance(getElement(selectors.modal))?.hide();
@@ -574,40 +636,37 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    async function toggleQuestion(id) {
-        const urls = apiUrls();
-        if (!urls.toggleUrl) {
-            showToast('Question status route is not configured.', 'error');
-            return;
-        }
-
-        const question = questionsData.find((item) => Number(pickValue(item, 'question_id', 'questionId')) === id);
-        if (!question) {
-            showToast('Selected question was not found.', 'error');
-            return;
-        }
-
-        const isEnabling = !Boolean(pickValue(question, 'is_active', 'isActive'));
-        const actionText = isEnabling ? 'enable' : 'disable';
+    async function archiveQuestion(id) {
+        const accepted = typeof Swal !== 'undefined'
+            ? (await Swal.fire({
+                icon: 'warning',
+                title: 'Archive this question?',
+                text: 'It will be removed from new donor screenings. Existing answers and eligibility history will be preserved. You can reactivate it later by editing its status.',
+                showCancelButton: true,
+                confirmButtonText: 'Archive Question',
+                cancelButtonText: 'Keep Question',
+                confirmButtonColor: '#b60c0c',
+            })).isConfirmed
+            : window.confirm('Archive this question? It will be hidden from new donor screenings. Historical answers will be preserved.');
+        if (!accepted) return;
 
         try {
-            const response = await fetch(`${urls.toggleUrl}/${id}/toggle`, {
-                method: 'PATCH',
+            const response = await fetch(`${apiUrls().deleteUrl}/${id}`, {
+                method: 'DELETE',
                 headers: {
-                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                 },
             });
-
             if (!response.ok) {
                 throw new Error(await readErrorMessage(response));
             }
-
-            showToast(`Question successfully ${isEnabling ? 'enabled' : 'disabled'}.`, 'success');
+            const payload = await response.json();
+            showToast(payload.message || 'Question archived. Historical screening records were preserved.', 'success');
             loadQuestions();
         } catch (error) {
-            console.error('Toggle failed:', error);
-            showToast(error.message || `Failed to ${actionText} question.`, 'error');
+            console.error('Question archive failed:', error);
+            showToast(error.message || 'Failed to archive question.', 'error');
         }
     }
 

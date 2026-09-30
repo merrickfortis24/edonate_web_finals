@@ -145,7 +145,7 @@
                 </div>
                 <div class="completion-form-field">
                     <label class="form-label" for="completionVerifiedBloodType">Verified Blood Type</label>
-                    <select class="form-select" id="completionVerifiedBloodType">
+                    <select class="form-select" id="completionVerifiedBloodType" required>
                         <option value="">Not yet determined</option>
                     </select>
                     <div class="form-text" id="completionBloodTypeHelp">Only an administrator may record a verified blood type.</div>
@@ -170,7 +170,7 @@
 
             <div class="completion-form__actions">
                 <a class="btn btn-outline-secondary" href="{{ route('admin.donation-records') }}">Cancel</a>
-                <button class="btn btn-success" id="completeDonationSubmit" type="submit">
+                <button class="btn btn-success" id="completeDonationSubmit" type="submit" disabled>
                     <i class="bi bi-check2-circle me-1" aria-hidden="true"></i>
                     Complete Donation
                 </button>
@@ -338,8 +338,12 @@
                 document.getElementById('completionConfirmBloodTypeChange').checked = false;
                 document.getElementById('completionBloodTypeChangeReason').value = '';
             }
+            updateSubmitAvailability();
         }
 
+        function updateSubmitAvailability() {
+            submitButton.disabled = bloodTypeSelect.disabled || bloodTypeSelect.value === '';
+        }
         function returnToProcessing(flag) {
             if (!api.returnUrl) return;
 
@@ -349,9 +353,19 @@
 
         form.addEventListener('submit', function (event) {
             event.preventDefault();
+            if (bloodTypeSelect.disabled || bloodTypeSelect.value === '') {
+                updateSubmitAvailability();
+                if (bloodTypeSelect.disabled) {
+                    showStatus('An authorized administrator must select the laboratory-confirmed blood type before this donation can be completed.', 'warning');
+                } else {
+                    bloodTypeSelect.focus();
+                    showStatus('Select the laboratory-confirmed blood type before completing this donation.', 'warning');
+                }
+                return;
+            }
+
             submitButton.disabled = true;
             showStatus(verificationOnly ? 'Saving laboratory-confirmed blood type...' : 'Saving donation completion...', 'info');
-
             var requestBody = verificationOnly
                 ? {
                     verified_blood_type_id: bloodTypeSelect.value || null,
@@ -400,7 +414,7 @@
                         if (firstKey && error.errors[firstKey][0]) message = error.errors[firstKey][0];
                     }
                     showStatus(message, 'danger');
-                    submitButton.disabled = false;
+                    updateSubmitAvailability();
                 });
         });
 
@@ -410,6 +424,7 @@
         configureMode();
         renderDonor();
         populateBloodTypes();
+        updateBloodTypeCorrectionFields();
     }());
 </script>
 @endpush

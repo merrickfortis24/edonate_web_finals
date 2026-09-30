@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const publicRoot = path.resolve('../public_html');
+const manifest = JSON.parse(await readFile(path.join(publicRoot, 'build/manifest.json'), 'utf8'));
 const contentTypes = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.svg': 'image/svg+xml', '.png': 'image/png' };
 
 function payloadFor(params) {
@@ -75,7 +76,11 @@ async function mount(page) {
         const url = new URL(route.request().url());
         if (url.hostname !== 'audit.test') return route.abort();
         if (url.pathname === '/fixture') {
-            return route.fulfill({ contentType: 'text/html', body: await readFile('tests/browser/report-analytics.html', 'utf8') });
+            let html = await readFile('tests/browser/report-analytics.html', 'utf8');
+            html = html
+                .replace(/build\/assets\/adminlte-[^"']+\.css/g, `build/${manifest['resources/css/adminlte.css'].file}`)
+                .replace(/build\/assets\/adminlte-[^"']+\.js/g, `build/${manifest['resources/js/adminlte.js'].file}`);
+            return route.fulfill({ contentType: 'text/html', body: html });
         }
         if (url.pathname === '/privacy/preferences') {
             return route.fulfill({ json: { choices: { ...route.request().postDataJSON(), necessary: true, analytics: false, decided: true, expires_at: Math.floor(Date.now() / 1000) + 86400 } } });

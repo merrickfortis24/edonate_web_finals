@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const publicRoot = path.resolve('../public_html');
+const manifest = JSON.parse(await readFile(path.join(publicRoot, 'build/manifest.json'), 'utf8'));
 const types = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.svg': 'image/svg+xml', '.png': 'image/png' };
 const baseFacility = {
     facility_id: 1, facility_name: 'Test Hospital', facility_type: 'hospital', address: 'Original address',
@@ -29,6 +30,9 @@ async function mount(page, options = {}) {
         }
         if (pathname === '/fixture') {
             let html = await readFile(`tests/browser/fixtures/${options.mapFixture ? 'admin-map' : 'admin-facilities'}.html`, 'utf8');
+            html = html
+                .replace(/build\/assets\/adminlte-[^"']+\.css/g, `build/${manifest['resources/css/adminlte.css'].file}`)
+                .replace(/build\/assets\/adminlte-[^"']+\.js/g, `build/${manifest['resources/js/adminlte.js'].file}`);
             html = html.replace(/([?&]key=)[^&\s"'<>]+/g, '$1browser-test-key');
             expect(html).not.toContain('maps.googleapis.com');
             return route.fulfill({ contentType: 'text/html', body: html });
@@ -78,7 +82,7 @@ async function mount(page, options = {}) {
     await page.goto('http://audit.test/fixture');
     await page.locator('#ed-privacy-form input[name="maps"]').check();
     await page.getByRole('button', { name: 'Save selected choices' }).click();
-    if (options.mapFixture) await expect(page.locator('.availability-table')).toHaveCount(1);
+    if (options.mapFixture) await expect(page.locator('#availabilityTableBody')).toBeVisible();
     else await expect(page.locator('#facilityRows')).toContainText('Test Hospital');
     return state;
 }
@@ -207,5 +211,5 @@ test('CARTO tile failure leaves the facility inventory table available', async (
     await page.getByRole('button', { name: 'Facility Inventory', exact: true }).click();
     await expect(page.locator('#mapStatus')).toContainText('Map tiles could not be loaded');
     await expect(page.locator('#availabilityTableBody')).toContainText('Test Hospital');
-    await expect(page.locator('.availability-table')).toBeVisible();
+    await expect(page.locator('#availabilityTableBody')).toBeVisible();
 });

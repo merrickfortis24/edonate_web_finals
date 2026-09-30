@@ -20,6 +20,8 @@
             'storeUrl'  => '',
             'updateUrl' => '',
             'toggleUrl' => '',
+            'showUrl'   => '',
+            'deleteUrl' => '',
         ],
     ],
 ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}
@@ -144,6 +146,7 @@
                                 <option value="yes">When answer is 'Yes'</option>
                                 <option value="no">When answer is 'No'</option>
                             </select>
+                            <div class="invalid-feedback" id="followupTriggerError"></div>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label for="questionActiveField" class="form-label">Status</label>
@@ -158,6 +161,7 @@
                         <label for="followupPromptField" class="form-label">Follow-up Prompt</label>
                         <textarea id="followupPromptField" class="form-control" rows="2" placeholder="e.g. Could you please describe why..."></textarea>
                         <div class="form-text">This prompt will be shown to the donor if they select the trigger answer.</div>
+                        <div class="invalid-feedback" id="followupPromptError"></div>
                     </div>
 
                     <div class="border-top pt-3 mt-3">
@@ -195,6 +199,7 @@
                         <div class="mb-0">
                             <label for="recommendationMessageField" class="form-label">Recommendation Message</label>
                             <textarea id="recommendationMessageField" class="form-control" rows="3" placeholder="Message shown or stored when this decision is triggered."></textarea>
+                            <div class="invalid-feedback" id="recommendationMessageError"></div>
                         </div>
                     </div>
                 </div>
@@ -207,15 +212,18 @@
     </div>
 </div>
 
-<div class="modal fade" id="questionTextPreviewModal" tabindex="-1" aria-labelledby="questionTextPreviewLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+<div class="modal fade" id="questionDetailsModal" tabindex="-1" aria-labelledby="questionDetailsTitle" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="questionTextPreviewLabel">Text Preview</h5>
+                <h5 class="modal-title" id="questionDetailsTitle">Question Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <p class="mb-0" id="questionTextPreviewContent"></p>
+            <div class="modal-body question-details-list" id="questionDetailsContent" aria-live="polite">
+                <p class="text-muted mb-0">Loading question details…</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
     </div>

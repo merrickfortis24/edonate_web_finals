@@ -241,7 +241,7 @@
                             'last_donation_date' => null,
                             'next_eligible_date' => null,
                             'verification_status' => 'unverified',
-                            'eligibility_status' => 'eligible',
+                            'eligibility_status' => 'unknown',
                             'is_active' => true,
                         ];
                     @endphp

@@ -18,7 +18,7 @@ class Phase9BloodAvailabilityTest extends TestCase
         $this->buildSchema();
     }
 
-    public function test_verified_population_includes_scheduled_donors_and_keeps_aggregates_consistent(): void
+    public function test_completed_population_includes_scheduled_and_deferred_donors_and_keeps_aggregates_consistent(): void
     {
         $balintawak = $this->createLocation([
             'barangay_code' => '042101001',
@@ -69,6 +69,14 @@ class Phase9BloodAvailabilityTest extends TestCase
             'donor_id' => 6,
             'status' => 'temporary_deferred',
         ]);
+        DB::table('donation_records')->insert([
+            ['donor_id' => 1, 'donation_status' => 'completed'],
+            ['donor_id' => 2, 'donation_status' => 'completed'],
+            ['donor_id' => 3, 'donation_status' => 'completed'],
+            ['donor_id' => 4, 'donation_status' => 'completed'],
+            ['donor_id' => 5, 'donation_status' => 'completed'],
+            ['donor_id' => 6, 'donation_status' => 'completed'],
+        ]);
 
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
         $response = $this->getJson('/admin/blood-availability/map-data');
@@ -76,16 +84,19 @@ class Phase9BloodAvailabilityTest extends TestCase
         $response->assertOk();
         $payload = $response->json();
 
-        $this->assertSame(3, $payload['summary']['verified_donors']);
-        $this->assertSame(3, $payload['summary']['available_donors']);
+        $this->assertSame(6, $payload['summary']['completed_donors']);
+        $this->assertSame(6, $payload['summary']['verified_donors']);
+        $this->assertSame(6, $payload['summary']['available_donors']);
         $this->assertSame(1, $payload['summary']['scheduled_donors']);
-        $this->assertSame(1, $payload['blood_types']['A+']);
+        $this->assertSame(4, $payload['blood_types']['A+']);
         $this->assertSame(1, $payload['blood_types']['O+']);
         $this->assertSame(1, $payload['blood_types']['O-']);
+        $this->assertSame(1, $payload['blood_type_confidence']['unconfirmed']);
+        $this->assertSame(1, $payload['blood_type_confidence_by_type']['A+']['unconfirmed']);
         $this->assertCount(2, $payload['barangays']);
         $this->assertCount(2, $payload['map_points']);
-        $this->assertSame(3, array_sum(array_column($payload['barangays'], 'verified_donors')));
-        $this->assertSame(3, array_sum(array_column($payload['map_points'], 'verified_donors')));
+        $this->assertSame(6, array_sum(array_column($payload['barangays'], 'completed_donors')));
+        $this->assertSame(6, array_sum(array_column($payload['map_points'], 'completed_donors')));
         $this->assertStringNotContainsString('Scheduled', $response->getContent());
         $this->assertStringNotContainsString('donor_id', $response->getContent());
         $this->assertStringNotContainsString('first_name', $response->getContent());
@@ -103,6 +114,10 @@ class Phase9BloodAvailabilityTest extends TestCase
         ]);
         $this->createQualifiedDonor($locationId, 1);
         $this->createQualifiedDonor($locationId, 2, ['donor_id' => 2]);
+        DB::table('donation_records')->insert([
+            ['donor_id' => 1, 'donation_status' => 'completed'],
+            ['donor_id' => 2, 'donation_status' => 'completed'],
+        ]);
 
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
         $response = $this->getJson('/admin/blood-availability/map-data?blood_type=O%2B');
@@ -158,14 +173,14 @@ class Phase9BloodAvailabilityTest extends TestCase
         $this->assertSame(1, $payload['barangays'][0]['verified_donors']);
         $this->assertSame(1, $payload['barangays'][0]['blood_types']['AB+']);
         $this->assertSame(13.95, $payload['map_points'][0]['latitude']);
-        $this->assertSame(121.12, $payload['map_points'][0]['longitude']);
+        $this->assertSame(121.16, $payload['map_points'][0]['longitude']);
         $this->assertSame('AB+', $payload['filters']['blood_type']);
         $this->assertStringNotContainsString('donor_id', $response->getContent());
         $this->assertStringNotContainsString('Private', $response->getContent());
         $this->assertStringNotContainsString('first_name', $response->getContent());
     }
 
-    public function test_verified_unknown_profile_type_is_excluded_from_every_map_surface(): void
+    public function test_completed_donor_without_supported_blood_type_is_counted_as_unknown(): void
     {
         $locationId = $this->createLocation([
             'barangay_code' => '042101002',
@@ -184,12 +199,53 @@ class Phase9BloodAvailabilityTest extends TestCase
         $response = $this->getJson('/admin/blood-availability/map-data');
 
         $response->assertOk()
-            ->assertJsonPath('summary.verified_donors', 0)
-            ->assertJsonPath('summary.available_donors', 0)
-            ->assertJsonPath('summary.barangays', 0)
-            ->assertJsonPath('data_quality.mapped_verified_donors', 0)
-            ->assertJsonCount(0, 'barangays')
+            ->assertJsonPath('summary.completed_donors', 1)
+            ->assertJsonPath('summary.unknown_type_donors', 1)
+            ->assertJsonPath('blood_types.Unknown', 1)
+            ->assertJsonPath('summary.barangays', 1)
+            ->assertJsonPath('data_quality.mapped_completed_donors', 0)
+            ->assertJsonPath('data_quality.unmapped_completed_donor_count', 1)
+            ->assertJsonPath('data_quality.unmapped_completed_donors.0.donor_reference', 'D11')
+            ->assertJsonPath('data_quality.unmapped_completed_donors.0.missing_fields.0', 'No usable barangay coordinates or maintained barangay center are available.')
+            ->assertJsonCount(1, 'barangays')
             ->assertJsonCount(0, 'map_points');
+    }
+
+    public function test_completed_donor_without_a_profile_type_is_mapped_under_unknown(): void
+    {
+        $locationId = $this->createLocation([
+            'barangay_code' => '042101008',
+            'barangay_name' => 'Balintawak',
+            'city' => 'City of Lipa',
+            'province' => 'Batangas',
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+        $donorId = $this->createQualifiedDonor($locationId, 1, [
+            'donor_id' => 14,
+            'blood_type_id' => null,
+            'blood_type_status' => 'not_yet_determined',
+        ]);
+        DB::table('donation_records')->insert([
+            'donor_id' => $donorId,
+            'donation_status' => 'completed',
+        ]);
+
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $response = $this->getJson('/admin/blood-availability/map-data?blood_type=Unknown');
+
+        $response->assertOk()
+            ->assertJsonPath('summary.completed_donors', 1)
+            ->assertJsonPath('summary.unknown_type_donors', 1)
+            ->assertJsonPath('blood_types.Unknown', 1)
+            ->assertJsonPath('blood_type_confidence.unknown', 1)
+            ->assertJsonPath('blood_type_confidence_by_type.Unknown.unknown', 1)
+            ->assertJsonPath('barangays.0.completed_donors', 1)
+            ->assertJsonPath('barangays.0.blood_types.Unknown', 1)
+            ->assertJsonPath('map_points.0.completed_donors', 1)
+            ->assertJsonPath('map_points.0.latitude', 13.95)
+            ->assertJsonPath('map_points.0.longitude', 121.16)
+            ->assertJsonPath('data_quality.unmapped_completed_donor_count', 0);
     }
 
     public function test_completed_balintawak_donor_maps_once_during_waiting_period_and_matches_all_endpoints(): void
@@ -206,9 +262,15 @@ class Phase9BloodAvailabilityTest extends TestCase
             'status' => 'temporary_deferred',
             'next_eligible_date' => Carbon::today()->addDays(56)->toDateString(),
         ]);
+        $unconfirmedDonorId = $this->createQualifiedDonor($locationId, 4, [
+            'donor_id' => 13,
+            'blood_type_status' => 'self_reported',
+            'verification_status' => 'pending',
+        ]);
         DB::table('donation_records')->insert([
             ['donor_id' => $donorId, 'donation_status' => 'completed', 'verified_blood_type_id' => 4],
             ['donor_id' => $donorId, 'donation_status' => 'completed', 'verified_blood_type_id' => 4],
+            ['donor_id' => $unconfirmedDonorId, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
         ]);
         DB::table('appointments')->insert([
             'donor_id' => $donorId,
@@ -220,35 +282,48 @@ class Phase9BloodAvailabilityTest extends TestCase
         $response = $this->getJson('/admin/blood-availability/map-data?blood_type=AB%2B&barangay=Balintawak');
 
         $response->assertOk()
-            ->assertJsonPath('summary.verified_donors', 1)
-            ->assertJsonPath('summary.available_donors', 1)
+            ->assertJsonPath('summary.completed_donors', 2)
+            ->assertJsonPath('summary.mapped_completed_donors', 2)
+            ->assertJsonPath('summary.verified_donors', 2)
+            ->assertJsonPath('summary.available_donors', 2)
+            ->assertJsonPath('summary.unconfirmed_donors', 1)
             ->assertJsonPath('summary.barangays', 1)
             ->assertJsonPath('summary.scheduled_donors', 1)
-            ->assertJsonPath('blood_types.AB+', 1)
+            ->assertJsonPath('blood_types.AB+', 2)
+            ->assertJsonPath('blood_type_confidence_by_type.AB+.confirmed', 1)
+            ->assertJsonPath('blood_type_confidence_by_type.AB+.unconfirmed', 1)
             ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
-            ->assertJsonPath('barangays.0.verified_donors', 1)
-            ->assertJsonPath('barangays.0.available_donors', 1)
-            ->assertJsonPath('barangays.0.blood_types.AB+', 1)
+            ->assertJsonPath('barangays.0.completed_donors', 2)
+            ->assertJsonPath('barangays.0.verified_donors', 2)
+            ->assertJsonPath('barangays.0.available_donors', 2)
+            ->assertJsonPath('barangays.0.blood_types.AB+', 2)
+            ->assertJsonPath('barangays.0.blood_type_confidence_by_type.AB+.unconfirmed', 1)
             ->assertJsonPath('map_points.0.barangay_name', 'Balintawak')
-            ->assertJsonPath('map_points.0.verified_donors', 1)
+            ->assertJsonPath('map_points.0.completed_donors', 2)
+            ->assertJsonPath('map_points.0.verified_donors', 2)
+            ->assertJsonPath('map_points.0.blood_type_confidence_by_type.AB+.unconfirmed', 1)
             ->assertJsonPath('map_points.0.latitude', 13.95)
             ->assertJsonPath('map_points.0.longitude', 121.16)
-            ->assertJsonPath('data_quality.mapped_verified_donors', 1)
+            ->assertJsonPath('data_quality.mapped_verified_donors', 2)
             ->assertJsonPath('data_quality.verified_donors_missing_coordinates', 0);
 
         $this->getJson('/admin/map/barangays?blood_type=AB%2B&barangay=Balintawak')
             ->assertOk()
-            ->assertJsonPath('0.verified_donors', 1)
-            ->assertJsonPath('0.blood_types.AB+', 1);
+            ->assertJsonPath('0.completed_donors', 2)
+            ->assertJsonPath('0.verified_donors', 2)
+            ->assertJsonPath('0.blood_types.AB+', 2)
+            ->assertJsonPath('0.blood_type_confidence_by_type.AB+.unconfirmed', 1);
         $this->getJson('/admin/map/donors?blood_type=AB%2B&barangay=Balintawak')
             ->assertOk()
-            ->assertJsonPath('0.verified_donors', 1)
+            ->assertJsonPath('0.verified_donors', 2)
+            ->assertJsonPath('0.completed_donors', 2)
             ->assertJsonPath('0.latitude', 13.95)
             ->assertJsonPath('0.longitude', 121.16);
         $this->getJson('/admin/map/summary?blood_type=AB%2B&barangay=Balintawak')
             ->assertOk()
-            ->assertJsonPath('total_donors', 1)
-            ->assertJsonPath('verified_donors', 1)
+            ->assertJsonPath('completed_donors', 2)
+            ->assertJsonPath('total_donors', 2)
+            ->assertJsonPath('verified_donors', 2)
             ->assertJsonPath('mapped_locations', 1)
             ->assertJsonPath('unmapped_donors', 0);
     }

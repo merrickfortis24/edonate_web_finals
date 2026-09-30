@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 const publicRoot = path.resolve('../public_html');
 const fixtures = path.resolve('tests/browser/fixtures');
+const manifest = JSON.parse(await readFile(path.join(publicRoot, 'build/manifest.json'), 'utf8'));
 const contentTypes = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.woff': 'font/woff', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml' };
 const external = [];
 async function mount(page, name) {
@@ -11,7 +12,13 @@ async function mount(page, name) {
     await page.route('**/*', async route => {
         const url = new URL(route.request().url());
         if (url.hostname !== 'audit.test') { external.push(url.origin); return route.abort(); }
-        if (url.pathname === '/fixture') return route.fulfill({ contentType: 'text/html', body: await readFile(path.join(fixtures, name + '.html')) });
+        if (url.pathname === '/fixture') {
+            let html = await readFile(path.join(fixtures, name + '.html'), 'utf8');
+            html = html
+                .replace(/build\/assets\/adminlte-[^"']+\.css/g, `build/${manifest['resources/css/adminlte.css'].file}`)
+                .replace(/build\/assets\/adminlte-[^"']+\.js/g, `build/${manifest['resources/js/adminlte.js'].file}`);
+            return route.fulfill({ contentType: 'text/html', body: html });
+        }
         if (url.pathname === '/privacy/preferences') {
             const posted = route.request().postDataJSON();
             return route.fulfill({ json: { choices: { ...posted, analytics: false, necessary: true, decided: true, expires_at: Math.floor(Date.now()/1000) + 86400 } } });
@@ -52,7 +59,7 @@ test('choices are unchecked, reject works, and keyboard can reopen/escape', asyn
 test('map waits for explicit consent; table is still available', async ({ page }) => {
     await mount(page, 'admin-map');
     expect(external).toEqual([]);
-    await expect(page.locator('.availability-table')).toBeVisible();
+    await expect(page.locator('#availabilityTableBody')).toBeVisible();
     await page.locator('#ed-privacy-form input[name="maps"]').check();
     await page.getByRole('button', {name:'Save selected choices'}).click();
     await expect.poll(() => external.some(origin => origin.endsWith('.basemaps.cartocdn.com'))).toBe(true);

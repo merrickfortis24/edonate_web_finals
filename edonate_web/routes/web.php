@@ -487,6 +487,10 @@ Route::middleware('admin.auth')->group(function () {
                 Route::get('/data', [QuestionController::class, 'data'])
                     ->middleware('throttle:admin-api')
                     ->name('admin.eligibility.questions.data');
+                Route::get('/{id}', [QuestionController::class, 'show'])
+                    ->whereNumber('id')
+                    ->middleware('throttle:admin-api')
+                    ->name('admin.eligibility.questions.show');
                 Route::post('/', [QuestionController::class, 'store'])
                     ->middleware('throttle:admin-write')
                     ->name('admin.eligibility.questions.store');
@@ -498,6 +502,10 @@ Route::middleware('admin.auth')->group(function () {
                     ->whereNumber('id')
                     ->middleware('throttle:admin-write')
                     ->name('admin.eligibility.questions.toggle');
+                Route::delete('/{id}', [QuestionController::class, 'destroy'])
+                    ->whereNumber('id')
+                    ->middleware('throttle:admin-write')
+                    ->name('admin.eligibility.questions.destroy');
             });
         });
     });

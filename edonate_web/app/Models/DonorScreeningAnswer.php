@@ -17,6 +17,11 @@ class DonorScreeningAnswer extends Model
         'question_id',
         'answer',
         'followup_answer',
+        'question_snapshot',
+    ];
+
+    protected $casts = [
+        'question_snapshot' => 'array',
     ];
 
     public function eligibilityStatus()

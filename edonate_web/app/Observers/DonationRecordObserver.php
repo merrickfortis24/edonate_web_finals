@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\DonationRecord;
 use App\Services\EligibilityWaitingPeriodService;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class DonationRecordObserver
@@ -21,7 +22,9 @@ class DonationRecordObserver
                 'donor_id' => $record->donor_id,
                 'appointment_id' => $record->appointment_id,
                 'donation_date' => (string) $record->donation_date,
+                'donation_status' => (string) $record->donation_status,
                 'blood_units' => $record->blood_units,
+                'verified_blood_type_id' => $record->verified_blood_type_id,
                 'remarks' => $record->remarks,
             ]);
         } catch (Throwable $exception) {
@@ -31,13 +34,13 @@ class DonationRecordObserver
 
     public function created(DonationRecord $record): void
     {
-        $this->syncToFirebase($record);
+        $this->syncAfterCommit($record);
         $this->updateEligibilityStatus($record);
     }
 
     public function updated(DonationRecord $record): void
     {
-        $this->syncToFirebase($record);
+        $this->syncAfterCommit($record);
         $this->updateEligibilityStatus($record);
     }
 
@@ -69,5 +72,17 @@ class DonationRecordObserver
             (int) $record->donor_id,
             (string) $record->donation_date
         );
+    }
+
+    private function syncAfterCommit(DonationRecord $record): void
+    {
+        $donationId = (int) $record->donation_id;
+
+        DB::afterCommit(function () use ($donationId): void {
+            $committedRecord = DonationRecord::query()->find($donationId);
+            if ($committedRecord) {
+                $this->syncToFirebase($committedRecord);
+            }
+        });
     }
 }

@@ -84,6 +84,21 @@ class EligibilityPhase3E2ETest extends TestCase
         $this->assertNull($case1['next_eligible_date']);
         $this->assertReviewableState($donorId, false);
 
+        $eligibilityId = (int) DB::table('eligibility_status')->where('donor_id', $donorId)->value('eligibility_id');
+        $historicalAnswer = DB::table('donor_screening_answers')
+            ->where('eligibility_id', $eligibilityId)
+            ->orderBy('answer_id')
+            ->first();
+        $historicalQuestionText = json_decode((string) $historicalAnswer->question_snapshot, true)['question_text'];
+        DB::table('screening_questions')
+            ->where('question_id', $historicalAnswer->question_id)
+            ->update(['question_text' => 'Updated question text after donor screening']);
+
+        $eligibilityDetail = $this->getJson(route('admin.eligibility.show', $eligibilityId))->assertOk();
+        $displayedHistoricalAnswer = collect($eligibilityDetail->json('answers'))
+            ->firstWhere('question_id', (int) $historicalAnswer->question_id);
+        $this->assertSame($historicalQuestionText, $displayedHistoricalAnswer['question']);
+
         // 2) HIV treatment yes => not_eligible
         $case2Answers = $baseAnswers;
         $case2Answers[$hivQuestionId] = 'yes';
@@ -138,6 +153,14 @@ class EligibilityPhase3E2ETest extends TestCase
             ->first();
 
         $this->assertNotNull($row);
+
+        $savedAnswer = DB::table('donor_screening_answers')
+            ->where('eligibility_id', $row->eligibility_id)
+            ->first();
+        $this->assertNotNull($savedAnswer);
+        $questionSnapshot = json_decode((string) ($savedAnswer->question_snapshot ?? ''), true);
+        $this->assertIsArray($questionSnapshot);
+        $this->assertNotSame('', trim((string) ($questionSnapshot['question_text'] ?? '')));
 
         $status = strtolower(trim((string) ($row->status ?? '')));
         if ($status === 'approved') {

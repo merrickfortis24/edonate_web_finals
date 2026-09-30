@@ -342,8 +342,71 @@
 }
 
 .edonate-admin-page .questions-table .questions-cell {
+    display: block;
+    min-width: 0;
+    text-align: left;
+}
+
+.edonate-admin-page .questions-table .questions-cell__text {
+    text-align: left;
+}
+
+.edonate-admin-page .questions-table .questions-actions {
     align-items: center;
-    justify-content: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    justify-content: flex-start;
+    min-width: 210px;
+}
+
+.edonate-admin-page .questions-table .questions-col-actions {
+    min-width: 230px;
+    width: 230px;
+}
+
+.edonate-admin-page .questions-table .questions-actions .btn {
+    min-width: 58px;
+}
+
+.edonate-admin-page .questions-table {
+    min-width: 1750px;
+}
+
+.edonate-admin-page .questions-table-wrapper {
+    -webkit-overflow-scrolling: touch;
+    overflow-x: auto;
+}
+
+.edonate-admin-page .question-details-list {
+    display: grid;
+    gap: 0;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.edonate-admin-page .question-detail-row {
+    border-bottom: 1px solid var(--bs-border-color);
+    display: grid;
+    gap: 0.4rem 1rem;
+    grid-template-columns: minmax(130px, 0.35fr) minmax(0, 1fr);
+    padding: 0.75rem 0;
+}
+
+.edonate-admin-page .question-detail-row dt {
+    font-weight: 600;
+}
+
+.edonate-admin-page .question-detail-row dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+@media (max-width: 575.98px) {
+    .edonate-admin-page .question-detail-row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.2rem;
+    }
 }
 
 /* Shared AdminLTE-style pagination footer. Both server-rendered Laravel

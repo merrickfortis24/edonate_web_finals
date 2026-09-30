@@ -81,7 +81,9 @@ Artisan::command('firebase:sync-mirror', function () {
             'donor_id' => $record->donor_id,
             'appointment_id' => $record->appointment_id,
             'donation_date' => (string) $record->donation_date,
+            'donation_status' => (string) $record->donation_status,
             'blood_units' => $record->blood_units,
+            'verified_blood_type_id' => $record->verified_blood_type_id,
             'remarks' => $record->remarks,
         ]);
     }

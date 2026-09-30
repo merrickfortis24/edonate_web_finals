@@ -292,6 +292,125 @@ class Phase6EventAppointmentTest extends TestCase
         ]);
     }
 
+    public function test_reschedule_options_explain_when_no_future_open_event_is_available(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = $this->createBookableDonor();
+        $currentEventId = $this->createEvent([
+            'event_date' => Carbon::today()->addDay()->toDateString(),
+            'status' => 'closed',
+        ]);
+        $appointmentId = $this->createAppointment($donorId, $currentEventId, ['status' => 'confirmed']);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/reschedule-events?appointment_id='.$appointmentId)
+            ->assertOk()
+            ->assertExactJson(['data' => []]);
+
+        Schema::create('locations', function (Blueprint $table): void {
+            $table->increments('location_id');
+            $table->string('city')->nullable();
+            $table->string('province')->nullable();
+            $table->string('barangay_name')->nullable();
+            $table->string('street_address')->nullable();
+        });
+
+        $html = $this->withSession($this->adminSession())
+            ->get('/admin/appointments')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="rescheduleAvailabilityNotice"', $html);
+        $this->assertStringContainsString('No reschedule options are available right now.', $html);
+        $this->assertStringContainsString('Event Management', $html);
+        $this->assertStringContainsString(route('admin.donation-events.index'), $html);
+    }
+
+    public function test_reschedule_options_only_include_future_open_events_with_remaining_capacity(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = $this->createBookableDonor();
+        $currentEventId = $this->createEvent([
+            'event_date' => Carbon::today()->addDay()->toDateString(),
+            'status' => 'closed',
+        ]);
+        $appointmentId = $this->createAppointment($donorId, $currentEventId, ['status' => 'confirmed']);
+
+        $availableEventId = $this->createEvent([
+            'title' => 'Future Community Drive',
+            'event_date' => Carbon::today()->addDays(3)->toDateString(),
+            'max_capacity' => 2,
+        ]);
+        $this->createEvent([
+            'title' => 'Past Open Drive',
+            'event_date' => Carbon::yesterday()->toDateString(),
+        ]);
+        $this->createEvent([
+            'title' => 'Closed Future Drive',
+            'event_date' => Carbon::today()->addDays(4)->toDateString(),
+            'status' => 'closed',
+        ]);
+        $fullEventId = $this->createEvent([
+            'title' => 'Full Future Drive',
+            'event_date' => Carbon::today()->addDays(5)->toDateString(),
+            'max_capacity' => 1,
+        ]);
+        $this->createAppointment($this->createBookableDonor(), $fullEventId, ['status' => 'confirmed']);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/reschedule-events?appointment_id='.$appointmentId)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.event_id', $availableEventId)
+            ->assertJsonPath('data.0.remaining_slots', 2);
+    }
+
+    public function test_admin_can_change_time_within_the_current_open_event_even_when_it_is_at_capacity(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $donorId = $this->createBookableDonor();
+        $eventId = $this->createEvent([
+            'event_date' => Carbon::today()->addDay()->toDateString(),
+            'max_capacity' => 1,
+        ]);
+        $appointmentId = $this->createAppointment($donorId, $eventId, [
+            'status' => 'confirmed',
+            'appointment_time' => '09:00:00',
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/reschedule-events?appointment_id='.$appointmentId)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.event_id', $eventId)
+            ->assertJsonPath('data.0.is_current_event', true)
+            ->assertJsonPath('data.0.remaining_slots', 1);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reschedule", [
+                'event_id' => $eventId,
+                'appointment_time' => '10:30',
+            ])
+            ->assertOk()
+            ->assertJsonPath('appointment.event_id', $eventId)
+            ->assertJsonPath('appointment.appointment_time', '10:30:00');
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'event_id' => $eventId,
+            'appointment_time' => '10:30:00',
+            'status' => 'confirmed',
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reschedule", [
+                'event_id' => $eventId,
+                'appointment_time' => '10:30',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('appointment_time');
+    }
+
     public function test_reschedule_rejects_terminal_appointments_and_times_outside_event_hours(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);

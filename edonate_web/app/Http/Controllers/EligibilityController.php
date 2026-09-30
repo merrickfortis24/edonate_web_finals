@@ -159,13 +159,16 @@ class EligibilityController extends Controller
             : [];
         $usesDecisionLogic = in_array('risk_level', $questionColumns, true) && in_array('trigger_answer', $questionColumns, true);
 
+        $answerColumns = Schema::hasTable('donor_screening_answers')
+            ? Schema::getColumnListing('donor_screening_answers')
+            : [];
         $answers = DB::table('donor_screening_answers as dsa')
-            ->join('screening_questions as sq', 'sq.question_id', '=', 'dsa.question_id')
+            ->leftJoin('screening_questions as sq', 'sq.question_id', '=', 'dsa.question_id')
             ->where('dsa.eligibility_id', $id)
             ->orderBy('sq.question_order')
             ->orderBy('sq.question_id')
             ->select([
-                'sq.question_id',
+                'dsa.question_id as question_id',
                 'sq.question_text',
                 'sq.followup_prompt',
                 'sq.followup_trigger',
@@ -173,28 +176,41 @@ class EligibilityController extends Controller
                 in_array('trigger_answer', $questionColumns, true) ? 'sq.trigger_answer' : DB::raw('NULL as trigger_answer'),
                 in_array('deferral_days', $questionColumns, true) ? 'sq.deferral_days' : DB::raw('NULL as deferral_days'),
                 in_array('recommendation_message', $questionColumns, true) ? 'sq.recommendation_message' : DB::raw('NULL as recommendation_message'),
+                in_array('question_snapshot', $answerColumns, true) ? 'dsa.question_snapshot' : DB::raw('NULL as question_snapshot'),
                 'dsa.answer',
                 'dsa.followup_answer',
             ])
             ->get()
             ->map(function (object $a) use ($usesDecisionLogic): array {
-                $riskLevel = Str::lower(trim((string) ($a->risk_level ?? 'safe')));
+                $snapshot = is_array($a->question_snapshot ?? null)
+                    ? $a->question_snapshot
+                    : (json_decode((string) ($a->question_snapshot ?? ''), true) ?: []);
+                $questionText = array_key_exists('question_text', $snapshot) ? $snapshot['question_text'] : $a->question_text;
+                $followupPrompt = array_key_exists('followup_prompt', $snapshot) ? $snapshot['followup_prompt'] : $a->followup_prompt;
+                $followupTrigger = array_key_exists('followup_trigger', $snapshot) ? $snapshot['followup_trigger'] : $a->followup_trigger;
+                $riskValue = array_key_exists('risk_level', $snapshot) ? $snapshot['risk_level'] : ($a->risk_level ?? 'safe');
+                $triggerValue = array_key_exists('trigger_answer', $snapshot) ? $snapshot['trigger_answer'] : $a->trigger_answer;
+                $deferralValue = array_key_exists('deferral_days', $snapshot) ? $snapshot['deferral_days'] : $a->deferral_days;
+                $recommendationValue = array_key_exists('recommendation_message', $snapshot)
+                    ? $snapshot['recommendation_message'] : $a->recommendation_message;
+                $riskLevel = Str::lower(trim((string) ($riskValue ?? 'safe')));
                 $answer = Str::lower(trim((string) ($a->answer ?? '')));
-                $triggerAnswer = Str::lower(trim((string) ($a->trigger_answer ?? '')));
-                $isTriggerMatch = $usesDecisionLogic
+                $triggerAnswer = Str::lower(trim((string) ($triggerValue ?? '')));
+                $hasSnapshotDecisionLogic = array_key_exists('risk_level', $snapshot) && array_key_exists('trigger_answer', $snapshot);
+                $isTriggerMatch = ($hasSnapshotDecisionLogic || $usesDecisionLogic)
                     ? $riskLevel !== 'safe' && $triggerAnswer !== '' && $answer === $triggerAnswer
-                    : (($answer === 'yes' && $a->followup_trigger === 'yes') || ($answer === 'no' && $a->followup_trigger === 'no'));
+                    : (($answer === 'yes' && $followupTrigger === 'yes') || ($answer === 'no' && $followupTrigger === 'no'));
 
                 return [
                     'question_id' => (int) ($a->question_id ?? 0),
-                    'question' => (string) $a->question_text,
+                    'question' => (string) ($questionText ?? ''),
                     'answer' => $answer,
-                    'followup_prompt' => (string) ($a->followup_prompt ?? ''),
+                    'followup_prompt' => (string) ($followupPrompt ?? ''),
                     'followup_answer' => (string) ($a->followup_answer ?? ''),
                     'risk_level' => $riskLevel,
                     'trigger_answer' => $triggerAnswer !== '' ? $triggerAnswer : null,
-                    'deferral_days' => $a->deferral_days === null ? null : (int) $a->deferral_days,
-                    'recommendation_message' => (string) ($a->recommendation_message ?? ''),
+                    'deferral_days' => $deferralValue === null ? null : (int) $deferralValue,
+                    'recommendation_message' => (string) ($recommendationValue ?? ''),
                     'is_trigger_match' => $isTriggerMatch,
                 ];
             })

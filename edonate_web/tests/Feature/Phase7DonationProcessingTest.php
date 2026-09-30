@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Mockery;
 use Tests\TestCase;
 
 class Phase7DonationProcessingTest extends TestCase
@@ -364,6 +365,288 @@ class Phase7DonationProcessingTest extends TestCase
             'next_eligible_date' => Carbon::today()->addDays(56)->toDateString(),
         ]);
         $this->assertSame(1, DB::table('notifications')->where('donor_id', $donorId)->where('notification_type', 'donation_completed')->count());
+    }
+
+    public function test_completed_donation_immediately_appears_in_barangay_map_with_verified_blood_type(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $appointmentId = $this->createAppointment([
+            'status' => 'pending',
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/approve")
+            ->assertOk();
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/check-in")
+            ->assertOk();
+
+        $locationId = (int) DB::table('locations')->insertGetId([
+            'barangay_code' => '042101001',
+            'barangay_name' => 'Balintawak',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'latitude' => 13.9521,
+            'longitude' => 121.1234,
+        ], 'location_id');
+        DB::table('donors')->where('donor_id', $donorId)->update(['location_id' => $locationId]);
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'AB+']);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.available_donors', 0);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'verified_blood_type_id' => 2,
+                'donation_date' => Carbon::today()->toDateString(),
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'donor_id' => $donorId,
+            'status' => 'completed',
+        ]);
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'donor_id' => $donorId,
+            'donation_status' => 'completed',
+            'verified_blood_type_id' => 2,
+        ]);
+        $this->assertDatabaseHas('eligibility_status', [
+            'donor_id' => $donorId,
+            'status' => 'temporary_deferred',
+        ]);
+
+        $map = $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.available_donors', 1)
+            ->assertJsonPath('summary.barangays', 1)
+            ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
+            ->assertJsonPath('barangays.0.blood_types.AB+', 1)
+            ->assertJsonPath('map_points.0.latitude', 13.95)
+            ->assertJsonPath('map_points.0.longitude', 121.16);
+
+        $this->assertStringContainsString('no-store', (string) $map->headers->get('Cache-Control'));
+        $this->assertStringNotContainsString('donor_id', $map->getContent());
+        $this->assertStringNotContainsString('Test Donor', $map->getContent());
+        $this->assertStringNotContainsString('contact_number', $map->getContent());
+
+        $this->withSession($this->adminSession())
+            ->get('/admin/blood-availability-mapping')
+            ->assertOk()
+            ->assertSee('Every distinct donor with a completed donation is counted')
+            ->assertSee('Unmapped completed donors')
+            ->assertSee('Completed Donor Coverage')
+            ->assertSee('visibilitychange', false)
+            ->assertSee('30000', false);
+    }
+
+    public function test_admin_can_verify_blood_type_after_completion_and_map_updates_without_duplicate_donation(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+        $locationId = (int) DB::table('locations')->insertGetId([
+            'barangay_code' => '042101001',
+            'barangay_name' => 'Balintawak',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'latitude' => 13.9521,
+            'longitude' => 121.1234,
+        ], 'location_id');
+        DB::table('donors')->where('donor_id', $donorId)->update(['location_id' => $locationId]);
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'AB+']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, DB::table('donation_records')->where('appointment_id', $appointmentId)->count());
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.available_donors', 0);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?status=completed&per_page=100')
+            ->assertOk()
+            ->assertJsonPath('data.0.appointment_id', $appointmentId)
+            ->assertJsonPath('data.0.actions.can_verify_blood_type', true);
+
+        $this->withSession($this->adminSession())
+            ->get('/admin/donation-records')
+            ->assertOk()
+            ->assertSee('Map count requires a lab-confirmed supported blood type.', false)
+            ->assertSee('Verify Blood Type', false);
+
+        $verificationPage = $this->withSession($this->adminSession())
+            ->get("/admin/appointments/{$appointmentId}/complete")
+            ->assertOk()
+            ->assertSee('Verify blood type for completed donation')
+            ->assertSee('verify_blood_type');
+        $this->assertMatchesRegularExpression(
+            '/<button\b(?=[^>]*id="completeDonationSubmit")(?=[^>]*\sdisabled(?:\s|>))[^>]*>/',
+            $verificationPage->getContent()
+        );
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/verify-blood-type", [
+                'verified_blood_type_id' => 2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('donor.blood_type_status', 'verified')
+            ->assertJsonPath('donor.barangay_name', 'Balintawak');
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/verify-blood-type", [
+                'verified_blood_type_id' => 2,
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'This donation already has that verified blood type.');
+
+        $this->assertSame(1, DB::table('donation_records')->where('appointment_id', $appointmentId)->count());
+        $this->assertDatabaseHas('donation_records', [
+            'appointment_id' => $appointmentId,
+            'donor_id' => $donorId,
+            'donation_status' => 'completed',
+            'verified_blood_type_id' => 2,
+        ]);
+        $this->assertDatabaseHas('donors', [
+            'donor_id' => $donorId,
+            'blood_type_id' => 2,
+            'blood_type_status' => 'verified',
+            'blood_type_verified_by_admin_id' => 1,
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.available_donors', 1)
+            ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
+            ->assertJsonPath('barangays.0.blood_types.AB+', 1);
+    }
+
+    public function test_completion_button_starts_disabled_until_a_verified_blood_type_is_selected(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'AB+']);
+
+        $page = $this->withSession($this->adminSession())
+            ->get("/admin/appointments/{$appointmentId}/complete")
+            ->assertOk()
+            ->assertSee('Finish the donation record');
+
+        $this->assertMatchesRegularExpression(
+            '/<select\b(?=[^>]*id="completionVerifiedBloodType")(?=[^>]*\srequired(?:\s|>))[^>]*>/',
+            $page->getContent()
+        );
+        $this->assertMatchesRegularExpression(
+            '/<button\b(?=[^>]*id="completeDonationSubmit")(?=[^>]*\sdisabled(?:\s|>))[^>]*>/',
+            $page->getContent()
+        );
+    }
+
+    public function test_completed_donation_with_verified_unknown_profile_type_still_offers_admin_verification(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        DB::table('blood_types')->insert(['blood_type_id' => 2, 'blood_type' => 'Unknown']);
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')
+            ->where('appointment_id', $appointmentId)
+            ->value('donor_id');
+        DB::table('donors')->where('donor_id', $donorId)->update([
+            'blood_type_id' => 2,
+            'blood_type_status' => 'verified',
+        ]);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+            ])
+            ->assertOk();
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?status=completed&per_page=100')
+            ->assertOk()
+            ->assertJsonPath('data.0.appointment_id', $appointmentId)
+            ->assertJsonPath('data.0.verified_blood_type', '')
+            ->assertJsonPath('data.0.actions.can_verify_blood_type', true);
+
+        $this->withSession($this->adminSession())
+            ->get("/admin/appointments/{$appointmentId}/complete")
+            ->assertOk()
+            ->assertSee('Verify blood type for completed donation')
+            ->assertSee('Required: select the result confirmed by the laboratory.');
+    }
+
+    public function test_completed_donation_is_mirrored_with_status_for_mobile_history(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $appointmentId = $this->createAppointment([
+            'status' => 'checked_in',
+            'checked_in_at' => now(),
+        ]);
+        $donorId = (int) DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id');
+        $firebaseWrites = [];
+
+        $database = Mockery::mock();
+        $database->shouldReceive('getReference')
+            ->atLeast()->once()
+            ->andReturnUsing(function (string $path) use (&$firebaseWrites) {
+                $reference = Mockery::mock();
+                $reference->shouldReceive('set')
+                    ->once()
+                    ->andReturnUsing(function (array $payload) use (&$firebaseWrites, $path): void {
+                        $firebaseWrites[$path] = $payload;
+                    });
+
+                return $reference;
+            });
+        $this->app->instance('firebase.database', $database);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/complete", [
+                'blood_units' => 1,
+                'donation_date' => Carbon::today()->toDateString(),
+                'remarks' => 'Successful donation.',
+            ])
+            ->assertOk();
+
+        $donationId = (int) DB::table('donation_records')
+            ->where('appointment_id', $appointmentId)
+            ->value('donation_id');
+        $this->assertSame([
+            'donation_id' => $donationId,
+            'donor_id' => $donorId,
+            'appointment_id' => $appointmentId,
+        ], array_intersect_key(
+            $firebaseWrites['donation_records/'.$donationId] ?? [],
+            array_flip(['donation_id', 'donor_id', 'appointment_id'])
+        ));
+        $this->assertSame('completed', $firebaseWrites['donation_records/'.$donationId]['donation_status'] ?? null);
     }
 
     public function test_successful_donation_completion_resets_the_consecutive_cancellation_streak(): void

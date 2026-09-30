@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Appointment;
 use App\Models\BloodType;
 use App\Models\Donor;
+use App\Models\DonationRecord;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +97,7 @@ class DonationProcessingService
             $verifiedBloodType = $this->verifiedBloodType($data, $request);
             $bloodTypeChange = $this->prepareBloodTypeChange($donor, $verifiedBloodType, $data);
 
-            $recordId = DB::table('donation_records')->insertGetId([
+            $donationRecord = (new DonationRecord())->forceFill([
                 'donor_id' => $appointment->donor_id,
                 'appointment_id' => $appointment->appointment_id,
                 'donation_date' => $donationDate->toDateString(),
@@ -108,7 +109,9 @@ class DonationProcessingService
                 'recorded_by_admin_id' => $adminId,
                 'created_at' => now(),
                 'updated_at' => now(),
-            ], 'donation_id');
+            ]);
+            $donationRecord->saveOrFail();
+            $recordId = (int) $donationRecord->donation_id;
 
             $appointment->forceFill([
                 'status' => AppointmentStatusService::COMPLETED,
@@ -205,7 +208,8 @@ class DonationProcessingService
 
     /**
      * Verify a laboratory blood type against an already completed donation.
-     * This never creates a duplicate donation record or receives inventory twice.
+     * This only updates the donor/type linkage; it never creates another
+     * donation record or receives inventory a second time.
      *
      * @param array<string, mixed> $data
      * @return array<string, mixed>
@@ -275,12 +279,14 @@ class DonationProcessingService
                 ]);
             }
 
-            DB::table('donation_records')
+            $donationRecord = DonationRecord::query()
                 ->where('donation_id', $record->donation_id)
-                ->update([
-                    'verified_blood_type_id' => (int) $bloodType->blood_type_id,
-                    'updated_at' => now(),
-                ]);
+                ->lockForUpdate()
+                ->firstOrFail();
+            $donationRecord->forceFill([
+                'verified_blood_type_id' => (int) $bloodType->blood_type_id,
+                'updated_at' => now(),
+            ])->saveOrFail();
 
             $this->auditBloodTypeVerification(
                 $request,
@@ -742,8 +748,8 @@ class DonationProcessingService
             'target_table' => 'donors',
             'target_id' => (int) $donor->donor_id,
             'description' => $change['changed']
-                ? 'Updated a donor\'s verified blood type during donation completion.'
-                : 'Verified a donor\'s blood type during donation completion.',
+                ? 'Updated a donor\'s verified blood type during donation processing.'
+                : 'Verified a donor\'s blood type from a completed donation laboratory result.',
             'ip_address' => $request?->ip(),
             'result' => 'success',
             'metadata' => json_encode([

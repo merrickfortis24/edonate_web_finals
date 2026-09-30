@@ -360,6 +360,19 @@ class DonorPortalController extends Controller
                     'answer' => $answer,
                     'followup_answer' => $followupAnswer !== '' ? $followupAnswer : null,
                 ];
+                if (Schema::hasColumn('donor_screening_answers', 'question_snapshot')) {
+                    $answerPayload['question_snapshot'] = [
+                        'question_id' => $questionId,
+                        'question_text' => (string) $question->question_text,
+                        'question_order' => (int) $question->question_order,
+                        'followup_prompt' => $question->followup_prompt,
+                        'followup_trigger' => $question->followup_trigger,
+                        'risk_level' => $question->risk_level,
+                        'trigger_answer' => $question->trigger_answer,
+                        'deferral_days' => $question->deferral_days,
+                        'recommendation_message' => $question->recommendation_message,
+                    ];
+                }
 
                 $existingAnswer = DonorScreeningAnswer::query()
                     ->where('eligibility_id', $eligibility->eligibility_id)
@@ -367,10 +380,8 @@ class DonorPortalController extends Controller
                     ->first();
 
                 if ($existingAnswer instanceof DonorScreeningAnswer) {
-                    DonorScreeningAnswer::query()
-                        ->where('eligibility_id', $eligibility->eligibility_id)
-                        ->where('question_id', $questionId)
-                        ->update($answerPayload);
+                    $existingAnswer->fill($answerPayload);
+                    $existingAnswer->save();
                 } else {
                     DonorScreeningAnswer::query()->create([
                         'eligibility_id' => $eligibility->eligibility_id,

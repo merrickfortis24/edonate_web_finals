@@ -280,6 +280,32 @@ class Phase12IntegrationTest extends TestCase
         $this->assertDatabaseHas('donation_records', ['donation_id' => 31, 'donor_id' => 1]);
     }
 
+    public function test_new_donor_without_screening_or_donation_is_unknown_not_eligible(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $this->seedDonor(1, 'New', 'Donor');
+        $this->seedDonor(2, 'Screened', 'Donor');
+        DB::table('eligibility_status')->insert([
+            'donor_id' => 2,
+            'status' => 'eligible',
+        ]);
+
+        $unknown = $this->withSession(['admin_id' => 1, 'admin_role' => 'admin'])
+            ->getJson('/admin/users/data?status=unknown');
+
+        $unknown->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.donor_id', 1)
+            ->assertJsonPath('data.0.eligibility_status', 'unknown')
+            ->assertJsonPath('stats.eligible_donors', 1);
+
+        $this->getJson('/admin/users/data?status=eligible')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.donor_id', 2)
+            ->assertJsonPath('data.0.eligibility_status', 'eligible');
+    }
+
     public function test_admin_dashboard_marks_missing_inventory_unavailable_and_builds_sqlite_month_data(): void
     {
         $this->seedReportRows();

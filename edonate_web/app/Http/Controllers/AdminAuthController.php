@@ -1009,7 +1009,7 @@ class AdminAuthController extends BaseController
                     $this->safeCsvCell($donor['blood_type'] ?? 'Not Yet Determined'),
                     $this->safeCsvCell($donor['blood_type_status'] ?? 'not_yet_determined'),
                     $this->safeCsvCell($donor['verification_status'] ?? 'unverified'),
-                    $this->safeCsvCell($donor['eligibility_status'] ?? 'eligible'),
+                    $this->safeCsvCell($donor['eligibility_status'] ?? 'unknown'),
                     $this->safeCsvCell($donor['last_donation_date'] ?? ''),
                     $this->safeCsvCell($donor['total_donations'] ?? 0),
                     $this->safeCsvCell(($donor['is_active'] ?? true) ? 'active' : 'inactive'),
@@ -1190,7 +1190,7 @@ class AdminAuthController extends BaseController
             $requestedStatus = $this->userManagementNullableString($validated['eligibility_status'] ?? null);
             if ($requestedStatus !== null) {
                 $normalizedRequestedStatus = $this->normalizeUserManagementStatusValue($requestedStatus);
-                $currentDerivedStatus = $this->normalizeUserManagementStatusValue((string) ($before['eligibility_status'] ?? 'eligible'));
+                $currentDerivedStatus = $this->normalizeUserManagementStatusValue((string) ($before['eligibility_status'] ?? 'unknown'));
 
                 if ($latestEligibility instanceof EligibilityStatus) {
                     $latestEligibility->status = $this->userManagementStatusDatabaseValue($normalizedRequestedStatus);
@@ -1484,18 +1484,29 @@ class AdminAuthController extends BaseController
     public function rescheduleEventOptions(Request $request, AppointmentBookingService $bookingService): JsonResponse
     {
         $validated = $request->validate([
-            'exclude_event_id' => ['nullable', 'integer', 'min:1'],
+            'appointment_id' => ['required', 'integer', 'min:1', 'exists:appointments,appointment_id'],
         ]);
+        $appointment = DB::table('appointments')
+            ->where('appointment_id', (int) $validated['appointment_id'])
+            ->first(['event_id', 'status']);
 
         $events = DonationEvent::query()
             ->whereIn('status', ['open', 'upcoming', 'ongoing'])
             ->whereDate('event_date', '>=', Carbon::today()->toDateString())
-            ->when(! empty($validated['exclude_event_id']), fn ($query) => $query->where('event_id', '!=', (int) $validated['exclude_event_id']))
             ->orderBy('event_date')
             ->orderBy('start_time')
             ->limit(100)
             ->get()
-            ->map(fn (DonationEvent $event): array => $bookingService->eventPayload($event))
+            ->map(function (DonationEvent $event) use ($appointment, $bookingService): array {
+                $isCurrentEvent = is_numeric($appointment?->event_id)
+                    && (int) $appointment->event_id === (int) $event->event_id;
+                $reuseCurrentSlot = $isCurrentEvent
+                    && $bookingService->appointmentConsumesEventSlot((string) ($appointment->status ?? ''));
+                $payload = $bookingService->eventPayload($event, $reuseCurrentSlot);
+                $payload['is_current_event'] = $isCurrentEvent;
+
+                return $payload;
+            })
             ->filter(static fn (array $event): bool => $event['accepts_bookings'] && (int) $event['remaining_slots'] > 0)
             ->values();
 
@@ -1612,9 +1623,8 @@ class AdminAuthController extends BaseController
 
     /**
      * Display the protected completion workspace opened from Donation
-     * Processing. The page is intentionally limited to checked-in
-     * appointments. Admins may also open a completed donation to enter its
-     * laboratory-confirmed blood type without creating a second record.
+     * Processing. Checked-in donations use the completion mode; completed
+     * records missing a verified type use the admin-only verification mode.
      */
     public function completeDonationPage(Request $request, int $appointment)
     {
@@ -1701,7 +1711,10 @@ class AdminAuthController extends BaseController
         ]);
     }
 
-    /** Verify a laboratory blood type for an existing completed donation. */
+    /**
+     * Record an administrator-confirmed laboratory blood type for a donation
+     * that has already been completed, without creating a second donation.
+     */
     public function verifyCompletedDonationBloodType(Request $request, int $appointment, DonationProcessingService $service): JsonResponse
     {
         if (Str::lower(trim((string) $request->session()->get('admin_role'))) !== 'admin') {
@@ -2093,10 +2106,13 @@ class AdminAuthController extends BaseController
         $data = $availability->getMapData($this->bloodAvailabilityFilters($request, $availability));
 
         return response()->json([
-            'total_donors' => $data['summary']['verified_donors'],
-            'verified_donors' => $data['summary']['verified_donors'],
-            'mapped_locations' => $data['data_quality']['mapped_verified_donors'],
-            'unmapped_donors' => $data['data_quality']['verified_donors_missing_coordinates'],
+            'total_donors' => $data['summary']['completed_donors'],
+            'completed_donors' => $data['summary']['completed_donors'],
+            'verified_donors' => $data['summary']['completed_donors'],
+            'mapped_locations' => count($data['map_points']),
+            'mapped_completed_donors' => $data['data_quality']['mapped_completed_donors'],
+            'unmapped_donors' => $data['data_quality']['unmapped_completed_donor_count'],
+            'unmapped_completed_donors' => $data['data_quality']['unmapped_completed_donors'],
             'blood_type_breakdown' => collect($data['blood_types'])->map(
                 static fn (int $count, string $bloodType): array => ['blood_type' => $bloodType, 'count' => $count]
             )->values(),
@@ -2110,7 +2126,7 @@ class AdminAuthController extends BaseController
     private function bloodAvailabilityFilters(Request $request, BloodAvailabilityService $availability): array
     {
         $validated = $request->validate([
-            'blood_type' => ['nullable', 'string', 'max:10', Rule::in($availability->bloodTypeNames())],
+            'blood_type' => ['nullable', 'string', 'max:10', Rule::in([...$availability->bloodTypeNames(), 'Unknown'])],
             'barangay' => ['nullable', 'string', 'max:150'],
             'city' => ['nullable', 'string', 'max:150'],
         ]);
@@ -5922,9 +5938,9 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             WHEN LOWER(TRIM(COALESCE(es.status, ''))) IN ('temporary deferred', 'temporary_deferred', 'temporary_defer', 'temporarily_deferred', 'deferred') THEN 'temporary_deferred'
             WHEN LOWER(TRIM(COALESCE(es.status, ''))) IN ('for review', 'for_review', 'pending review', 'pending_review', 'pending') THEN 'for_review'
             WHEN TRIM(COALESCE(es.status, '')) <> '' THEN 'unknown'
-            WHEN drs.last_donation_date IS NULL THEN 'eligible'
-            WHEN drs.last_donation_date <= {$waitingPeriodCutoff} THEN 'eligible'
-            ELSE 'temporary_deferred'
+            WHEN drs.last_donation_date IS NOT NULL AND drs.last_donation_date <= {$waitingPeriodCutoff} THEN 'eligible'
+            WHEN drs.last_donation_date IS NOT NULL THEN 'temporary_deferred'
+            ELSE 'unknown'
         END";
     }
 

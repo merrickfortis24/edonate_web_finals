@@ -254,16 +254,22 @@ class AppointmentBookingService
                 $this->fail('appointment', 'An appointment with a donation record cannot be rescheduled.');
             }
 
-            if ($eventId === (int) $appointment->event_id) {
-                $this->fail('event_id', 'Choose a different event to reschedule this appointment.');
-            }
-
             $event = DonationEvent::query()
                 ->where('event_id', $eventId)
                 ->lockForUpdate()
                 ->first();
 
-            if (! $event || ! $this->eventAcceptsBookings($event) || $this->remainingSlots($event) < 1) {
+            $isCurrentEvent = $event && (int) $event->event_id === (int) $appointment->event_id;
+            $reusesCurrentSlot = $isCurrentEvent && $this->appointmentConsumesEventSlot((string) $appointment->status);
+            $remainingSlots = $event
+                ? $this->remainingSlots($event) + ($reusesCurrentSlot ? 1 : 0)
+                : 0;
+            $eventCanAcceptReschedule = $event
+                && $this->normalizeEventStatus((string) $event->status) === 'open'
+                && $this->eventIsUpcoming($event)
+                && $remainingSlots > 0;
+
+            if (! $eventCanAcceptReschedule) {
                 $this->fail('event_id', 'The selected event is unavailable or has no remaining capacity.');
             }
 
@@ -277,6 +283,14 @@ class AppointmentBookingService
             }
 
             $confirmedTime = $this->appointmentTimeForEvent($event, $appointmentTime);
+            if ($isCurrentEvent
+                && $appointment->appointment_date
+                && Carbon::parse($appointment->appointment_date)->toDateString() === Carbon::parse($event->event_date)->toDateString()
+                && $appointment->appointment_time
+                && Carbon::parse($appointment->appointment_time)->format('H:i:s') === $confirmedTime) {
+                $this->fail('appointment_time', 'Choose a different time for the currently scheduled event.');
+            }
+
             $previousEventId = $appointment->event_id !== null ? (int) $appointment->event_id : null;
             $previousDate = $appointment->appointment_date ? Carbon::parse($appointment->appointment_date)->toDateString() : null;
             $previousTime = $appointment->appointment_time ? (string) $appointment->appointment_time : null;
@@ -389,10 +403,13 @@ class AppointmentBookingService
         };
     }
 
-    public function eventPayload(DonationEvent $event): array
+    public function eventPayload(DonationEvent $event, bool $reuseExistingSlot = false): array
     {
         $booked = $this->bookedSlotCount((int) $event->event_id);
         $capacity = max(0, (int) ($event->max_capacity ?? 0));
+        $remainingSlots = max(0, $capacity - $booked + ($reuseExistingSlot ? 1 : 0));
+        $eventIsOpenAndUpcoming = $this->normalizeEventStatus((string) $event->status) === 'open'
+            && $this->eventIsUpcoming($event);
 
         return [
             'event_id' => (int) $event->event_id,
@@ -410,11 +427,18 @@ class AppointmentBookingService
             'maximum_slots' => $capacity,
             'confirmed_count' => $booked,
             'booked_slots' => $booked,
-            'remaining_slots' => max(0, $capacity - $booked),
+            'remaining_slots' => $remainingSlots,
             'status' => $this->normalizeEventStatus((string) $event->status),
-            'availability_status' => $this->availabilityStatus($event),
-            'accepts_bookings' => $this->eventAcceptsBookings($event),
+            'availability_status' => $eventIsOpenAndUpcoming
+                ? ($remainingSlots > 0 ? 'available' : 'full')
+                : $this->availabilityStatus($event),
+            'accepts_bookings' => $eventIsOpenAndUpcoming && $remainingSlots > 0,
         ];
+    }
+
+    public function appointmentConsumesEventSlot(string $status): bool
+    {
+        return in_array(strtolower(trim($status)), self::SLOT_CONSUMING_STATUSES, true);
     }
 
     public function appointmentPayload(Appointment $appointment): array

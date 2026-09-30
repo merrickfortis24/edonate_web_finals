@@ -297,7 +297,7 @@
                         <label class="reschedule-field__label" for="rescheduleEvent">
                             New Event<span class="reschedule-field__required" aria-hidden="true"> *</span>
                         </label>
-                        <select id="rescheduleEvent" class="reschedule-field__input" aria-required="true" aria-describedby="rescheduleDateHint">
+                        <select id="rescheduleEvent" class="reschedule-field__input" aria-required="true" aria-describedby="rescheduleDateHint rescheduleAvailabilityNotice">
                             <option value="">Choose an available event</option>
                         </select>
                         <span class="reschedule-field__hint" id="rescheduleDateHint">The event date and venue are shown in each option.</span>
@@ -313,8 +313,17 @@
                             class="reschedule-field__input"
                             autocomplete="off"
                             aria-required="true"
+                            aria-describedby="rescheduleTimeHint rescheduleAvailabilityNotice"
                         />
-                        <span class="reschedule-field__hint">Use 24-hour format</span>
+                        <span class="reschedule-field__hint" id="rescheduleTimeHint">Use 24-hour format</span>
+                    </div>
+                </div>
+
+                <div class="alert alert-warning d-flex align-items-start gap-2 mb-3 d-none" id="rescheduleAvailabilityNotice" role="status" aria-live="polite">
+                    <i class="bi bi-calendar-x flex-shrink-0 mt-1" aria-hidden="true"></i>
+                    <div>
+                        <strong>No reschedule options are available right now.</strong>
+                        <div>Choose another future open event with remaining capacity, or select your current event to change its time while it remains open. Until a valid option is available, the event and time fields stay disabled. You can check <a href="{{ route('admin.donation-events.index') }}">Event Management</a>, then return and reopen this dialog.</div>
                     </div>
                 </div>
 
@@ -1156,9 +1165,11 @@
         var rsConfirmBtn     = document.getElementById('rescheduleConfirmBtn');
         var rsErrorEl        = document.getElementById('rescheduleError');
         var rsErrorText      = document.getElementById('rescheduleErrorText');
+        var rsAvailabilityNotice = document.getElementById('rescheduleAvailabilityNotice');
         var rsInfoCode       = document.getElementById('rescheduleInfoCode');
         var rsInfoDatetime   = document.getElementById('rescheduleInfoDatetimeText');
         var rsPendingId      = 0;  // appointmentId stored when modal opens
+        var rsIsLoading      = false;
 
         function getTodayString() {
             var d = new Date();
@@ -1175,21 +1186,31 @@
         }
 
         function rsShowError(message) {
+            rsHideAvailabilityNotice();
             if (!rsErrorEl || !rsErrorText) { return; }
             rsErrorText.textContent = message;
             rsErrorEl.style.display = 'flex';
         }
 
+        function rsShowAvailabilityNotice() {
+            if (rsAvailabilityNotice) { rsAvailabilityNotice.classList.remove('d-none'); }
+        }
+
+        function rsHideAvailabilityNotice() {
+            if (rsAvailabilityNotice) { rsAvailabilityNotice.classList.add('d-none'); }
+        }
+
         function rsHideError() {
-            if (!rsErrorEl) { return; }
-            rsErrorEl.style.display = 'none';
-            rsErrorText.textContent = '';
+            if (rsErrorEl) { rsErrorEl.style.display = 'none'; }
+            if (rsErrorText) { rsErrorText.textContent = ''; }
+            rsHideAvailabilityNotice();
         }
 
         function rsSetLoading(isLoading) {
             if (!rsConfirmBtn) { return; }
-            rsConfirmBtn.disabled = isLoading;
+            rsIsLoading = Boolean(isLoading);
             rsConfirmBtn.classList.toggle('is-loading', isLoading);
+            rsEnableConfirmWhenReady();
         }
 
         function rsValidate() {
@@ -1218,10 +1239,10 @@
         }
 
         function rsEnableConfirmWhenReady() {
-            if (!rsConfirmBtn || !rsDateInput || !rsTimeInput) { return; }
-            var selected = rsDateInput.options[rsDateInput.selectedIndex];
-            var hasSelection = Boolean(rsDateInput.value && selected && selected.dataset.eventDate);
-            rsConfirmBtn.disabled = !(hasSelection && rsTimeInput.value);
+            if (!rsConfirmBtn) { return; }
+            var selected = rsDateInput && rsDateInput.options[rsDateInput.selectedIndex];
+            var hasSelection = Boolean(rsDateInput && rsDateInput.value && selected && selected.dataset.eventDate);
+            rsConfirmBtn.disabled = rsIsLoading || !(hasSelection && rsTimeInput && rsTimeInput.value);
         }
 
         function applyRescheduleEventSchedule() {
@@ -1243,8 +1264,10 @@
             rsTimeInput.max = end;
             rsTimeInput.value = start;
             if (dateHint) {
-                dateHint.textContent = 'Event date: ' + formatDate(selected.dataset.eventDate)
-                    + ' · ' + (selected.dataset.remainingSlots || '0') + ' slot(s) remaining';
+                dateHint.textContent = selected.dataset.currentEvent === 'true'
+                    ? 'Current event selected. Your existing booking is retained; choose a different time.'
+                    : 'Event date: ' + formatDate(selected.dataset.eventDate)
+                        + ' · ' + (selected.dataset.remainingSlots || '0') + ' slot(s) remaining';
             }
             rsEnableConfirmWhenReady();
         }
@@ -1288,7 +1311,7 @@
             }
 
             var optionsUrl = new URL(rescheduleOptionsUrl, window.location.origin);
-            if (currentEventId) { optionsUrl.searchParams.set('exclude_event_id', String(currentEventId)); }
+            optionsUrl.searchParams.set('appointment_id', String(appointmentId));
             fetch(optionsUrl.toString(), { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (response) {
                     return response.json().then(function (data) {
@@ -1306,13 +1329,15 @@
                         option.dataset.startTime = String(item.start_time || '');
                         option.dataset.endTime = String(item.end_time || '');
                         option.dataset.remainingSlots = String(item.remaining_slots || 0);
-                        option.textContent = (item.title || 'Donation event') + ' — '
+                        option.dataset.currentEvent = item.is_current_event ? 'true' : 'false';
+                        option.textContent = (item.is_current_event ? 'Current event — change time: ' : '')
+                            + (item.title || 'Donation event') + ' — '
                             + formatDate(item.event_date) + ' — ' + (item.location_name || item.venue || 'Venue not listed')
-                            + ' (' + String(item.remaining_slots || 0) + ' slots left)';
+                            + (item.is_current_event ? '' : ' (' + String(item.remaining_slots || 0) + ' slots left)');
                         rsDateInput.appendChild(option);
                     });
                     rsDateInput.disabled = options.length === 0;
-                    if (options.length === 0) { rsShowError('There are no future open events with available slots.'); }
+                    if (options.length === 0) { rsShowAvailabilityNotice(); }
                     applyRescheduleEventSchedule();
                 })
                 .catch(function (error) {
