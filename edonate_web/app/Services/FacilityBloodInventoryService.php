@@ -15,6 +15,10 @@ class FacilityBloodInventoryService
     /** @var array<int, string> */
     private const SUPPORTED_BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
+    public function __construct(private readonly PhilippinesBarangayCenterIndex $barangayCenters)
+    {
+    }
+
     /** @return array<int, string> */
     public function facilityTypes(): array
     {
@@ -312,6 +316,18 @@ class FacilityBloodInventoryService
                 }
             }
 
+            $hasFacilityPin = $this->validCoordinate($facility->latitude, $facility->longitude);
+            $barangayCenter = ! $hasFacilityPin
+                ? $this->barangayCenters->findCenter(
+                    null,
+                    (string) ($facility->barangay_name ?? ''),
+                    (string) $facility->city,
+                    (string) $facility->province
+                )
+                : null;
+            $latitude = $hasFacilityPin ? (float) $facility->latitude : ($barangayCenter['latitude'] ?? null);
+            $longitude = $hasFacilityPin ? (float) $facility->longitude : ($barangayCenter['longitude'] ?? null);
+
             return [
                 'facility_id' => (int) $facility->facility_id,
                 'facility_name' => (string) $facility->facility_name,
@@ -320,10 +336,12 @@ class FacilityBloodInventoryService
                 'barangay_name' => (string) ($facility->barangay_name ?? ''),
                 'city' => (string) $facility->city,
                 'province' => (string) $facility->province,
-                'latitude' => $facility->latitude,
-                'longitude' => $facility->longitude,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
                 'status' => (string) ($facility->status ?? 'active'),
-                'mapped' => $this->validCoordinate($facility->latitude, $facility->longitude),
+                'mapped' => $this->validCoordinate($latitude, $longitude),
+                'map_location_source' => $hasFacilityPin ? 'facility_pin' : ($barangayCenter ? 'barangay_center' : null),
+                'matched_barangay_name' => $barangayCenter['matched_barangay'] ?? null,
                 'blood_types' => $types,
                 'last_updated' => $lastUpdated?->toIso8601String(),
             ];
@@ -353,6 +371,11 @@ class FacilityBloodInventoryService
             'summary' => [
                 'facilities' => count($facilityData),
                 'mapped_facilities' => count(array_filter($facilityData, static fn (array $row): bool => $row['mapped'])),
+                'approximate_mapped_facilities' => count(array_filter(
+                    $facilityData,
+                    static fn (array $row): bool => $row['map_location_source'] === 'barangay_center'
+                )),
+                'unmapped_facilities' => count(array_filter($facilityData, static fn (array $row): bool => ! $row['mapped'])),
                 'total_units' => $totalUnits,
                 'facilities_with_available' => $facilitiesWithAvailable,
                 'facilities_with_low_stock' => $facilitiesWithLow,
@@ -367,7 +390,7 @@ class FacilityBloodInventoryService
                 'search' => $search,
             ],
             'last_updated' => now()->toIso8601String(),
-            'freshness_notice' => 'Inventory data is based on the latest recorded facility update.',
+            'freshness_notice' => 'Inventory reflects the latest facility update. Facilities without a saved pin use approximate Faeldon 2019 barangay-boundary centers; saved facility coordinates are not changed.',
         ];
     }
 

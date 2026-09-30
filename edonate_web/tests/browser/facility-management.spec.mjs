@@ -71,11 +71,18 @@ async function mount(page, options = {}) {
             const facilities = state.facilities.filter(row => row.status === 'active').map(row => ({
                 ...row, blood_types: { 'A+': { units: 5, status: 'available' } }, last_updated: null,
             }));
-            const mapPoints = facilities.filter(row => Number.isFinite(Number(row.latitude)) && Number.isFinite(Number(row.longitude)));
+            if (options.mapFacilityBoundaryTest && facilities[0]) Object.assign(facilities[0], {
+                barangay_name: 'Balintawak', city: 'Lipa City', province: 'Batangas',
+                latitude: 13.9575925, longitude: 121.1555519, mapped: true,
+                map_location_source: 'barangay_center', matched_barangay_name: 'Balintawak',
+            });
+            const mapPoints = facilities.filter(row => row.mapped && Number.isFinite(Number(row.latitude)) && Number.isFinite(Number(row.longitude)));
+            const approximate = facilities.filter(row => row.map_location_source === 'barangay_center').length;
             return route.fulfill({ json: { facilities, map_points: mapPoints, summary: {
                 facilities: facilities.length, mapped_facilities: mapPoints.length, total_units: facilities.length * 5,
+                approximate_mapped_facilities: approximate, unmapped_facilities: facilities.length - mapPoints.length,
                 facilities_with_low_stock: 0, facilities_with_out_of_stock: 0,
-            } } });
+            }, freshness_notice: 'Facilities without a saved pin use approximate Faeldon 2019 barangay-boundary centers.' } });
         }
         if (pathname === '/admin/blood-availability/map-data') {
             if (!state.donorMapData) return route.fulfill({ json: { barangays: [], map_points: [], summary: {}, data_quality: {} } });
@@ -252,6 +259,18 @@ test('updated facility coordinates are displayed on the existing Leaflet facilit
     await expect(page.locator('#availabilityMap')).toBeVisible();
     await expect.poll(() => page.locator('#availabilityMap .leaflet-marker-icon').count()).toBe(1);
     expect(state.tileRequests).toBeGreaterThan(0);
+});
+
+test('facility inventory labels Faeldon barangay-center markers as approximate', async ({ page }) => {
+    await mount(page, { mapFixture: true, mapFacilityBoundaryTest: true });
+    await page.getByRole('button', { name: 'Facility Inventory', exact: true }).click();
+    await expect(page.locator('#summaryValue2')).toHaveText('1');
+    await expect(page.locator('#availabilityQuality')).toContainText('approximate barangay centers: 1');
+    await expect(page.locator('#availabilityTableBody')).toContainText('Approximate barangay center: Balintawak');
+    const approximateMarker = page.locator('#availabilityMap .availability-marker--approximate');
+    await expect(approximateMarker).toHaveCount(1);
+    await approximateMarker.click();
+    await expect(page.locator('.leaflet-popup-content')).toContainText('Approximate barangay center from Faeldon 2019 boundary data');
 });
 
 test('local boundary centers render as aggregate markers and surface a unique typo match', async ({ page }) => {

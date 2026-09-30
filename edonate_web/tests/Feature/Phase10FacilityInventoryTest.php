@@ -153,6 +153,7 @@ class Phase10FacilityInventoryTest extends TestCase
         $unmapped = $this->createFacility([
             'facility_name' => 'Unmapped Clinic',
             'facility_type' => 'clinic',
+            'barangay_name' => 'No Such Barangay',
             'latitude' => null,
             'longitude' => null,
         ]);
@@ -220,6 +221,49 @@ class Phase10FacilityInventoryTest extends TestCase
             ->assertOk()
             ->assertJsonPath('summary.facilities', 1)
             ->assertJsonCount(1, 'facilities');
+    }
+
+    public function test_facility_map_uses_local_faeldon_barangay_center_without_saving_it_as_a_facility_pin(): void
+    {
+        $mappedId = $this->createFacility([
+            'facility_name' => 'Balintawak Clinic',
+            'barangay_name' => 'Balintawak',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+        $unmappedId = $this->createFacility([
+            'facility_name' => 'Unmatched Barangay Clinic',
+            'barangay_name' => 'No Such Barangay',
+            'city' => 'Lipa City',
+            'province' => 'Batangas',
+            'latitude' => null,
+            'longitude' => null,
+        ]);
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $payload = $this->getJson('/admin/blood-availability/facilities')->assertOk()->json();
+        $facilities = collect($payload['facilities'])->keyBy('facility_id');
+
+        $this->assertSame(2, $payload['summary']['facilities']);
+        $this->assertSame(1, $payload['summary']['mapped_facilities']);
+        $this->assertSame(1, $payload['summary']['approximate_mapped_facilities']);
+        $this->assertSame(1, $payload['summary']['unmapped_facilities']);
+        $this->assertTrue($facilities[$mappedId]['mapped']);
+        $this->assertSame('barangay_center', $facilities[$mappedId]['map_location_source']);
+        $this->assertSame('Balintawak', $facilities[$mappedId]['matched_barangay_name']);
+        $this->assertEqualsWithDelta(13.9575925, $facilities[$mappedId]['latitude'], 0.0000001);
+        $this->assertEqualsWithDelta(121.1555519, $facilities[$mappedId]['longitude'], 0.0000001);
+        $this->assertFalse($facilities[$unmappedId]['mapped']);
+        $this->assertNull($facilities[$unmappedId]['map_location_source']);
+        $this->assertCount(1, $payload['map_points']);
+        $this->assertSame($mappedId, $payload['map_points'][0]['facility_id']);
+        $this->assertStringContainsString('approximate Faeldon 2019 barangay-boundary centers', $payload['freshness_notice']);
+
+        $this->assertDatabaseHas('facilities', ['facility_id' => $mappedId, 'latitude' => null, 'longitude' => null]);
+        $this->assertDatabaseHas('facilities', ['facility_id' => $unmappedId, 'latitude' => null, 'longitude' => null]);
+        Http::assertNothingSent();
     }
 
     public function test_facility_creation_requires_a_manual_pin_and_saves_address_and_coordinates(): void
