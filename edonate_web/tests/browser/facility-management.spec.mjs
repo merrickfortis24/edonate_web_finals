@@ -16,11 +16,30 @@ const baseFacility = {
 async function mount(page, options = {}) {
     const state = {
         facilities: [{ ...baseFacility }, { ...baseFacility, facility_id: 2, facility_name: 'Inactive Clinic', status: 'inactive' }],
-        saved: [], tileRequests: 0,
+        saved: [], tileRequests: 0, geocodeQueries: [], savedCenters: [], externalGeocoderRequests: 0,
+        donorMapData: options.mapBoundaryTest ? {
+            summary: { completed_donors: 1, mapped_completed_donors: 1, available_donors: 1, barangays: 1, most_common_blood_type: { blood_type: 'AB+', count: 1 } },
+            blood_types: { 'A+': 0, 'A-': 0, 'B+': 0, 'B-': 0, 'AB+': 1, 'AB-': 0, 'O+': 0, 'O-': 0, Unknown: 0 },
+            blood_type_confidence: { confirmed: 1, unconfirmed: 0, unknown: 0 },
+            barangays: [{ barangay_name: 'Bone-languyan', boundary_match_name: 'Bohe-languyan', city: 'Sumisip', province: 'Basilan', completed_donors: 1, scheduled_donors: 0, blood_types: { 'AB+': 1 }, blood_type_confidence: { confirmed: 1, unconfirmed: 0, unknown: 0 }, blood_type_confidence_by_type: { 'AB+': { confirmed: 1, unconfirmed: 0, unknown: 0 } }, availability_level: 'low', mapped: true }],
+            map_points: [{ barangay_name: 'Bone-languyan', boundary_match_name: 'Bohe-languyan', city: 'Sumisip', completed_donors: 1, latitude: 6.4532, longitude: 122.07982, scheduled_donors: 0, blood_types: { 'AB+': 1 }, blood_type_confidence: { confirmed: 1, unconfirmed: 0, unknown: 0 }, blood_type_confidence_by_type: { 'AB+': { confirmed: 1, unconfirmed: 0, unknown: 0 } }, availability_level: 'low' }],
+            data_quality: { mapped_completed_donors: 1, unmapped_completed_donor_count: 0, unmapped_completed_donors: [] },
+        } : options.mapGeocodeTest ? {
+            summary: { completed_donors: 1, mapped_completed_donors: 0, available_donors: 1, barangays: 1, most_common_blood_type: { blood_type: 'A+', count: 1 } },
+            blood_types: { 'A+': 1, 'A-': 0, 'B+': 0, 'B-': 0, 'AB+': 0, 'AB-': 0, 'O+': 0, 'O-': 0, Unknown: 0 },
+            blood_type_confidence: { confirmed: 1, unconfirmed: 0, unknown: 0 },
+            barangays: [{ barangay_name: 'Sabang', city: 'City of Lipa', province: 'Batangas', completed_donors: 1, scheduled_donors: 0, blood_types: { 'A+': 1 }, blood_type_confidence: { confirmed: 1, unconfirmed: 0, unknown: 0 }, blood_type_confidence_by_type: { 'A+': { confirmed: 1, unconfirmed: 0, unknown: 0 } }, availability_level: 'low', mapped: false }],
+            map_points: [],
+            data_quality: { mapped_completed_donors: 0, unmapped_completed_donor_count: 1, unmapped_completed_donors: [{ donor_reference: 'D700', location_id: 50, barangay_name: 'Sabang', city: 'City of Lipa', blood_type: 'A+', blood_type_confidence: 'confirmed', missing_fields: ['No usable barangay coordinates or maintained barangay center are available.'] }] },
+        } : null,
     };
     await page.route('**/*', async route => {
         const url = new URL(route.request().url()), pathname = url.pathname;
         if (url.hostname !== 'audit.test') {
+            if (url.hostname === 'nominatim.openstreetmap.org') {
+                state.externalGeocoderRequests++;
+                return route.abort();
+            }
             if (url.hostname.endsWith('.basemaps.cartocdn.com')) {
                 state.tileRequests++;
                 if (options.tileFailure) return route.abort();
@@ -57,6 +76,35 @@ async function mount(page, options = {}) {
                 facilities: facilities.length, mapped_facilities: mapPoints.length, total_units: facilities.length * 5,
                 facilities_with_low_stock: 0, facilities_with_out_of_stock: 0,
             } } });
+        }
+        if (pathname === '/admin/blood-availability/map-data') {
+            if (!state.donorMapData) return route.fulfill({ json: { barangays: [], map_points: [], summary: {}, data_quality: {} } });
+            return route.fulfill({ json: state.donorMapData });
+        }
+        if (pathname === '/admin/map/locations/50/geocoder/search') {
+            const query = url.searchParams.get('q') || '';
+            state.geocodeQueries.push(query);
+            const noPrimaryMatch = options.geocodeNoPrimary && query.includes('City of');
+            return route.fulfill({ json: noPrimaryMatch ? [] : [{
+                place_id: 100, licence: 'test', osm_type: 'relation', osm_id: 10,
+                boundingbox: ['20.70', '20.75', '121.90', '122.00'], lat: '20.73', lon: '121.97',
+                display_name: 'Sabang, Lipa, Batangas, Philippines',
+                address: { suburb: 'Sabang', city: 'Lipa', state: 'Batangas', country: 'Philippines', country_code: 'ph' },
+            }] });
+        }
+        if (pathname.match(/^\/admin\/map\/locations\/\d+\/coordinates$/) && route.request().method() === 'POST') {
+            const locationId = Number(pathname.split('/').at(-2)), payload = route.request().postDataJSON();
+            state.savedCenters.push({ locationId, ...payload });
+            if (state.donorMapData) {
+                const row = state.donorMapData.barangays[0];
+                row.latitude = Number(payload.latitude); row.longitude = Number(payload.longitude); row.mapped = true;
+                state.donorMapData.map_points = [{ ...row }];
+                state.donorMapData.summary.mapped_completed_donors = 1;
+                state.donorMapData.data_quality.mapped_completed_donors = 1;
+                state.donorMapData.data_quality.unmapped_completed_donor_count = 0;
+                state.donorMapData.data_quality.unmapped_completed_donors = [];
+            }
+            return route.fulfill({ json: { saved: true, message: 'Barangay center saved.' } });
         }
         if (pathname === '/admin/map/map-data') return route.fulfill({ json: { barangays: [], map_points: [], summary: {} } });
         if (pathname.endsWith('/status')) {
@@ -205,6 +253,41 @@ test('updated facility coordinates are displayed on the existing Leaflet facilit
     await expect.poll(() => page.locator('#availabilityMap .leaflet-marker-icon').count()).toBe(1);
     expect(state.tileRequests).toBeGreaterThan(0);
 });
+
+test('local boundary centers render as aggregate markers and surface a unique typo match', async ({ page }) => {
+    const state = await mount(page, { mapFixture: true, mapBoundaryTest: true });
+    await expect(page.locator('#availabilityTableBody')).toContainText('Boundary match: Bohe-languyan');
+    await expect(page.locator('#summaryValue1')).toHaveText('1');
+    await expect(page.locator('#summaryValue2')).toHaveText('1');
+    await expect(page.locator('#unmappedCompletedPanel')).toBeHidden();
+    await expect.poll(() => page.locator('#availabilityMap .leaflet-marker-icon').count()).toBe(1);
+    expect(state.externalGeocoderRequests).toBe(0);
+});
+
+for (const width of [1280, 375]) {
+    test(`admin can optionally resolve a location outside the local dataset at ${width}px`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        const state = await mount(page, { mapFixture: true, mapGeocodeTest: true, geocodeNoPrimary: true });
+        const button = page.getByRole('button', { name: 'Resolve locations outside the dataset' });
+        await expect(button).toBeEnabled();
+        await button.click();
+        await expect(page.locator('#geocodeQueueStatus')).toContainText('Finished: 1 center(s) saved');
+        expect(state.geocodeQueries).toEqual([
+            'Sabang, City of Lipa, Philippines',
+            'Sabang, Lipa, Philippines',
+        ]);
+        expect(state.externalGeocoderRequests).toBe(0);
+        expect(state.savedCenters).toEqual([{
+            locationId: 50, latitude: 20.73, longitude: 121.97,
+            query: 'Sabang, Lipa, Philippines',
+        }]);
+        await expect(page.locator('#summaryValue1')).toHaveText('1');
+        await expect(page.locator('#summaryValue2')).toHaveText('1');
+        await expect(page.locator('#unmappedCompletedPanel')).toBeHidden();
+        await expect.poll(() => page.locator('#availabilityMap .leaflet-marker-icon').count()).toBe(1);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    });
+}
 
 test('CARTO tile failure leaves the facility inventory table available', async ({ page }) => {
     await mount(page, { mapFixture: true, tileFailure: true });

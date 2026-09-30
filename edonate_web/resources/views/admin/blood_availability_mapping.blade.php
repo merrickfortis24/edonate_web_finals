@@ -7,6 +7,7 @@
 
 @push('admin_head')
 <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.min.css') }}">
+<link rel="stylesheet" href="{{ asset('vendor/leaflet-control-geocoder/Control.Geocoder.css') }}">
 <style>
     .availability-content{padding:24px 32px 40px}.availability-tabs{display:inline-flex;border:1px solid var(--bs-border-color);border-radius:8px;overflow:hidden;margin-bottom:18px}.availability-tab{background:var(--edonate-card-bg);border:0;border-right:1px solid var(--bs-border-color);color:var(--bs-body-color);font-weight:600;padding:10px 16px}.availability-tab:last-child{border-right:0}.availability-tab.active{background:#9f1010;color:#fff}.availability-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-bottom:18px}.availability-stat,.availability-panel{background:var(--edonate-card-bg);border:1px solid var(--bs-border-color);border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.06);color:var(--bs-body-color)}.availability-stat{min-height:100px;padding:16px}.availability-stat__label{color:var(--bs-secondary-color);font-size:12px;font-weight:600}.availability-stat__value{color:#9f1010;font-size:26px;font-weight:700;margin-top:7px}.availability-panel{margin-bottom:18px;padding:18px}.availability-filter-row{align-items:end;display:grid;gap:12px;grid-template-columns:180px minmax(200px,1fr) 180px 180px auto}.availability-filter-row label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}.availability-quality,.availability-panel__hint,.availability-legend{color:var(--bs-secondary-color);font-size:12px;margin:10px 0 0}.availability-panel__title{color:var(--c-primary-dark);font-size:18px;font-weight:700;margin:0 0 4px}#availabilityMap{background:var(--bs-tertiary-bg);border-radius:8px;height:500px;min-height:360px;margin-top:14px}.availability-table-wrap{overflow-x:auto}.availability-table{margin:0;min-width:980px}.availability-table td,.availability-table th{font-size:12px;vertical-align:middle;white-space:nowrap}.availability-badge{border-radius:999px;display:inline-block;font-size:11px;font-weight:700;padding:4px 8px}.availability-badge--high,.availability-badge--available{background:#dff3e4;color:#17642c}.availability-badge--moderate,.availability-badge--low{background:#fff0bd;color:#725500}.availability-badge--none,.availability-badge--out_of_stock{background:#f3d8d8;color:#851616}.availability-marker{align-items:center;background:#a90f0f;border:3px solid #fff;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,.35);color:#fff;display:flex;font-size:11px;font-weight:700;height:38px;justify-content:center;width:38px}.availability-marker--moderate,.availability-marker--low{background:#bd8300}.availability-marker--none,.availability-marker--out_of_stock{background:#777}@media(max-width:1100px){.availability-summary{grid-template-columns:repeat(3,1fr)}.availability-filter-row{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){.availability-content{padding:16px}.availability-summary,.availability-filter-row{grid-template-columns:1fr}#availabilityMap{height:420px}.availability-tabs{display:flex}.availability-tab{flex:1}}
 </style>
@@ -31,23 +32,39 @@
     </div><p class="availability-quality" id="availabilityQuality">Every distinct donor with a completed donation is counted, regardless of current eligibility or blood-type verification. Laboratory-confirmed types take precedence; otherwise profile types are labelled unconfirmed and missing types are shown as Unknown. Donor identities and exact home coordinates are not exposed.</p></section>
     <section class="availability-panel"><h2 class="availability-panel__title" id="mapTitle">Completed Donor Coverage</h2><p class="availability-panel__hint" id="mapHint">One aggregate marker represents one barangay. This is not physical blood-bank inventory.</p><p class="availability-legend" id="mapLegend">Legend: marker values are distinct donors with completed donation history.</p><p id="mapPrivacyNotice">External map tiles are blocked until you allow maps in <button type="button" class="btn btn-outline-secondary" data-privacy-open>Privacy choices</button>. The table below remains available.</p><div id="availabilityMap" role="region" aria-label="Optional completed-donor coverage map; equivalent information is in the table below"></div><p class="text-muted small mt-2 mb-0" id="mapStatus" aria-live="polite"></p></section>
     <section class="availability-panel"><h2 class="availability-panel__title" id="tableTitle">Barangay Completed Donors</h2><div class="availability-table-wrap" role="region" aria-label="Blood availability table, scroll horizontally if needed" tabindex="0"><table class="table table-hover availability-table"><thead id="availabilityTableHead"></thead><tbody id="availabilityTableBody"></tbody></table></div><div class="admin-pagination admin-pagination--js d-none" id="facilityPagination" aria-label="Table pagination"><span class="admin-pagination__info" id="facilityPageMeta">Showing 0 to 0 of 0 entries</span><nav class="admin-pagination__links" id="facilityPaginationLinks" aria-label="Pagination links"></nav></div></section>
-    <section class="availability-panel" id="unmappedCompletedPanel" hidden aria-labelledby="unmappedCompletedTitle"><h2 class="availability-panel__title" id="unmappedCompletedTitle">Unmapped completed donors</h2><p class="availability-panel__hint">These completed donors remain in the total, but their registered barangay or a usable barangay center needs correction. Only donor references and missing fields are shown.</p><div class="availability-table-wrap" role="region" aria-label="Unmapped completed donors" tabindex="0"><table class="table table-hover availability-table"><thead><tr><th>Donor reference</th><th>Barangay</th><th>City</th><th>Blood type</th><th>Type status</th><th>Missing field</th></tr></thead><tbody id="unmappedCompletedBody"></tbody></table></div></section>
+    <section class="availability-panel" id="unmappedCompletedPanel" hidden aria-labelledby="unmappedCompletedTitle"><h2 class="availability-panel__title" id="unmappedCompletedTitle">Unmapped completed donors</h2><p class="availability-panel__hint">These completed donors remain in the total, but their registered barangay or municipality could not be matched to a usable center. Only donor references and missing fields are shown.</p><p class="availability-panel__hint">The map first uses local barangay polygon centers from Faeldon’s 2019 Philippines boundary dataset. If a location is not in that dataset, an admin may optionally use the external resolver; unmatched records stay visible and no donor identity or exact home coordinates are sent.</p><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><button class="btn btn-outline-primary" id="resolveBarangayCenters" type="button" disabled><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>Resolve locations outside the dataset</button><span class="small text-muted" id="geocodeQueueStatus" role="status" aria-live="polite"></span></div><div class="availability-table-wrap" role="region" aria-label="Unmapped completed donors" tabindex="0"><table class="table table-hover availability-table"><thead><tr><th>Donor reference</th><th>Barangay</th><th>City</th><th>Blood type</th><th>Type status</th><th>Missing field</th></tr></thead><tbody id="unmappedCompletedBody"></tbody></table></div></section>
 </main>
 @endsection
 
 @push('admin_scripts')
 @include('admin.partials.facility-status-script')
 <script src="{{ asset('vendor/leaflet/leaflet.min.js') }}"></script>
+<script src="{{ asset('vendor/leaflet-control-geocoder/Control.Geocoder.js') }}"></script>
 <script>
 (function(){
     'use strict';
-    const donorUrl=@json(route('admin.map.data')),facilityUrl=@json(route('admin.facilities.map-data')),bloodTypes=@json(array_values($bloodTypes));
+    const donorUrl=@json(route('admin.map.data')),facilityUrl=@json(route('admin.facilities.map-data')),geocoderSearchUrl=@json(route('admin.map.locations.geocoder-search',['location'=>'__LOCATION__'])),coordinatesUrl=@json(route('admin.map.locations.coordinates',['location'=>'__LOCATION__'])),bloodTypes=@json(array_values($bloodTypes)),csrfToken=document.querySelector('meta[name="csrf-token"]')?.content||'';
     const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const blood=document.getElementById('availabilityBloodType'),search=document.getElementById('availabilitySearch'),city=document.getElementById('availabilityCity'),facilityType=document.getElementById('availabilityFacilityType'),sort=document.getElementById('availabilitySort'),body=document.getElementById('availabilityTableBody'),head=document.getElementById('availabilityTableHead'),status=document.getElementById('mapStatus');
-    let layer='donors',timer=null,map=null,markers=window.L?L.layerGroup():null,facilityRows=[],facilityPage=1,refreshRevision=0;
+    const resolveCentersButton=document.getElementById('resolveBarangayCenters'),geocodeQueueStatus=document.getElementById('geocodeQueueStatus');
+    const geocoderAvailable=Boolean(window.L?.Control?.Geocoder?.nominatim);
+    let layer='donors',timer=null,map=null,markers=window.L?L.layerGroup():null,facilityRows=[],facilityPage=1,refreshRevision=0,geocodeJobs=[],geocodingActive=false;
+    const mapsAllowed=()=>window.eDonatePrivacy?.allowed('maps')===true;
+    const delay=milliseconds=>new Promise(resolve=>window.setTimeout(resolve,milliseconds));
+    const normalizePlace=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/^\s*city\s+of\s+/,'').replace(/^\s*(?:barangay|brgy)\.?\s+/,'').replace(/[^a-z0-9]+/g,' ').trim();
+    function updateGeocodeControls(){
+        const ready=Boolean(geocoderAvailable&&mapsAllowed()&&geocodeJobs.length&&!geocodingActive);
+        resolveCentersButton.disabled=!ready;
+        if(geocodingActive)return;
+        if(!geocoderAvailable)geocodeQueueStatus.textContent='The local geocoder plugin is unavailable.';
+        else if(!mapsAllowed())geocodeQueueStatus.textContent='Allow external maps in Privacy choices before sending a barangay/city query.';
+        else if(!geocodeJobs.length)geocodeQueueStatus.textContent='No unmapped completed-donor location has both a barangay and city to geocode.';
+        else geocodeQueueStatus.textContent=`${geocodeJobs.length} unique barangay center(s) can be resolved; requests run one at a time.`;
+    }
     function syncMapConsent(){
         const allowed=window.eDonatePrivacy?.allowed('maps')===true;
         document.getElementById('mapPrivacyNotice').hidden=allowed;
+        updateGeocodeControls();
         if(!allowed){if(map){map.remove();map=null;}return;}
         if(!window.L){status.textContent='Map visualization is unavailable. The table remains available.';return;}
         if(map)return;
@@ -104,7 +121,7 @@
             '<th>Unconfirmed</th><th>Level</th></tr>';
         const rows=data.barangays||[];
         body.innerHTML=rows.length?rows.map(row=>
-            '<tr><td><strong>'+esc(row.barangay_name)+'</strong></td>'+
+            '<tr><td><strong>'+esc(row.barangay_name)+'</strong>'+(row.boundary_match_name&&normalizePlace(row.boundary_match_name)!==normalizePlace(row.barangay_name)?'<small class="d-block text-muted">Boundary match: '+esc(row.boundary_match_name)+'</small>':'')+'</td>'+
             '<td>'+esc(row.city)+'</td>'+
             '<td>'+esc(row.completed_donors??row.available_donors??0)+'</td>'+
             '<td>'+esc(row.scheduled_donors??0)+'</td>'+
@@ -125,7 +142,80 @@
             '<td>'+esc(confidenceLabel(donor.blood_type_confidence))+'</td>'+ 
             '<td>'+esc((donor.missing_fields||[]).join(' '))+'</td></tr>'
         ).join('');
+        const locations=new Map();
+        unmapped.forEach(donor=>{
+            const locationId=Number(donor.location_id),barangay=String(donor.barangay_name||'').trim(),cityName=String(donor.city||'').trim();
+            if(!Number.isInteger(locationId)||locationId<1||!barangay||!cityName||barangay==='Not recorded'||cityName==='Not recorded')return;
+            if(!locations.has(locationId))locations.set(locationId,{locationId,barangay,city:cityName});
+        });
+        geocodeJobs=[...locations.values()];
+        updateGeocodeControls();
         renderDonorMarkers(data.map_points||[]);
+    }
+    function geocoderFor(locationId){
+        if(!geocoderAvailable)return null;
+        const searchUrl=geocoderSearchUrl.replace('__LOCATION__',encodeURIComponent(locationId));
+        return L.Control.Geocoder.nominatim({
+            serviceUrl:searchUrl.replace(/search$/,''),
+            geocodingQueryParams:{countrycodes:'ph',limit:1,addressdetails:1,format:'jsonv2'}
+        });
+    }
+    async function geocodeQuery(query,geocoder){
+        try{return await geocoder.geocode(query);}catch(_){return [];}
+    }
+    function matchingGeocodeResult(results,job){
+        const barangay=normalizePlace(job.barangay),cityName=normalizePlace(job.city);
+        return (results||[]).find(result=>{
+            const center=result?.center,lat=Number(center?.lat),lng=Number(center?.lng);
+            if(!Number.isFinite(lat)||!Number.isFinite(lng)||lat<4||lat>22||lng<116||lng>127)return false;
+            const address=result?.properties?.address||{};
+            const searchable=normalizePlace([result?.name,...Object.values(address)].join(' '));
+            return barangay.length>1&&cityName.length>1&&searchable.includes(barangay)&&searchable.includes(cityName);
+        })||null;
+    }
+    async function resolveBarangayCenters(){
+        if(geocodingActive||!geocoderAvailable||!mapsAllowed()||!geocodeJobs.length)return;
+        const jobs=[...geocodeJobs];
+        geocodingActive=true;
+        updateGeocodeControls();
+        resolveCentersButton.innerHTML='<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Resolving centers…';
+        let saved=0,skipped=0,failed=0;
+        for(let index=0;index<jobs.length;index++){
+            if(!mapsAllowed()){skipped+=jobs.length-index;break;}
+            if(index>0)await delay(1200);
+            const job=jobs[index],geocoder=geocoderFor(job.locationId),baseQuery=`${job.barangay}, ${job.city}, Philippines`;
+            if(!geocoder){failed++;continue;}
+            geocodeQueueStatus.textContent=`Resolving ${index+1} of ${jobs.length}: ${job.barangay}, ${job.city}`;
+            let resultQuery=baseQuery;
+            let result=matchingGeocodeResult(await geocodeQuery(baseQuery,geocoder),job);
+            if(!result&&/^\s*City of\s+/i.test(job.city)){
+                const fallbackCity=job.city.replace(/^\s*City of\s+/i,'').trim();
+                await delay(1200);
+                resultQuery=`${job.barangay}, ${fallbackCity}, Philippines`;
+                result=matchingGeocodeResult(await geocodeQuery(resultQuery,geocoder),{...job,city:fallbackCity});
+            }
+            if(!result){skipped++;continue;}
+            const latitude=Number(result.center.lat),longitude=Number(result.center.lng);
+            try{
+                const response=await fetch(coordinatesUrl.replace('__LOCATION__',encodeURIComponent(job.locationId)),{
+                    method:'POST',
+                    headers:{Accept:'application/json','Content-Type':'application/json','X-Requested-With':'XMLHttpRequest','X-CSRF-TOKEN':csrfToken},
+                    body:JSON.stringify({latitude,longitude,query:resultQuery})
+                });
+                const payload=await response.json().catch(()=>({}));
+                if(response.status===409){skipped++;continue;}
+                if(!response.ok||payload.saved!==true){failed++;continue;}
+                saved++;
+                if(map&&markers)L.marker([latitude,longitude],{icon:markerIcon('low','•')})
+                    .bindPopup(`<strong>${esc(job.barangay)}</strong><br>${esc(job.city)}`).addTo(markers);
+            }catch(_){failed++;}
+        }
+        geocodingActive=false;
+        resolveCentersButton.innerHTML='<i class="bi bi-geo-alt me-1" aria-hidden="true"></i>Resolve missing barangay centers';
+        await refresh();
+        geocodeQueueStatus.textContent=mapsAllowed()
+            ?`Finished: ${saved} center(s) saved, ${skipped} unmatched or skipped, ${failed} error(s). Unmatched locations remain listed for correction.`
+            :'Stopped because external map permission was withdrawn. No further geocoding queries were sent.';
     }
     function renderDonorMarkers(points){
         if(!map)return;
@@ -143,7 +233,8 @@
                 return '<div>'+esc(type)+': <strong>'+esc(count)+'</strong>'+qualifier+'</div>';
             }).join('');
             const confidence=point.blood_type_confidence||{};
-            const popup='<strong>'+esc(point.barangay_name)+'</strong><br>'+esc(point.city)+
+            const boundaryNote=point.boundary_match_name&&normalizePlace(point.boundary_match_name)!==normalizePlace(point.barangay_name)?'<div><small>Boundary dataset match: '+esc(point.boundary_match_name)+'</small></div>':'';
+            const popup='<strong>'+esc(point.barangay_name)+'</strong><br>'+esc(point.city)+boundaryNote+
                 '<hr class="my-1"><div>Completed donors: <strong>'+esc(count)+'</strong></div>'+
                 '<div>Scheduled: <strong>'+esc(point.scheduled_donors??0)+'</strong></div>'+
                 '<div>Unconfirmed type: <strong>'+esc(confidence.unconfirmed??0)+'</strong></div>'+
@@ -192,6 +283,7 @@
         syncMapConsent();
         refresh();
     }
+    resolveCentersButton.addEventListener('click',resolveBarangayCenters);
     document.getElementById('donorLayer').onclick=()=>setLayer('donors');document.getElementById('facilityLayer').onclick=()=>setLayer('facilities');blood.onchange=refresh;[search,city].forEach(input=>input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(refresh,300);}));facilityType.onchange=refresh;sort.onchange=()=>{facilityPage=1;renderFacilityTable();};document.getElementById('clearAvailabilityFilters').onclick=()=>{blood.value='';search.value='';city.value='';facilityType.value='';sort.value='name';refresh();};
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
     window.addEventListener('pageshow',()=>{if(!document.hidden)refresh();});

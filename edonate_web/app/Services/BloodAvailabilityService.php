@@ -86,6 +86,12 @@ class BloodAvailabilityService
             if ($barangayName === null) {
                 $missingLocationFields[] = 'Barangay name is missing.';
             }
+            if ($city === null) {
+                $missingLocationFields[] = 'City or municipality is missing.';
+            }
+            if ($province === null) {
+                $missingLocationFields[] = 'Province is missing.';
+            }
 
             if ($missingLocationFields !== []) {
                 $unmappedDonors[] = $this->unmappedDonorPayload(
@@ -94,7 +100,8 @@ class BloodAvailabilityService
                     $city,
                     $bloodType,
                     $confidence,
-                    $missingLocationFields
+                    $missingLocationFields,
+                    is_numeric($donor->matched_location_id) ? (int) $donor->matched_location_id : null
                 );
             }
 
@@ -114,12 +121,13 @@ class BloodAvailabilityService
                     'barangay_name' => $barangayName,
                     'city' => $city ?? 'Unknown',
                     'province' => $province ?? 'Unknown',
+                    'boundary_match_name' => null,
+                    'coordinate_source' => null,
                     'completed_donors' => 0,
                     'scheduled_donors' => 0,
                     'blood_types' => array_fill_keys($bloodCategories, 0),
                     'blood_type_confidence' => ['confirmed' => 0, 'unconfirmed' => 0, 'unknown' => 0],
                     'blood_type_confidence_by_type' => $this->emptyBloodTypeConfidence($bloodCategories),
-                    '_coordinate_samples' => [],
                     '_donors_for_unmapped' => [],
                 ];
             }
@@ -133,38 +141,33 @@ class BloodAvailabilityService
             $barangays[$key]['blood_type_confidence_by_type'][$bloodType][$confidence]++;
             $barangays[$key]['_donors_for_unmapped'][] = [
                 'donor_id' => $donorId,
+                'location_id' => is_numeric($donor->matched_location_id) ? (int) $donor->matched_location_id : null,
                 'blood_type' => $bloodType,
                 'blood_type_confidence' => $confidence,
             ];
 
-            $latitude = $this->nullableFloat($donor->latitude);
-            $longitude = $this->nullableFloat($donor->longitude);
-            if ($this->validCoordinate($latitude, $longitude)) {
-                $barangays[$key]['_coordinate_samples'][] = [$latitude, $longitude];
-            }
         }
 
+        $centerLookup = app(PhilippinesBarangayCenterIndex::class);
         foreach ($barangays as $key => &$barangay) {
-            $reference = $this->barangayMapReferenceCoordinates(
+            $center = $centerLookup->findCenter(
+                $barangay['barangay_code'],
                 $barangay['barangay_name'],
                 $barangay['city'],
                 $barangay['province']
             );
-            $samples = $barangay['_coordinate_samples'];
+            $reference = $center ?? $this->barangayMapReferenceCoordinates(
+                $barangay['barangay_name'],
+                $barangay['city'],
+                $barangay['province']
+            );
 
-            if ($reference !== null) {
-                $latitude = $reference['latitude'];
-                $longitude = $reference['longitude'];
-            } elseif ($samples !== []) {
-                $latitude = array_sum(array_column($samples, 0)) / count($samples);
-                $longitude = array_sum(array_column($samples, 1)) / count($samples);
-            } else {
-                $latitude = null;
-                $longitude = null;
-            }
-
-            $barangay['latitude'] = $this->validCoordinate($latitude, $longitude) ? round($latitude, 2) : null;
-            $barangay['longitude'] = $this->validCoordinate($latitude, $longitude) ? round($longitude, 2) : null;
+            $latitude = $reference['latitude'] ?? null;
+            $longitude = $reference['longitude'] ?? null;
+            $barangay['boundary_match_name'] = $center['matched_barangay'] ?? null;
+            $barangay['coordinate_source'] = $center !== null ? 'faeldon_barangay_boundary_2019' : ($reference !== null ? 'maintained_center' : null);
+            $barangay['latitude'] = $this->validCoordinate($latitude, $longitude) ? round($latitude, 5) : null;
+            $barangay['longitude'] = $this->validCoordinate($latitude, $longitude) ? round($longitude, 5) : null;
             $barangay['verified_donors'] = $barangay['completed_donors'];
             $barangay['available_donors'] = $barangay['completed_donors'];
             $barangay['unconfirmed_donors'] = $barangay['blood_type_confidence']['unconfirmed'];
@@ -180,12 +183,13 @@ class BloodAvailabilityService
                         $barangay['city'],
                         $unmapped['blood_type'],
                         $unmapped['blood_type_confidence'],
-                        ['No usable barangay coordinates or maintained barangay center are available.']
+                        ['No matching barangay boundary or maintained center was found for this barangay, city, and province.'],
+                        $unmapped['location_id']
                     );
                 }
             }
 
-            unset($barangay['_coordinate_samples'], $barangay['_donors_for_unmapped']);
+            unset($barangay['_donors_for_unmapped']);
         }
         unset($barangay);
 
@@ -203,7 +207,7 @@ class BloodAvailabilityService
         $missingCoordinates = count(array_filter(
             $unmappedDonors,
             static fn (array $donor): bool => in_array(
-                'No usable barangay coordinates or maintained barangay center are available.',
+                'No matching barangay boundary or maintained center was found for this barangay, city, and province.',
                 $donor['missing_fields'],
                 true
             )
@@ -303,8 +307,6 @@ class BloodAvailabilityService
                 'l.barangay_name',
                 'l.city',
                 'l.province',
-                'l.latitude',
-                'l.longitude',
             ])
             ->selectRaw($this->resolvedBloodTypeSql().' AS resolved_blood_type')
             ->selectRaw($this->bloodTypeConfidenceSql().' AS blood_type_confidence')
@@ -405,10 +407,12 @@ class BloodAvailabilityService
         ?string $city,
         string $bloodType,
         string $confidence,
-        array $missingFields
+        array $missingFields,
+        ?int $locationId = null
     ): array {
         return [
             'donor_reference' => 'D'.$donorId,
+            'location_id' => $locationId,
             'barangay_name' => $barangay ?? 'Not recorded',
             'city' => $city ?? 'Not recorded',
             'blood_type' => $bloodType,
@@ -418,8 +422,8 @@ class BloodAvailabilityService
     }
 
     /**
-     * Resolve maintained barangay centers when available. Otherwise coordinates
-     * are averaged per barangay and rounded before leaving the server.
+     * Resolve curated legacy centers when the local boundary dataset has no
+     * unique locality match. Donor or facility coordinates are never used.
      *
      * @return array{latitude: float, longitude: float}|null
      */

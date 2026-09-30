@@ -3,6 +3,7 @@
     "private": true,
     "type": "module",
     "scripts": {
+        "build:barangay-centers": "node scripts/build-barangay-centers.mjs",
         "build": "node scripts/publish-browser-vendor.mjs && vite build",
         "dev": "vite"
     },
@@ -21,11 +22,13 @@
         "fullcalendar": "6.1",
         "jsvectormap": "1.7",
         "laravel-vite-plugin": "^2.0.0",
+        "leaflet-control-geocoder": "4.0.0",
         "overlayscrollbars": "2.16",
         "sass": "1.102",
         "sortablejs": "1.15",
         "sweetalert2": "11.26.25",
         "tailwindcss": "^4.0.0",
+        "topojson-client": "3.1.0",
         "vite": "^7.0.7"
     }
 }

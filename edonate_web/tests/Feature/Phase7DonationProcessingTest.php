@@ -429,8 +429,8 @@ class Phase7DonationProcessingTest extends TestCase
             ->assertJsonPath('summary.barangays', 1)
             ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
             ->assertJsonPath('barangays.0.blood_types.AB+', 1)
-            ->assertJsonPath('map_points.0.latitude', 13.95)
-            ->assertJsonPath('map_points.0.longitude', 121.16);
+            ->assertJsonPath('map_points.0.latitude', 13.95759)
+            ->assertJsonPath('map_points.0.longitude', 121.15555);
 
         $this->assertStringContainsString('no-store', (string) $map->headers->get('Cache-Control'));
         $this->assertStringNotContainsString('donor_id', $map->getContent());

@@ -9,6 +9,10 @@ const copies = [
     ['sweetalert2/LICENSE', 'sweetalert2/LICENSE'],
     ['fullcalendar/index.global.min.js', 'fullcalendar/index.global.min.js'],
     ['fullcalendar/LICENSE.md', 'fullcalendar/LICENSE.md'],
+    ['leaflet-control-geocoder/dist/Control.Geocoder.js', 'leaflet-control-geocoder/Control.Geocoder.js'],
+    ['leaflet-control-geocoder/dist/Control.Geocoder.js.map', 'leaflet-control-geocoder/Control.Geocoder.js.map'],
+    ['leaflet-control-geocoder/dist/Control.Geocoder.css', 'leaflet-control-geocoder/Control.Geocoder.css'],
+    ['leaflet-control-geocoder/LICENSE', 'leaflet-control-geocoder/LICENSE'],
 ];
 for (const [source, target] of copies) {
     const destination = new URL(`../../public_html/vendor/${target}`, import.meta.url);

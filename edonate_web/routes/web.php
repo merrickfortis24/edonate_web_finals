@@ -285,6 +285,14 @@ Route::middleware('admin.auth')->group(function () {
         Route::post('/admin/map/geocode-missing', [AdminAuthController::class, 'geocodeMissingLocations'])
             ->middleware(['throttle:admin-write', 'throttle:map-api'])
             ->name('admin.map.geocode-missing');
+        Route::get('/admin/map/locations/{location}/geocoder/search', [AdminAuthController::class, 'searchGeocodedLocation'])
+            ->whereNumber('location')
+            ->middleware('throttle:map-api')
+            ->name('admin.map.locations.geocoder-search');
+        Route::post('/admin/map/locations/{location}/coordinates', [AdminAuthController::class, 'saveGeocodedLocationCoordinates'])
+            ->whereNumber('location')
+            ->middleware(['throttle:admin-write', 'throttle:map-api'])
+            ->name('admin.map.locations.coordinates');
         Route::get('/admin/notification-center', [AdminNotificationController::class, 'index'])->name('admin.notification-center');
         Route::get('/admin/notifications/data', [AdminNotificationController::class, 'data'])
             ->middleware('throttle:admin-api')

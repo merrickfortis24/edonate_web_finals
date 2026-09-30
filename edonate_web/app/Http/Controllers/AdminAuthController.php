@@ -2088,6 +2088,146 @@ class AdminAuthController extends BaseController
     }
 
     /**
+     * Proxy one locality-only query for leaflet-control-geocoder. The route
+     * prevents browser clients from searching arbitrary addresses or sending
+     * donor information to the public geocoding provider.
+     */
+    public function searchGeocodedLocation(Request $request, Location $location, GeocodingService $geocoding): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => ['required', 'string', 'max:350'],
+        ]);
+
+        $location->refresh();
+        if (trim((string) $location->barangay_name) === '' || trim((string) $location->city) === '') {
+            return response()->json(['message' => 'A registered barangay and city are required.'], 422);
+        }
+
+        if ($geocoding->hasCoordinates($location)) {
+            return response()->json(['message' => 'This barangay already has a usable map center.'], 409);
+        }
+
+        $hasCompletedDonor = DB::table('donors AS map_donor')
+            ->where('map_donor.location_id', $location->location_id)
+            ->whereExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('donation_records AS map_record')
+                    ->whereColumn('map_record.donor_id', 'map_donor.donor_id')
+                    ->whereRaw("LOWER(TRIM(COALESCE(map_record.donation_status, ''))) = ?", ['completed']);
+            })
+            ->exists();
+
+        if (! $hasCompletedDonor) {
+            return response()->json(['message' => 'This location is not linked to a donor with a completed donation.'], 404);
+        }
+
+        $parts = array_map('trim', explode(',', $validated['q']));
+        if (count($parts) !== 3
+            || strcasecmp($parts[2], 'Philippines') !== 0
+            || $this->normalizedBarangayQueryPart($parts[0]) !== $this->normalizedBarangayQueryPart((string) $location->barangay_name)
+            || $this->normalizedBarangayQueryPart($parts[1]) !== $this->normalizedBarangayQueryPart((string) $location->city)) {
+            return response()->json(['message' => 'Search must match this location’s barangay and city in the Philippines.'], 422);
+        }
+
+        return response()->json($geocoding->searchBarangayArea($validated['q']))
+            ->header('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    }
+
+    /**
+     * Persist a coarse barangay-center result selected from the map's
+     * administrator-triggered geocoding queue. Only locations linked to a
+     * completed donor can be changed, and an existing usable pin is preserved.
+     */
+    public function saveGeocodedLocationCoordinates(Request $request, Location $location): JsonResponse
+    {
+        $validated = $request->validate([
+            'latitude' => ['required', 'numeric', 'between:4,22'],
+            'longitude' => ['required', 'numeric', 'between:116,127'],
+            'query' => ['required', 'string', 'max:350'],
+        ]);
+
+        if (trim((string) $location->barangay_name) === '' || trim((string) $location->city) === '') {
+            return response()->json([
+                'message' => 'A barangay and city are required before saving a map center.',
+            ], 422);
+        }
+
+        $hasCompletedDonor = DB::table('donors AS map_donor')
+            ->where('map_donor.location_id', $location->location_id)
+            ->whereExists(function ($query): void {
+                $query->selectRaw('1')
+                    ->from('donation_records AS map_record')
+                    ->whereColumn('map_record.donor_id', 'map_donor.donor_id')
+                    ->whereRaw("LOWER(TRIM(COALESCE(map_record.donation_status, ''))) = ?", ['completed']);
+            })
+            ->exists();
+
+        if (! $hasCompletedDonor) {
+            return response()->json([
+                'message' => 'This location is not linked to a donor with a completed donation.',
+            ], 404);
+        }
+
+        $geocoding = app(GeocodingService::class);
+        $location->refresh();
+        if ($geocoding->hasCoordinates($location)) {
+            return response()->json([
+                'message' => 'This location already has a usable map center.',
+            ], 409);
+        }
+
+        $queryParts = array_map('trim', explode(',', $validated['query']));
+        if (count($queryParts) !== 3
+            || strcasecmp($queryParts[2], 'Philippines') !== 0
+            || $this->normalizedBarangayQueryPart($queryParts[0]) !== $this->normalizedBarangayQueryPart((string) $location->barangay_name)
+            || $this->normalizedBarangayQueryPart($queryParts[1]) !== $this->normalizedBarangayQueryPart((string) $location->city)
+            || ! $geocoding->isCachedBarangayAreaCoordinate(
+                $validated['query'],
+                (string) $location->barangay_name,
+                (string) $location->city,
+                $validated['latitude'],
+                $validated['longitude']
+            )) {
+            return response()->json([
+                'message' => 'The selected map center could not be verified against this barangay and city search.',
+            ], 422);
+        }
+
+        $updated = DB::table('locations')
+            ->where('location_id', $location->location_id)
+            ->where(function ($query): void {
+                $query->whereNull('latitude')
+                    ->orWhereNull('longitude')
+                    ->orWhere('latitude', 0)
+                    ->orWhere('longitude', 0);
+            })
+            ->update([
+                'latitude' => (float) $validated['latitude'],
+                'longitude' => (float) $validated['longitude'],
+            ]);
+
+        if ($updated !== 1) {
+            return response()->json([
+                'message' => 'The map center changed while this result was being saved. Refresh and try again.',
+            ], 409);
+        }
+
+        return response()->json([
+            'saved' => true,
+            'message' => 'Barangay center saved. The completed-donor map can now include this location.',
+        ])->header('Cache-Control', 'private, no-store, no-cache, must-revalidate');
+    }
+
+    private function normalizedBarangayQueryPart(string $value): string
+    {
+        $value = Str::ascii(trim($value));
+        $value = preg_replace('/^(?:barangay|brgy)\\.?\\s+/i', '', $value) ?? $value;
+        $value = preg_replace('/^city\\s+of\\s+/i', '', $value) ?? $value;
+
+        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $value) ?? '');
+    }
+
+    /**
      * Legacy-compatible per-barangay aggregate endpoint.
      */
     public function mapBarangays(Request $request, BloodAvailabilityService $availability): JsonResponse
