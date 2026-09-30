@@ -1,5 +1,30 @@
 @import '../../../public_html/css/style.css';
 
+.admin-facilities-page #facilityModal .text-bg-success {
+    background-color: #12643e !important;
+    color: #fff !important;
+}
+.admin-facilities-page #facilityModal .btn-danger,
+.admin-facilities-page #facilityModal .btn-danger:focus-visible {
+    background-color: #b02a37 !important;
+    border-color: #b02a37 !important;
+    color: #fff !important;
+}
+.admin-facilities-page #facilityModal .btn-danger:hover,
+.admin-facilities-page #facilityModal .btn-danger:active {
+    background-color: #922332 !important;
+    border-color: #922332 !important;
+    color: #fff !important;
+}
+:root:not([data-bs-theme="dark"]) .admin-facilities-page #facilityModal .form-text,
+:root:not([data-bs-theme="dark"]) .admin-facilities-page #facilityModal .text-muted,
+:root:not([data-bs-theme="dark"]) .admin-facilities-page #facilityModal .btn-outline-secondary {
+    color: #495057 !important;
+}
+:root:not([data-bs-theme="dark"]) .admin-facilities-page #facilityModal .btn-outline-secondary {
+    border-color: #495057 !important;
+}
+
 .facility-pin-map { height: 330px; min-height: 280px; border: 1px solid var(--bs-border-color); border-radius: .5rem; background: var(--bs-tertiary-bg); }
 .facility-pin-map.is-invalid { border: 2px solid var(--bs-danger); }
 .admin-facilities-page #facilityMapPrivacyNotice .facility-privacy-link { color: #084298; font-weight: 600; text-decoration: underline; }
