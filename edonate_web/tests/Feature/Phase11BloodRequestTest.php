@@ -458,6 +458,88 @@ class Phase11BloodRequestTest extends TestCase
         $this->assertDatabaseCount('appointments', 0);
     }
 
+    public function test_admin_created_request_shows_mobile_accepted_donors_and_repeated_interest_does_not_duplicate_them(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $created = $this->withSession($this->adminSession())->postJson('/admin/blood-requests', [
+            'facility_id' => $this->createFacility(),
+            'submission_key' => (string) \Illuminate\Support\Str::uuid(),
+            'request_type' => 'blood_request',
+            'needed_blood_type_id' => 7,
+            'required_donors' => 2,
+            'specific_match_required' => 2,
+            'allow_other_blood_types' => false,
+            'urgency' => 'urgent',
+        ])->assertCreated();
+        $requestId = $created->json('request.request_id');
+        $this->assertDatabaseHas('blood_requests', [
+            'request_id' => $requestId,
+            'request_source' => 'admin',
+            'status' => 'open',
+        ]);
+        $this->withSession($this->adminSession())->getJson('/admin/blood-requests/data')
+            ->assertOk()->assertJsonPath('data.0.interested_count', 0);
+
+        $first = $this->createQualifiedDonor($this->createLocation(), 7, ['contact_number' => '09170000001']);
+        $second = $this->createQualifiedDonor($this->createLocation(['barangay_name' => 'Balintawak']), 7);
+
+        // The mobile writer uses "accepted" in the existing shared response table.
+        DB::table('blood_request_donors')->insert([
+            'request_id' => $requestId,
+            'donor_id' => $first,
+            'match_type' => 'exact',
+            'status' => 'accepted',
+            'responded_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->withSession($this->adminSession())->getJson('/admin/blood-requests/data')
+            ->assertOk()->assertJsonPath('data.0.interested_count', 1);
+        $this->withSession($this->adminSession())->getJson("/admin/blood-requests/{$requestId}/details")
+            ->assertOk()->assertJsonPath('summary.interested', 1);
+        $this->withSession($this->adminSession())->getJson("/admin/blood-requests/{$requestId}/candidates?filter=interested")
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.donor_id', $first)
+            ->assertJsonPath('data.0.status', 'accepted')
+            ->assertJsonPath('data.0.contact', '09170000001')
+            ->assertJsonPath('data.0.barangay', 'Poblacion');
+        $this->withSession($this->adminSession())->get("/admin/blood-requests/{$requestId}")
+            ->assertOk()
+            ->assertSee('Interested / Willing Donors')
+            ->assertSee('id="interestedDonorCount">1', false);
+
+        DB::table('blood_request_donors')->insert([
+            'request_id' => $requestId,
+            'donor_id' => $second,
+            'match_type' => 'exact',
+            'status' => 'accepted',
+            'responded_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $this->withSession($this->adminSession())->getJson('/admin/blood-requests/data')
+            ->assertOk()->assertJsonPath('data.0.interested_count', 2);
+        $responders = $this->withSession($this->adminSession())
+            ->getJson("/admin/blood-requests/{$requestId}/candidates?filter=interested")
+            ->assertOk()->assertJsonCount(2, 'data')->json('data');
+        $this->assertEqualsCanonicalizing([$first, $second], collect($responders)->pluck('donor_id')->all());
+
+        $this->withSession($this->donorSession($first))
+            ->post("/blood-requests/{$requestId}/interested", $this->privacyAcknowledgment())
+            ->assertRedirect(route('donor.blood-requests.show', $requestId));
+        $respondedAt = DB::table('blood_request_donors')->where('request_id', $requestId)->where('donor_id', $first)->value('responded_at');
+        $this->withSession($this->donorSession($first))
+            ->post("/blood-requests/{$requestId}/interested", $this->privacyAcknowledgment())
+            ->assertRedirect(route('donor.blood-requests.show', $requestId));
+        $this->assertSame(2, DB::table('blood_request_donors')->where('request_id', $requestId)->count());
+        $this->assertSame($respondedAt, DB::table('blood_request_donors')->where('request_id', $requestId)->where('donor_id', $first)->value('responded_at'));
+        $this->withSession($this->adminSession())->getJson("/admin/blood-requests/{$requestId}/details")
+            ->assertOk()->assertJsonPath('summary.interested', 2);
+    }
+
     public function test_unnotified_donor_cannot_access_or_respond_to_request_and_cancelled_request_blocks_responses(): void
     {
         $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);

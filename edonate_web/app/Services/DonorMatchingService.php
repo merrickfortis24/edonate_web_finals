@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BloodRequest;
+use App\Models\BloodRequestDonor;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Collection;
@@ -68,7 +69,8 @@ class DonorMatchingService
             'exact_matches_found' => $exact->count(),
             'other_eligible_candidates' => $other->count(),
             'notified' => (int) (($responses['notified'] ?? 0) + ($responses['contacted'] ?? 0)),
-            'interested' => (int) (($responses['interested'] ?? 0) + ($responses['responded'] ?? 0)),
+            'interested' => (int) collect(BloodRequestDonor::INTERESTED_STATUSES)
+                ->sum(fn (string $status): int => (int) ($responses[$status] ?? 0)),
             'declined' => (int) ($responses['declined'] ?? 0),
             'confirmed' => (int) (($responses['confirmed'] ?? 0) + ($responses['scheduled'] ?? 0)),
             'completed' => (int) (($responses['completed'] ?? 0) + ($responses['donated'] ?? 0)),

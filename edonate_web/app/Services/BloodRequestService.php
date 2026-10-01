@@ -90,7 +90,7 @@ class BloodRequestService
         if (in_array($filter, ['notified', 'interested', 'declined', 'confirmed', 'completed'], true)) {
             $statuses = match ($filter) {
                 'notified' => ['notified', 'contacted'],
-                'interested' => ['interested', 'responded'],
+                'interested' => BloodRequestDonor::INTERESTED_STATUSES,
                 'confirmed' => ['confirmed', 'scheduled'],
                 'completed' => ['completed', 'donated'],
                 default => [$filter],
@@ -180,8 +180,12 @@ class BloodRequestService
                 ->lockForUpdate()
                 ->first();
 
-            if (! $row || ! in_array($row->status, ['notified', 'contacted', 'interested', 'responded', 'declined'], true)) {
+            if (! $row || ! in_array($row->status, ['notified', 'contacted', ...BloodRequestDonor::INTERESTED_STATUSES, 'declined'], true)) {
                 throw ValidationException::withMessages(['request' => 'This request was not sent to your account.']);
+            }
+
+            if ($row->status === $status) {
+                return $row;
             }
 
             $row->status = $status;
@@ -207,7 +211,7 @@ class BloodRequestService
 
             BloodRequestDonor::query()
                 ->where('request_id', $locked->request_id)
-                ->whereIn('status', ['notified', 'contacted', 'interested', 'responded'])
+                ->whereIn('status', ['notified', 'contacted', ...BloodRequestDonor::INTERESTED_STATUSES])
                 ->chunkById(100, function (Collection $rows) use ($locked): void {
                     foreach ($rows as $row) {
                         $this->donorNotification((int) $row->donor_id, 'blood_request_cancelled', 'A blood donation request you were invited to has been cancelled.');
@@ -443,6 +447,7 @@ class BloodRequestService
         return [
             'donor_id' => (int) $row->donor_id,
             'donor_name' => trim((string) $donor?->first_name . ' ' . (string) $donor?->last_name),
+            'contact' => (string) ($donor?->contact_number ?? ''),
             'blood_type' => strtolower((string) $donor?->blood_type_status) === 'verified' ? (string) ($donor?->bloodType?->blood_type ?? 'Verified') : 'Not verified',
             'blood_type_status' => (string) ($donor?->blood_type_status ?? 'not_yet_determined'),
             'barangay' => (string) ($donor?->location?->barangay_name ?? ''),

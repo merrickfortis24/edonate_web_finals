@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\BloodRequest;
+use App\Models\BloodRequestDonor;
 use App\Models\BloodType;
 use App\Models\Facility;
 use App\Services\BloodRequestService;
@@ -50,7 +51,7 @@ class BloodRequestController extends Controller
             ->with(['facility', 'bloodType', 'createdBy', 'requestedByDonor.latestAuthentication'])
             ->withCount([
                 'donorInvitations AS notified_count' => fn ($builder) => $builder->whereIn('status', ['notified', 'contacted']),
-                'donorInvitations AS interested_count' => fn ($builder) => $builder->whereIn('status', ['interested', 'responded']),
+                'donorInvitations AS interested_count' => fn ($builder) => $builder->whereIn('status', BloodRequestDonor::INTERESTED_STATUSES),
                 'donorInvitations AS completed_count' => fn ($builder) => $builder->whereIn('status', ['completed', 'donated']),
             ]);
 

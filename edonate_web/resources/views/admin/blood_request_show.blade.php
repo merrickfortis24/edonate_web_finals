@@ -72,6 +72,19 @@
         </section>
     </div>
     @if($details['request']['status'] !== 'pending_review')
+    <section class="br-card mt-3" aria-labelledby="interestedDonorsHeading">
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+            <h2 class="mb-0" id="interestedDonorsHeading">Interested / Willing Donors</h2>
+            <span class="badge bg-danger"><span id="interestedDonorCount">{{ $details['summary']['interested'] }}</span> Interested</span>
+        </div>
+        <p class="text-muted small">Responses to this blood request, including donors who accepted it in the mobile app.</p>
+        <div class="table-responsive">
+            <table class="table table-hover br-table">
+                <thead><tr><th>Donor</th><th>Blood Type</th><th>Contact</th><th>Barangay / City</th><th>Response</th><th>Responded At</th><th>Action</th></tr></thead>
+                <tbody id="interestedDonorRows"><tr><td colspan="7" class="text-center text-muted py-4">Loading interested donors...</td></tr></tbody>
+            </table>
+        </div>
+    </section>
     <section class="br-card mt-3">
         <div class="d-flex justify-content-between align-items-end gap-3 flex-wrap mb-3">
             <h2 class="mb-0">Candidates</h2>
@@ -158,6 +171,7 @@
     const csrf = document.querySelector('meta[name="csrf-token"]').content;
     const base = @json(url('/admin/blood-requests/'.$bloodRequest->request_id));
     const rows = document.getElementById('candidateRows');
+    const interestedRows = document.getElementById('interestedDonorRows');
     const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[character]));
@@ -166,6 +180,7 @@
     async function req(url, options = {}) {
         const response = await fetch(url, {
             ...options,
+            cache: 'no-store',
             headers: {
                 Accept: 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
@@ -180,7 +195,7 @@
     }
 
     function rowActions(row) {
-        if (row.status === 'interested' || row.status === 'responded') {
+        if (['interested', 'responded', 'accepted'].includes(row.status)) {
             return `<button class="btn btn-sm btn-outline-success" data-status="confirmed" data-donor="${esc(row.donor_id)}" type="button">Confirm</button>
                 <button class="btn btn-sm btn-outline-secondary" data-status="declined" data-donor="${esc(row.donor_id)}" type="button">Decline</button>`;
         }
@@ -209,6 +224,28 @@
             </tr>`).join('') : '<tr><td colspan="8" class="text-center text-muted py-4">No candidates found.</td></tr>';
         } catch (error) {
             rows.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Could not load candidates.</td></tr>';
+        }
+    }
+
+    async function loadInterestedDonors() {
+        if (!interestedRows) return;
+        interestedRows.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Loading interested donors...</td></tr>';
+        try {
+            const data = await req(`${base}/candidates?filter=interested`);
+            const donors = data.data || [];
+            document.getElementById('interestedDonorCount').textContent = donors.length;
+            document.getElementById('sumInterested').textContent = donors.length;
+            interestedRows.innerHTML = donors.length ? donors.map(row => `<tr>
+                <td>${esc(row.donor_name || `Donor #${row.donor_id}`)}<br><small class="text-muted">D${esc(row.donor_id)}</small></td>
+                <td>${esc(row.blood_type)}</td>
+                <td>${esc(row.contact || '—')}</td>
+                <td>${esc([row.barangay, row.city].filter(Boolean).join(', ') || 'Not recorded')}</td>
+                <td>${esc(row.status === 'accepted' ? 'Accepted / Willing' : head(row.status))}</td>
+                <td>${row.responded_at ? esc(new Date(row.responded_at).toLocaleString()) : 'Not recorded'}</td>
+                <td><div class="btn-group btn-group-sm">${rowActions(row)}</div></td>
+            </tr>`).join('') : '<tr><td colspan="7" class="text-center text-muted py-4">No donors have expressed interest in this blood request yet.</td></tr>';
+        } catch (error) {
+            interestedRows.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-4">Could not load interested donors. Please reload the page.</td></tr>';
         }
     }
 
@@ -327,7 +364,7 @@
     document.getElementById('checkAll')?.addEventListener('change', event => {
         rows?.querySelectorAll('input[type="checkbox"]').forEach(checkbox => { checkbox.checked = event.target.checked; });
     });
-    rows?.addEventListener('click', event => {
+    function handleDonorAction(event) {
         const button = event.target.closest('[data-status][data-donor]');
         if (!button) return;
         const status = button.dataset.status;
@@ -343,9 +380,12 @@
             onSuccess: result => {
                 showActionResult(result.message || 'Donor response updated.');
                 load();
+                loadInterestedDonors();
             },
         });
-    });
+    }
+    rows?.addEventListener('click', handleDonorAction);
+    interestedRows?.addEventListener('click', handleDonorAction);
     document.getElementById('notifySelected')?.addEventListener('click', () => {
         const ids = [...(rows?.querySelectorAll('input[type="checkbox"]:checked') || [])]
             .map(checkbox => Number(checkbox.value)).filter(Number.isInteger);
@@ -454,10 +494,7 @@
     });
 
     if (rows) load();
+    loadInterestedDonors();
 }());
-const approveModal=document.getElementById('approveRequestModal'),approveForm=document.getElementById('approveRequestForm');
-document.getElementById('approveRequest')?.addEventListener('click',()=>{const error=document.getElementById('approveRequestError');error.textContent='';error.classList.add('d-none');window.bootstrap?.Modal.getOrCreateInstance(approveModal).show()});
-approveForm?.addEventListener('submit',async event=>{event.preventDefault();const button=document.getElementById('confirmApproveRequest'),error=document.getElementById('approveRequestError');button.disabled=true;button.textContent='Approving...';error.textContent='';error.classList.add('d-none');try{await req(`${base}/approve`,{method:'PATCH',body:JSON.stringify({})});location.reload()}catch(exception){error.textContent=exception.message||'The request could not be approved. Please try again.';error.classList.remove('d-none')}finally{button.disabled=false;button.textContent='Approve & Open Request'}});
-const rejectModal=document.getElementById('rejectRequestModal'),rejectForm=document.getElementById('rejectRequestForm');document.getElementById('openRejectRequest')?.addEventListener('click',()=>window.bootstrap?.Modal.getOrCreateInstance(rejectModal).show());rejectForm?.addEventListener('submit',async event=>{event.preventDefault();const reason=document.getElementById('rejectRequestReason'),fieldError=document.getElementById('rejectRequestReasonError'),formError=document.getElementById('rejectRequestError'),button=document.getElementById('confirmRejectRequest');reason.classList.remove('is-invalid');fieldError.textContent='';formError.textContent='';formError.classList.add('d-none');button.disabled=true;try{await req(`${base}/reject`,{method:'PATCH',body:JSON.stringify({reason:reason.value})});location.reload()}catch(error){if(error.errors?.reason){reason.classList.add('is-invalid');fieldError.textContent=error.errors.reason[0]}else{formError.textContent=error.message||'The request could not be rejected.';formError.classList.remove('d-none')}}finally{button.disabled=false}});if(rows)load();}());
 </script>
 @endpush

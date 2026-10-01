@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 class BloodRequestDonor extends Model
 {
     public const MATCH_TYPES = ['exact', 'replacement_any'];
-    public const STATUSES = ['candidate', 'notified', 'interested', 'declined', 'confirmed', 'completed', 'contacted', 'responded', 'scheduled', 'donated'];
+    // The mobile client persists willingness as "accepted"; the web portal uses "interested".
+    public const INTERESTED_STATUSES = ['interested', 'responded', 'accepted'];
+    public const STATUSES = ['candidate', 'notified', 'interested', 'accepted', 'declined', 'confirmed', 'completed', 'contacted', 'responded', 'scheduled', 'donated'];
 
     protected $table = 'blood_request_donors';
 
