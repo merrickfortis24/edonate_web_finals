@@ -101,6 +101,7 @@
                         <th>Donor Name</th>
                         <th>Contact / Email</th>
                         <th>Document Type</th>
+                        <th>Files Received</th>
                         <th>Status</th>
                         <th>Submitted At</th>
                         <th>Reviewed By</th>
@@ -113,11 +114,19 @@
                         @php
                             $historyItems = $histories[(int) $verification->donor_id] ?? collect();
                             $documentLabel = $documentTypes[$verification->document_type] ?? \Illuminate\Support\Str::headline($verification->document_type);
+                            $hasDonorRecord = is_numeric($verification->linked_donor_id ?? null) && (int) $verification->linked_donor_id > 0;
+                            $hasRecordedDonorId = is_numeric($verification->donor_id ?? null) && (int) $verification->donor_id > 0;
                         @endphp
                         <tr id="verification-row-{{ $verification->verification_id }}" tabindex="-1" @class(['dashboard-record-highlight' => (int) ($focusedVerificationId ?? 0) === (int) $verification->verification_id])>
                             <td>
-                                <div class="fw-semibold">{{ trim($verification->donor_name) ?: 'Unknown Donor' }}</div>
-                                <small class="text-muted">D{{ str_pad((string) $verification->donor_id, 3, '0', STR_PAD_LEFT) }}</small>
+                                <div class="fw-semibold">{{ $hasDonorRecord ? (trim($verification->donor_name) ?: 'Unknown Donor') : 'Unlinked submission' }}</div>
+                                @if ($hasDonorRecord)
+                                    <small class="text-muted">D{{ str_pad((string) $verification->linked_donor_id, 3, '0', STR_PAD_LEFT) }}</small>
+                                @elseif ($hasRecordedDonorId)
+                                    <small class="d-block text-danger">Recorded donor ID D{{ str_pad((string) $verification->donor_id, 3, '0', STR_PAD_LEFT) }} has no matching donor account</small>
+                                @else
+                                    <small class="d-block text-danger">Donor ID unavailable</small>
+                                @endif
                                 <small class="text-muted d-block">Verification #{{ $verification->verification_id }}</small>
                             </td>
                             <td>
@@ -125,6 +134,16 @@
                                 <small class="text-muted">{{ $verification->donor_email ?: '-' }}</small>
                             </td>
                             <td>{{ $documentLabel }}</td>
+                            <td class="text-nowrap">
+                                @php
+                                    $frontFileExists = (bool) ($verification->front_document_available ?? false);
+                                    $backFileExists = (bool) ($verification->back_document_available ?? false);
+                                    $frontFileLabel = ! filled($verification->document_path) ? 'Not recorded' : ($frontFileExists ? 'Available' : 'File missing');
+                                    $backFileLabel = ! filled($verification->document_back_path) ? 'Not recorded' : ($backFileExists ? 'Available' : 'File missing');
+                                @endphp
+                                <span class="badge {{ $frontFileExists ? 'bg-success' : (filled($verification->document_path) ? 'bg-danger' : 'bg-secondary') }}">Front: {{ $frontFileLabel }}</span>
+                                <span class="badge {{ $backFileExists ? 'bg-success' : (filled($verification->document_back_path) ? 'bg-danger' : 'bg-secondary') }}">Back: {{ $backFileLabel }}</span>
+                            </td>
                             <td><span class="badge {{ $statusBadge($verification->status) }}">{{ $statusLabel($verification->status) }}</span></td>
                             <td class="text-nowrap">{{ $verification->created_at ? \Carbon\Carbon::parse($verification->created_at)->format('M j, Y g:i A') : '-' }}</td>
                             <td>{{ $verification->reviewed_by_name ?: '-' }}</td>
@@ -134,7 +153,7 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#documentModal{{ $verification->verification_id }}">View Document</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#historyModal{{ $verification->verification_id }}">History</button>
 
-                                    @if ($verification->status === 'pending')
+                                    @if ($verification->status === 'pending' && $hasDonorRecord)
                                         <form method="POST" action="{{ route('admin.donor-verifications.approve', $verification->verification_id) }}" class="approve-form">
                                             @csrf
                                             @method('PATCH')
@@ -145,9 +164,9 @@
                                 </div>
                             </td>
                         </tr>
-                    @empty
+                        @empty
                         <tr>
-                            <td colspan="8" class="text-center text-muted py-4">{{ ($focusedVerificationId ?? 0) > 0 ? 'The selected verification record could not be found.' : 'No donor verification requests found.' }}</td>
+                            <td colspan="9" class="text-center text-muted py-4">{{ ($focusedVerificationId ?? 0) > 0 ? 'The selected verification record could not be found.' : 'No donor verification requests found.' }}</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -176,31 +195,43 @@
                             ['side' => 'front', 'label' => 'Front of ID', 'path' => $verification->document_path],
                             ['side' => 'back', 'label' => 'Back of ID', 'path' => $verification->document_back_path],
                         ] as $document)
-                            @if (filled($document['path']))
-                                @php
-                                    $documentExtension = strtolower(pathinfo($document['path'], PATHINFO_EXTENSION));
-                                    $documentUrl = route('admin.donor-verifications.document', [
-                                        'verification' => $verification->verification_id,
-                                        'side' => $document['side'],
-                                    ]);
-                                @endphp
-                                <div class="col-12 col-lg-6">
-                                    <section class="h-100 rounded border bg-white p-3" aria-label="{{ $document['label'] }}">
-                                        <h6 class="mb-3 fw-semibold">{{ $document['label'] }}</h6>
+                            @php
+                                $documentExtension = strtolower(pathinfo((string) $document['path'], PATHINFO_EXTENSION));
+                                $documentUrl = route('admin.donor-verifications.document', [
+                                    'verification' => $verification->verification_id,
+                                    'side' => $document['side'],
+                                    'rendition' => 'preview',
+                                ]);
+                                $originalUrl = route('admin.donor-verifications.document', [
+                                    'verification' => $verification->verification_id,
+                                    'side' => $document['side'],
+                                    'rendition' => 'original',
+                                ]);
+                            @endphp
+                            <div class="col-12 col-lg-6">
+                                <section class="h-100 rounded border bg-white p-3" aria-label="{{ $document['label'] }}">
+                                    <h6 class="mb-3 fw-semibold">{{ $document['label'] }}</h6>
+                                    @if (filled($document['path']))
                                         @if (in_array($documentExtension, ['jpg', 'jpeg', 'png'], true))
-                                            <img src="{{ $documentUrl }}" alt="{{ $document['label'] }} submitted by donor" loading="lazy" class="img-fluid d-block mx-auto rounded" style="max-height: 65vh; object-fit: contain;">
+                                            <img src="{{ $documentUrl }}" alt="{{ $document['label'] }} optimized preview" loading="lazy" class="img-fluid d-block mx-auto rounded verification-document-preview" style="max-height: 65vh; object-fit: contain;">
+                                            <div class="alert alert-warning mt-3 d-none verification-document-fallback" role="status">
+                                                The optimized preview could not be loaded. Try the original file or retry the preview.
+                                                <a href="{{ $documentUrl }}" class="alert-link verification-document-retry">Retry preview</a>.
+                                            </div>
+                                            <p class="small text-muted mt-2 mb-0">Use the original file to inspect fine details.</p>
                                         @else
                                             <iframe src="{{ $documentUrl }}" title="{{ $document['label'] }} submitted by donor" loading="lazy" class="w-100 border rounded" style="height: 65vh;"></iframe>
                                         @endif
-                                        <a href="{{ $documentUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary mt-3">Open {{ strtolower($document['side']) }} in New Tab</a>
-                                    </section>
-                                </div>
-                            @endif
+                                        <a href="{{ $originalUrl }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary mt-3">Open original {{ strtolower($document['side']) }}</a>
+                                    @else
+                                        <div class="alert alert-secondary mb-0" role="status">
+                                            No {{ strtolower($document['side']) }} document path is recorded for this submission. Confirm with the donor before treating it as not submitted.
+                                        </div>
+                                    @endif
+                                </section>
+                            </div>
                         @endforeach
                     </div>
-                    @unless (filled($verification->document_back_path))
-                        <p class="text-muted text-center mb-0 mt-3">No back image was submitted for this document.</p>
-                    @endunless
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
@@ -305,6 +336,14 @@
                         form.submit();
                     }
                 });
+            });
+        });
+
+        document.querySelectorAll('.verification-document-preview').forEach(function(image) {
+            image.addEventListener('error', function() {
+                image.classList.add('d-none');
+                const fallback = image.parentElement.querySelector('.verification-document-fallback');
+                if (fallback) fallback.classList.remove('d-none');
             });
         });
     });

@@ -4,6 +4,10 @@ DirectoryIndex index.php
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # Verification files may exist in legacy public upload folders. Never serve
+    # identity documents as static files; admins must use the authorized route.
+    RewriteRule ^(?:api/)?(?:uploads|upload)/verification(?:/|$) - [F,L,NC]
+
     # Keep standard public well-known endpoints available for SSL/security tooling.
     RewriteRule ^\.well-known/ - [L]
 

@@ -89,6 +89,13 @@ class DonorVerificationController extends Controller
                 'mimes:jpg,jpeg,png,pdf',
                 'mimetypes:image/jpeg,image/png,application/pdf',
             ],
+            'document_preview' => [
+                'nullable',
+                'file',
+                'max:2048',
+                'mimes:jpg,jpeg',
+                'mimetypes:image/jpeg',
+            ],
         ], [
             'document.max' => 'The document must not be larger than 5MB.',
             'document.mimes' => 'Please upload a JPG, PNG, or PDF document.',
@@ -96,15 +103,40 @@ class DonorVerificationController extends Controller
         ]);
 
         $file = $validated['document'];
-        $extension = strtolower((string) ($file->getClientOriginalExtension() ?: $file->guessExtension() ?: 'bin'));
-        $path = 'donor-verifications/' . (int) $donor->donor_id . '/' . (string) Str::uuid() . '.' . $extension;
-
-        Storage::disk('local')->put($path, file_get_contents($file->getRealPath()));
+        $extension = match ($file->getMimeType()) {
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'application/pdf' => 'pdf',
+            default => throw new \RuntimeException('Unsupported verification document type.'),
+        };
+        $uploadKey = (string) Str::uuid();
+        $directory = 'donor-verifications/'.(int) $donor->donor_id;
+        $path = $directory.'/'.$uploadKey.'.'.$extension;
+        $previewFile = $validated['document_preview'] ?? null;
+        $previewPath = null;
+        $disk = Storage::disk('local');
 
         $verification = null;
         try {
-            DB::transaction(function () use ($donor, $validated, $path, &$verification): void {
-                $verification = DonorVerification::query()->create([
+            $storedPath = $disk->putFileAs($directory, $file, $uploadKey.'.'.$extension);
+            if (! $storedPath) {
+                throw new \RuntimeException('Verification document storage failed.');
+            }
+
+            if ($previewFile) {
+                $dimensions = @getimagesize($previewFile->getRealPath());
+                if (is_array($dimensions)
+                    && ($dimensions[0] ?? 0) > 0 && ($dimensions[1] ?? 0) > 0
+                    && ($dimensions[0] ?? 0) <= 1600 && ($dimensions[1] ?? 0) <= 1600) {
+                    $previewPath = $directory.'/'.$uploadKey.'.preview.jpg';
+                    if (! $disk->putFileAs($directory, $previewFile, $uploadKey.'.preview.jpg')) {
+                        $previewPath = null;
+                    }
+                }
+            }
+
+            DB::transaction(function () use ($donor, $validated, $path, $previewPath, &$verification): void {
+                $attributes = [
                     'donor_id' => (int) $donor->donor_id,
                     'document_type' => $validated['document_type'],
                     'document_path' => $path,
@@ -112,7 +144,11 @@ class DonorVerificationController extends Controller
                     'rejection_reason' => null,
                     'reviewed_by_admin_id' => null,
                     'reviewed_at' => null,
-                ]);
+                ];
+                if (Schema::hasColumn('donor_verifications', 'document_preview_path')) {
+                    $attributes['document_preview_path'] = $previewPath;
+                }
+                $verification = DonorVerification::query()->create($attributes);
 
                 if (Schema::hasColumn('donors', 'verification_status')) {
                     Donor::query()
@@ -121,7 +157,7 @@ class DonorVerificationController extends Controller
                 }
             });
         } catch (Throwable $exception) {
-            Storage::disk('local')->delete($path);
+            $disk->delete(array_values(array_filter([$path, $previewPath])));
             report($exception);
 
             return redirect()
@@ -136,7 +172,7 @@ class DonorVerificationController extends Controller
             'status' => 'pending',
         ]);
 
-        $donorName = trim((string) $donor->first_name . ' ' . (string) $donor->last_name);
+        $donorName = trim((string) $donor->first_name.' '.(string) $donor->last_name);
         app(AdminNotificationService::class)->createAdminEvent(
             'donor_verification_submitted',
             'Donor Verification Submitted',
@@ -161,6 +197,7 @@ class DonorVerificationController extends Controller
         $donor = Donor::query()->find($donorId);
         if (! $donor) {
             $request->session()->forget(['donor_auth_id', 'donor_id', 'donor_email', 'donor_name']);
+
             return redirect('/login')->with('error', 'Your account could not be found. Please log in again.');
         }
 
@@ -178,7 +215,7 @@ class DonorVerificationController extends Controller
             ->when(Schema::hasTable('notifications') && Schema::hasColumn('notifications', 'recipient_type'), function ($query): void {
                 $query->where(function ($builder): void {
                     $builder->whereNull('recipient_type')
-                    ->orWhereIn('recipient_type', ['donor', 'all_donors']);
+                        ->orWhereIn('recipient_type', ['donor', 'all_donors']);
                 });
             });
 
@@ -282,6 +319,7 @@ class DonorVerificationController extends Controller
         try {
             if (! Schema::hasTable('audit_logs')) {
                 logger()->info($description, $metadata);
+
                 return;
             }
 

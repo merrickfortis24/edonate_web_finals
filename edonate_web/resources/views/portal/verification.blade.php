@@ -59,9 +59,10 @@
                     </div>
                 @endif
 
-                <form method="POST" action="{{ route('donor.verification.store') }}" enctype="multipart/form-data" class="grid gap-4">
+                <form method="POST" action="{{ route('donor.verification.store') }}" enctype="multipart/form-data" class="grid gap-4" data-verification-upload>
                     @csrf
                     <x-privacy-acknowledgment purpose="identity-verification" />
+                    <input id="document_preview" name="document_preview" type="file" accept="image/jpeg" hidden tabindex="-1" aria-hidden="true">
 
                     <div>
                         <label for="document_type" class="mb-1 block text-sm font-semibold text-slate-700">Document Type</label>
@@ -76,7 +77,7 @@
                     <div>
                         <label for="document" class="mb-1 block text-sm font-semibold text-slate-700">Upload Document</label>
                         <input id="document" name="document" type="file" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-red-700 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200" required>
-                        <p class="mt-2 text-xs text-slate-500">Use a clear photo or scan. Sensitive documents are stored privately and reviewed only by authorized admins.</p>
+                        <p class="mt-2 text-xs text-slate-500">Use a clear photo or scan. The original is preserved; an optimized private preview is generated for faster admin review. Sensitive documents are reviewed only by authorized admins.</p>
                     </div>
 
                     <button type="submit" class="rounded-xl bg-red-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-800">
@@ -127,4 +128,60 @@
         </x-dashboard.card>
     </aside>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.querySelector('[data-verification-upload]');
+        if (!form) return;
+
+        const originalInput = form.querySelector('#document');
+        const previewInput = form.querySelector('#document_preview');
+        form.addEventListener('submit', async function (event) {
+            if (form.dataset.previewPrepared === 'true') return;
+
+            const source = originalInput && originalInput.files ? originalInput.files[0] : null;
+            if (!source || !source.type.startsWith('image/')) {
+                form.dataset.previewPrepared = 'true';
+                return;
+            }
+
+            event.preventDefault();
+            const submitButton = event.submitter || form.querySelector('[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.dataset.originalLabel = submitButton.textContent;
+                submitButton.textContent = 'Preparing secure preview…';
+            }
+
+            try {
+                const bitmap = await createImageBitmap(source);
+                const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+                canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+                const context = canvas.getContext('2d', { alpha: false });
+                if (context) {
+                    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                    const previewBlob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.82));
+                    if (previewBlob && previewBlob.size <= 2 * 1024 * 1024) {
+                        const transfer = new DataTransfer();
+                        transfer.items.add(new File([previewBlob], 'verification-preview.jpg', { type: 'image/jpeg' }));
+                        previewInput.files = transfer.files;
+                    }
+                }
+                bitmap.close();
+            } catch (error) {
+                // Keep the original submission usable if this browser cannot make a preview.
+                previewInput.value = '';
+            }
+
+            form.dataset.previewPrepared = 'true';
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = submitButton.dataset.originalLabel || 'Submit for Verification';
+            }
+            form.requestSubmit(submitButton || undefined);
+        });
+    });
+</script>
 @endcomponent
