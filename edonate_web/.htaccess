@@ -6,9 +6,6 @@ Options -MultiViews -Indexes
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
-    # Legacy identity uploads must not be available as static public files.
-    RewriteRule ^(?:api/)?(?:uploads|upload)/verification(?:/|$) - [F,L,NC]
-
     # Keep standard public well-known endpoints available for SSL/security tooling.
     RewriteRule ^\.well-known/ - [L]
 
