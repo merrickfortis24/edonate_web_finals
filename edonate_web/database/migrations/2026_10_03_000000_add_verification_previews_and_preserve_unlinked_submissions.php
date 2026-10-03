@@ -44,29 +44,8 @@ return new class extends Migration
                     : $foreignKey['name'];
                 $table->dropForeign($dropTarget);
             }
+            $table->unsignedInteger('donor_id')->nullable()->change();
         });
-
-        if (DB::getDriverName() === 'mysql' && Schema::hasTable('donors') && Schema::hasColumn('donors', 'donor_id')) {
-            // Imported production schemas do not always use the same integer
-            // signedness/width as the Laravel-created schema. MySQL requires
-            // both sides of a foreign key to have identical column types, so
-            // make the nullable child column match the real donor key exactly.
-            $donorKey = DB::selectOne(
-                'SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
-                ['donors', 'donor_id']
-            );
-            $columnType = strtolower((string) ($donorKey->COLUMN_TYPE ?? ''));
-
-            if (! preg_match('/\\A(?:tinyint|smallint|mediumint|int|integer|bigint)(?:\\(\\d+\\))?(?: unsigned)?\\z/', $columnType)) {
-                throw new RuntimeException('Unable to safely determine the donors.donor_id integer type.');
-            }
-
-            DB::statement("ALTER TABLE `donor_verifications` MODIFY `donor_id` {$columnType} NULL");
-        } else {
-            Schema::table('donor_verifications', function (Blueprint $table): void {
-                $table->integer('donor_id')->nullable()->change();
-            });
-        }
 
         // Do not rewrite historical donor IDs. If a legacy database already has
         // orphaned references, keep them intact and visible for manual reconciliation.
