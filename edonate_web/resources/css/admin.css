@@ -1396,6 +1396,26 @@
 .edonate-admin-page.admin-users-page .badge--review { background: #dbeafe; color: #1e40af; }
 .edonate-admin-page.admin-users-page .badge--unknown { background: #e2e8f0; color: #334155; }
 
+/* Let longer eligibility labels wrap inside their own table cells. The legacy
+ * public stylesheet gives every .badge a fixed 70px width and nowrap, which
+ * makes these labels paint over the adjacent columns. */
+.edonate-admin-page.admin-users-page .table-td:nth-child(6) > .badge,
+.edonate-admin-page.admin-eligibility-page .eligibility-table td .badge,
+.edonate-admin-page.admin-questions-page .questions-table td .badge {
+    box-sizing: border-box;
+    display: inline-flex;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    min-height: 20px;
+    padding: 0.2rem 0.45rem;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+}
+
 .digital-id-card--component .digital-id-card__badge-sub {
     color: #334155;
     display: block;
