@@ -184,6 +184,14 @@
     const pageErrorMessage = document.getElementById('bloodRequestPageErrorMessage');
     document.getElementById('dismissBloodRequestPageError')?.addEventListener('click', () => pageError?.classList.add('d-none'));
 
+    function showFallbackError(message, title = 'Request Error') {
+        if (window.Swal?.fire) {
+            window.Swal.fire({ icon: 'error', title, text: message });
+            return;
+        }
+        console.error(`[Blood Requests] ${title}: ${message}`);
+    }
+
     function reportRequestError(context, error) {
         console.error(`[Blood Requests] ${context}`, error);
         const message = error?.message || 'Please try again or refresh the page.';
@@ -191,7 +199,7 @@
             pageErrorMessage.textContent = `${context}: ${message}`;
             pageError.classList.remove('d-none');
         } else {
-            window.alert(`${context}: ${message}`);
+            showFallbackError(`${context}: ${message}`);
         }
     }
 
@@ -564,7 +572,10 @@
                 pageErrorMessage.textContent = `Page controls could not initialize: ${error.message || 'refresh and try again.'}`;
                 pageError.classList.remove('d-none');
             } else {
-                window.alert(`Blood Request controls could not initialize: ${error.message || 'refresh the page and try again.'}`);
+                showFallbackError(
+                    `Blood Request controls could not initialize: ${error.message || 'refresh the page and try again.'}`,
+                    'Initialization Error'
+                );
             }
         }
     }
