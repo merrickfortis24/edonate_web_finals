@@ -19,6 +19,10 @@
 
 @section('main_content')
 <main class="br-detail">
+    <div class="alert alert-danger d-none mb-3" id="bloodRequestPageError" role="alert" aria-live="assertive">
+        <span id="bloodRequestPageErrorMessage"></span>
+        <button class="btn-close float-end" type="button" id="dismissBloodRequestPageError" aria-label="Dismiss error"></button>
+    </div>
     <div class="br-grid">
         <section class="br-card">
             <h2>Request Details</h2>
@@ -168,29 +172,61 @@
 (function () {
     'use strict';
 
-    const csrf = document.querySelector('meta[name="csrf-token"]').content;
-    const base = @json(url('/admin/blood-requests/'.$bloodRequest->request_id));
+    function start() {
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    if (!csrfMeta?.content) throw new Error('The CSRF token is missing. Refresh the page and try again.');
+    const csrf = csrfMeta.content;
+    const baseRoute = new URL(@json(route('admin.blood-requests.show', $bloodRequest->request_id)), window.location.href);
+    const base = baseRoute.pathname.replace(/\/$/, '');
     const rows = document.getElementById('candidateRows');
     const interestedRows = document.getElementById('interestedDonorRows');
+    const pageError = document.getElementById('bloodRequestPageError');
+    const pageErrorMessage = document.getElementById('bloodRequestPageErrorMessage');
+    document.getElementById('dismissBloodRequestPageError')?.addEventListener('click', () => pageError?.classList.add('d-none'));
+
+    function reportRequestError(context, error) {
+        console.error(`[Blood Requests] ${context}`, error);
+        const message = error?.message || 'Please try again or refresh the page.';
+        if (pageError && pageErrorMessage) {
+            pageErrorMessage.textContent = `${context}: ${message}`;
+            pageError.classList.remove('d-none');
+        } else {
+            window.alert(`${context}: ${message}`);
+        }
+    }
+
     const esc = value => String(value ?? '').replace(/[&<>"']/g, character => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
     }[character]));
     const head = value => String(value ?? '').replaceAll('_', ' ').replace(/\b\w/g, character => character.toUpperCase());
 
     async function req(url, options = {}) {
-        const response = await fetch(url, {
-            ...options,
-            cache: 'no-store',
-            headers: {
-                Accept: 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': csrf,
-                'Content-Type': 'application/json',
-                ...(options.headers || {}),
-            },
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw data;
+        let response;
+        try {
+            response = await fetch(url, {
+                ...options,
+                cache: 'no-store',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': csrf,
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {}),
+                },
+            });
+        } catch (cause) {
+            const error = new Error('The server could not be reached. Check your connection and try again.');
+            error.cause = cause;
+            throw error;
+        }
+        const data = await response.json().catch(() => null);
+        if (!response.ok) {
+            const error = new Error(data?.message || `The request failed (HTTP ${response.status}).`);
+            error.status = response.status;
+            error.errors = data?.errors || {};
+            throw error;
+        }
+        if (!data || typeof data !== 'object') throw new Error('The server returned an unreadable response. Refresh the page and try again.');
         return data;
     }
 
@@ -223,6 +259,7 @@
                 <td><div class="btn-group btn-group-sm">${rowActions(row)}</div></td>
             </tr>`).join('') : '<tr><td colspan="8" class="text-center text-muted py-4">No candidates found.</td></tr>';
         } catch (error) {
+            reportRequestError('Could not load candidates', error);
             rows.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Could not load candidates.</td></tr>';
         }
     }
@@ -245,12 +282,19 @@
                 <td><div class="btn-group btn-group-sm">${rowActions(row)}</div></td>
             </tr>`).join('') : '<tr><td colspan="7" class="text-center text-muted py-4">No donors have expressed interest in this blood request yet.</td></tr>';
         } catch (error) {
+            reportRequestError('Could not load interested donors', error);
             interestedRows.innerHTML = '<tr><td colspan="7" class="text-center text-danger py-4">Could not load interested donors. Please reload the page.</td></tr>';
         }
     }
 
+    function getModal(element, options) {
+        const Modal = window.bootstrap?.Modal;
+        if (!element || typeof Modal?.getOrCreateInstance !== 'function') return null;
+        return Modal.getOrCreateInstance(element, options);
+    }
+
     const actionModalElement = document.getElementById('bloodRequestActionModal');
-    const actionModal = actionModalElement && window.bootstrap?.Modal.getOrCreateInstance(actionModalElement, { backdrop: 'static', keyboard: false });
+    const actionModal = getModal(actionModalElement, { backdrop: 'static', keyboard: false });
     const actionForm = document.getElementById('bloodRequestActionForm');
     const actionTitle = document.getElementById('bloodRequestActionTitle');
     const actionMessage = document.getElementById('bloodRequestActionMessage');
@@ -275,7 +319,10 @@
     }
 
     function openAction(options) {
-        if (!actionModal) return;
+        if (!actionModal) {
+            reportRequestError('Could not open the confirmation dialog', new Error('Bootstrap Modal did not load. Refresh the page and try again.'));
+            return;
+        }
         activeAction = options;
         clearActionErrors();
         actionTitle.textContent = options.title;
@@ -341,6 +388,7 @@
             if (action.onSuccess) action.onSuccess(result);
             else showActionResult(result.message || 'Action completed successfully.');
         } catch (error) {
+            reportRequestError('Blood request action failed', error);
             const validationMessage = action.fieldName && error.errors?.[action.fieldName]?.[0];
             if (validationMessage) {
                 actionField.classList.add('is-invalid');
@@ -441,7 +489,9 @@
         const error = document.getElementById('approveRequestError');
         error.textContent = '';
         error.classList.add('d-none');
-        window.bootstrap?.Modal.getOrCreateInstance(approveModal).show();
+        const modal = getModal(approveModal);
+        if (modal) modal.show();
+        else reportRequestError('Could not open the approval dialog', new Error('Bootstrap Modal did not load. Refresh the page and try again.'));
     });
     approveForm?.addEventListener('submit', async event => {
         event.preventDefault();
@@ -455,6 +505,7 @@
             await req(`${base}/approve`, { method: 'PATCH', body: JSON.stringify({}) });
             location.reload();
         } catch (exception) {
+            reportRequestError('Could not approve the blood request', exception);
             error.textContent = exception.message || 'The request could not be approved. Please try again.';
             error.classList.remove('d-none');
         } finally {
@@ -465,7 +516,11 @@
 
     const rejectModal = document.getElementById('rejectRequestModal');
     const rejectForm = document.getElementById('rejectRequestForm');
-    document.getElementById('openRejectRequest')?.addEventListener('click', () => window.bootstrap?.Modal.getOrCreateInstance(rejectModal).show());
+    document.getElementById('openRejectRequest')?.addEventListener('click', () => {
+        const modal = getModal(rejectModal);
+        if (modal) modal.show();
+        else reportRequestError('Could not open the rejection dialog', new Error('Bootstrap Modal did not load. Refresh the page and try again.'));
+    });
     rejectForm?.addEventListener('submit', async event => {
         event.preventDefault();
         const reason = document.getElementById('rejectRequestReason');
@@ -481,6 +536,7 @@
             await req(`${base}/reject`, { method: 'PATCH', body: JSON.stringify({ reason: reason.value }) });
             location.reload();
         } catch (error) {
+            reportRequestError('Could not reject the blood request', error);
             if (error.errors?.reason) {
                 reason.classList.add('is-invalid');
                 fieldError.textContent = error.errors.reason[0];
@@ -495,6 +551,31 @@
 
     if (rows) load();
     loadInterestedDonors();
+    }
+
+    function initialize() {
+        try {
+            start();
+        } catch (error) {
+            console.error('[Blood Requests] Page controls failed to initialize.', error);
+            const pageError = document.getElementById('bloodRequestPageError');
+            const pageErrorMessage = document.getElementById('bloodRequestPageErrorMessage');
+            if (pageError && pageErrorMessage) {
+                pageErrorMessage.textContent = `Page controls could not initialize: ${error.message || 'refresh and try again.'}`;
+                pageError.classList.remove('d-none');
+            } else {
+                window.alert(`Blood Request controls could not initialize: ${error.message || 'refresh the page and try again.'}`);
+            }
+        }
+    }
+
+    // Vite emits AdminLTE/Bootstrap as a deferred ES module. Initialize only
+    // after deferred modules run so window.bootstrap.Modal is available here.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initialize, { once: true });
+    } else {
+        initialize();
+    }
 }());
 </script>
 @endpush
