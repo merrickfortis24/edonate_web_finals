@@ -1441,8 +1441,8 @@ class AdminAuthController extends BaseController
         }
 
         $paginator = $query
-            ->orderByDesc('ap.appointment_date')
-            ->orderByDesc('ap.appointment_time')
+            ->orderByRaw('CASE WHEN ap.created_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('ap.created_at')
             ->orderByDesc('ap.appointment_id')
             ->paginate($perPage, ['*'], 'page', $page);
 
@@ -1577,7 +1577,31 @@ class AdminAuthController extends BaseController
      */
     public function rejectAppointment(Request $request, int $appointment, AppointmentStatusService $statuses): JsonResponse
     {
-        $result = $statuses->transition($appointment, AppointmentStatusService::CANCELLED, $this->currentAdminId($request), [], [AppointmentStatusService::PENDING]);
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:2000'],
+        ]);
+        $reason = trim((string) $validated['rejection_reason']);
+
+        foreach (['rejection_reason', 'rejected_by_admin_id', 'rejected_at'] as $column) {
+            if (! Schema::hasColumn('appointments', $column)) {
+                return response()->json([
+                    'message' => 'Appointment rejection is unavailable until the rejection details migration is applied.',
+                ], 503);
+            }
+        }
+
+        $adminId = $this->currentAdminId($request);
+        $result = $statuses->transition(
+            $appointment,
+            AppointmentStatusService::CANCELLED,
+            $adminId,
+            [
+                'rejection_reason' => $reason,
+                'rejected_by_admin_id' => $adminId,
+                'rejected_at' => now(),
+            ],
+            [AppointmentStatusService::PENDING]
+        );
         if (! $result['found']) {
             return response()->json(['message' => 'Appointment not found.'], 404);
         }
@@ -1592,19 +1616,26 @@ class AdminAuthController extends BaseController
         $donorId = is_numeric($row->donor_id) ? (int) $row->donor_id : null;
         $appointmentCode = 'AP'.str_pad((string) $appointment, 3, '0', STR_PAD_LEFT);
 
-        $this->createDonorNotification($donorId, 'appointment_rejected', "Your appointment {$appointmentCode} has been rejected.");
+        $this->createDonorNotification(
+            $donorId,
+            'appointment_rejected',
+            "Your appointment {$appointmentCode} has been rejected. Reason: {$reason}"
+        );
         app(AdminNotificationService::class)->createAdminEvent(
             'appointment_cancelled',
             'Appointment Cancellation',
-            "Appointment {$appointmentCode} has been cancelled.",
+            "Appointment {$appointmentCode} has been cancelled after rejection.",
             'appointment',
             $appointment
         );
-        $this->logAppointmentAudit($request, 'appointment_rejected', "Rejected appointment {$appointmentCode}.", $appointment, [
+        $this->logAppointmentAudit($request, 'appointment_rejected', "Rejected appointment {$appointmentCode}. Reason: {$reason}", $appointment, [
             'appointment_id' => $appointment,
             'donor_id' => $donorId,
             'previous_status' => $result['from'],
             'new_status' => 'cancelled',
+            'rejection_reason' => $reason,
+            'rejected_by_admin_id' => $adminId,
+            'rejected_at' => now()->toDateTimeString(),
         ]);
 
         return response()->json(['message' => 'Appointment rejected.']);
@@ -1936,8 +1967,8 @@ class AdminAuthController extends BaseController
         }
 
         $paginator = $query
-            ->orderByDesc('ap.appointment_date')
-            ->orderByDesc('ap.appointment_time')
+            ->orderByRaw('CASE WHEN ap.created_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('ap.created_at')
             ->orderByDesc('ap.appointment_id')
             ->paginate($perPage, ['*'], 'page', $page);
 
@@ -4497,6 +4528,8 @@ class AdminAuthController extends BaseController
                 'ap.appointment_date',
                 'ap.appointment_time',
                 'ap.status',
+                'ap.rejection_reason',
+                'ap.rejected_at',
                 'ap.created_at',
                 'd.first_name',
                 'd.last_name',
@@ -4636,6 +4669,10 @@ IN ('deferred_on_site', 'deferred on site', 'onsite_deferred') THEN 'deferred_on
             'event_id' => isset($entry->event_id) ? (int) $entry->event_id : null,
             'appointment_date' => ! empty($entry->appointment_date) ? (string) $entry->appointment_date : null,
             'appointment_time' => ! empty($entry->appointment_time) ? (string) $entry->appointment_time : null,
+            'rejection_reason' => trim((string) ($entry->rejection_reason ?? '')) !== ''
+                ? trim((string) $entry->rejection_reason)
+                : null,
+            'rejected_at' => ! empty($entry->rejected_at) ? (string) $entry->rejected_at : null,
             'center_label' => trim((string) ($entry->center_label ?? '')) !== ''
                 ? trim((string) $entry->center_label)
                 : 'N/A',

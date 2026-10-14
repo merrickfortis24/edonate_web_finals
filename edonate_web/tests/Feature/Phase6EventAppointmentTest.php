@@ -24,6 +24,7 @@ class Phase6EventAppointmentTest extends TestCase
         (require database_path('migrations/2026_09_25_000002_add_is_donation_to_posts_table.php'))->up();
         (require database_path('migrations/2026_09_08_000000_create_privacy_receipts_table.php'))->up();
         (require database_path('migrations/2026_09_28_000000_add_appointment_cancellation_restrictions.php'))->up();
+        (require database_path('migrations/2026_10_14_000001_add_rejection_details_to_appointments_table.php'))->up();
     }
 
     public function test_admin_can_create_valid_donation_event(): void
@@ -202,7 +203,7 @@ class Phase6EventAppointmentTest extends TestCase
         $this->assertDatabaseHas('appointments', ['appointment_id' => $pendingId, 'status' => 'confirmed']);
 
         $this->withSession($this->adminSession())
-            ->patchJson("/admin/appointments/{$pendingId}/reject")
+            ->patchJson("/admin/appointments/{$pendingId}/reject", ['rejection_reason' => 'Already approved.'])
             ->assertUnprocessable();
         $this->assertDatabaseHas('appointments', ['appointment_id' => $pendingId, 'status' => 'confirmed']);
 
@@ -220,6 +221,104 @@ class Phase6EventAppointmentTest extends TestCase
             'appointment_id' => $confirmedId,
             'status' => 'cancelled',
             'cancellation_reason' => 'Donor unavailable',
+        ]);
+    }
+
+    public function test_admin_appointment_rejection_requires_and_persists_a_reason_with_notification_and_audit(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $eventId = $this->createEvent();
+        $donorId = $this->createBookableDonor();
+        $appointmentId = $this->createAppointment($donorId, $eventId, ['status' => 'pending']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reject")
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('rejection_reason');
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'status' => 'pending',
+            'rejection_reason' => null,
+            'rejected_by_admin_id' => null,
+            'rejected_at' => null,
+        ]);
+        $this->assertDatabaseMissing('notifications', [
+            'donor_id' => $donorId,
+            'notification_type' => 'appointment_rejected',
+        ]);
+        $this->assertDatabaseMissing('audit_logs', [
+            'action_type' => 'appointment_rejected',
+            'target_id' => $appointmentId,
+        ]);
+
+        $reason = 'The selected donation session is no longer available.';
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reject", ['rejection_reason' => $reason])
+            ->assertOk()
+            ->assertJsonPath('message', 'Appointment rejected.');
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'status' => 'cancelled',
+            'rejection_reason' => $reason,
+            'rejected_by_admin_id' => 1,
+        ]);
+        $this->assertNotNull(DB::table('appointments')->where('appointment_id', $appointmentId)->value('rejected_at'));
+
+        $notification = DB::table('notifications')
+            ->where('donor_id', $donorId)
+            ->where('notification_type', 'appointment_rejected')
+            ->first();
+        $this->assertNotNull($notification);
+        $this->assertStringContainsString($reason, (string) $notification->message);
+
+        $audit = DB::table('audit_logs')
+            ->where('action_type', 'appointment_rejected')
+            ->where('target_id', $appointmentId)
+            ->first();
+        $this->assertNotNull($audit);
+        $this->assertSame($reason, json_decode((string) $audit->metadata, true)['rejection_reason'] ?? null);
+
+        Schema::create('blood_types', function (Blueprint $table): void {
+            $table->increments('blood_type_id');
+            $table->string('blood_type', 5)->nullable();
+        });
+        Schema::create('locations', function (Blueprint $table): void {
+            $table->increments('location_id');
+            $table->string('street_address')->nullable();
+            $table->string('barangay_name')->nullable();
+            $table->string('city')->nullable();
+            $table->string('province')->nullable();
+        });
+
+        $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?status=cancelled')
+            ->assertOk()
+            ->assertJsonPath('data.0.rejection_reason', $reason)
+            ->assertJsonPath('data.0.status', 'cancelled');
+    }
+
+    public function test_admin_cannot_reject_a_non_pending_appointment_even_with_a_reason(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $eventId = $this->createEvent();
+        $appointmentId = $this->createAppointment($this->createBookableDonor(), $eventId, ['status' => 'confirmed']);
+
+        $this->withSession($this->adminSession())
+            ->patchJson("/admin/appointments/{$appointmentId}/reject", ['rejection_reason' => 'No longer needed.'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Only pending appointments can be rejected.');
+
+        $this->assertDatabaseHas('appointments', [
+            'appointment_id' => $appointmentId,
+            'status' => 'confirmed',
+            'rejection_reason' => null,
+            'rejected_at' => null,
+        ]);
+        $this->assertDatabaseMissing('notifications', [
+            'donor_id' => DB::table('appointments')->where('appointment_id', $appointmentId)->value('donor_id'),
+            'notification_type' => 'appointment_rejected',
         ]);
     }
 
@@ -898,7 +997,7 @@ class Phase6EventAppointmentTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['audit_logs', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'facilities', 'eligibility_status', 'donor_authentication', 'donors', 'admins', 'posts'] as $table) {
+        foreach (['audit_logs', 'admin_notifications', 'notifications', 'donation_records', 'appointments', 'donation_events', 'facilities', 'eligibility_status', 'donor_authentication', 'donors', 'admins', 'posts', 'blood_types', 'locations'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();

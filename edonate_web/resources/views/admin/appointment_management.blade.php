@@ -593,7 +593,10 @@
                 var timeLabel = escapeHtml(formatTime(item.appointment_time));
                 var centerLabel = escapeHtml(item.center_label || 'N/A');
                 var badgeClass = statusClass(item.status);
-                var badgeLabel = escapeHtml(statusLabel(item.status));
+                var badgeLabel = escapeHtml(item.rejected_at ? 'Rejected' : statusLabel(item.status));
+                var rejectionReason = item.rejection_reason
+                    ? '<span class="d-block small text-muted" style="max-width: 240px; white-space: normal; overflow-wrap: anywhere;" title="Rejection reason">Reason: ' + escapeHtml(item.rejection_reason) + '</span>'
+                    : '';
                 var actions = renderActionButtons(item.status, item.appointment_date, item.appointment_time, item.appointment_id);
 
                 return ''
@@ -605,7 +608,7 @@
                     + '<span class="appointment-datetime__time"><span class="appointment-icon-sm" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#555" stroke-width="1"></circle><line x1="6" y1="3" x2="6" y2="6" stroke="#555" stroke-width="1"></line><line x1="6" y1="6" x2="8.5" y2="8" stroke="#555" stroke-width="1"></line></svg></span>' + timeLabel + '</span>'
                     + '</td>'
                     + '<td class="appointment-center"><svg viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1C4.79086 1 3 2.79086 3 5C3 7.5 7 12.5 7 12.5C7 12.5 11 7.5 11 5C11 2.79086 9.20914 1 7 1Z" stroke="#333" stroke-width="1.2"></path><circle cx="7" cy="5" r="1.5" stroke="#333" stroke-width="1.2"></circle></svg>' + centerLabel + '</td>'
-                    + '<td><span class="appointment-badge ' + badgeClass + '">' + badgeLabel + '</span></td>'
+                    + '<td><span class="appointment-badge ' + badgeClass + '">' + badgeLabel + '</span>' + rejectionReason + '</td>'
                     + '<td class="appointment-actions"><div class="appointment-action-group">' + (actions || '<span class="text-muted">—</span>') + '</div></td>'
                     + '</tr>';
             }).join('');
@@ -1049,18 +1052,42 @@
                 if (action === 'reject') {
                     Swal.fire({
                         title: 'Reject Appointment?',
-                        text: 'This cannot be undone.',
+                        text: 'Provide a reason for the donor. This action cannot be undone.',
                         icon: 'warning',
+                        input: 'textarea',
+                        inputLabel: 'Reason for rejection',
+                        inputPlaceholder: 'Enter the reason for rejecting this appointment',
+                        inputAttributes: {
+                            maxlength: '2000',
+                            'aria-label': 'Reason for rejection'
+                        },
+                        inputValidator: function (value) {
+                            if (!String(value || '').trim()) {
+                                return 'The rejection reason field is required.';
+                            }
+                            return undefined;
+                        },
                         showCancelButton: true,
                         confirmButtonColor: '#b60c0c',
                         cancelButtonColor: '#6c757d',
-                        confirmButtonText: 'Yes, Reject',
+                        confirmButtonText: 'Reject Appointment',
                         cancelButtonText: 'Cancel'
                     }).then(function (result) {
                         if (!result.isConfirmed) { return; }
                         actionButton.disabled = true;
-                        performAppointmentAction(appointmentId, action, null)
-                            .then(function () { loadAppointments(); })
+                        performAppointmentAction(appointmentId, action, {
+                            rejection_reason: String(result.value || '').trim()
+                        })
+                            .then(function () {
+                                loadAppointments();
+                                return Swal.fire({
+                                    title: 'Appointment Rejected',
+                                    text: 'The donor has been notified with the rejection reason.',
+                                    icon: 'success',
+                                    timer: 2200,
+                                    showConfirmButton: false
+                                });
+                            })
                             .catch(function (error) {
                                 Swal.fire('Error', error && error.message ? error.message : 'Action failed.', 'error');
                             })

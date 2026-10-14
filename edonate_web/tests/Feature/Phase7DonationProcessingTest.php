@@ -20,6 +20,7 @@ class Phase7DonationProcessingTest extends TestCase
 
         $this->buildSchema();
         (require database_path('migrations/2026_09_28_000000_add_appointment_cancellation_restrictions.php'))->up();
+        (require database_path('migrations/2026_10_14_000001_add_rejection_details_to_appointments_table.php'))->up();
     }
 
     public function test_admin_can_check_in_confirmed_appointment(): void
@@ -139,6 +140,104 @@ class Phase7DonationProcessingTest extends TestCase
 
         $this->assertStringContainsString(':focus-visible', file_get_contents(resource_path('css/admin.css')));
         $this->assertDatabaseHas('appointments', ['appointment_id' => $cancelledId, 'status' => 'cancelled']);
+    }
+
+    public function test_appointment_and_processing_lists_order_by_booking_time_before_scheduled_time(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $oldestBooking = Carbon::parse('2026-10-01 08:00:00');
+        $middleBooking = Carbon::parse('2026-10-02 08:00:00');
+        $newestBooking = Carbon::parse('2026-10-03 08:00:00');
+
+        $oldestAppointmentId = $this->createAppointment([
+            'appointment_date' => Carbon::today()->addDays(30)->toDateString(),
+            'created_at' => $oldestBooking,
+            'donation_center' => 'Lipa Central',
+        ]);
+        $middleAppointmentId = $this->createAppointment([
+            'appointment_date' => Carbon::today()->addDays(20)->toDateString(),
+            'created_at' => $middleBooking,
+            'status' => 'cancelled',
+            'donation_center' => 'Bacoor Central',
+        ]);
+        $newestAppointmentId = $this->createAppointment([
+            'appointment_date' => Carbon::today()->addDays(10)->toDateString(),
+            'created_at' => $newestBooking,
+            'donation_center' => 'Lipa Central',
+        ]);
+
+        $appointments = $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?per_page=10')
+            ->assertOk();
+        $processing = $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?per_page=10')
+            ->assertOk();
+
+        $this->assertSame(
+            [$newestAppointmentId, $middleAppointmentId, $oldestAppointmentId],
+            collect($appointments->json('data'))->pluck('appointment_id')->all()
+        );
+        $this->assertSame(
+            [$newestAppointmentId, $middleAppointmentId, $oldestAppointmentId],
+            collect($processing->json('data'))->pluck('appointment_id')->all()
+        );
+        $newestProcessingRow = collect($processing->json('data'))->firstWhere('appointment_id', $newestAppointmentId);
+        $this->assertSame($newestBooking->format('Y-m-d H:i:s'), $newestProcessingRow['booked_at']);
+
+        $filteredAppointments = $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?per_page=10&status=confirmed')
+            ->assertOk();
+        $filteredProcessing = $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?per_page=10&status=confirmed')
+            ->assertOk();
+
+        $this->assertSame(
+            [$newestAppointmentId, $oldestAppointmentId],
+            collect($filteredAppointments->json('data'))->pluck('appointment_id')->all()
+        );
+        $this->assertSame(
+            [$newestAppointmentId, $oldestAppointmentId],
+            collect($filteredProcessing->json('data'))->pluck('appointment_id')->all()
+        );
+    }
+
+    public function test_lists_use_numeric_booking_tiebreakers_and_keep_legacy_null_bookings_last(): void
+    {
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+
+        $sameBookingTime = Carbon::parse('2026-10-04 08:00:00');
+        $lowerNumericId = $this->createAppointment([
+            'appointment_id' => 999,
+            'appointment_date' => Carbon::today()->addDays(30)->toDateString(),
+            'created_at' => $sameBookingTime,
+        ]);
+        $higherNumericId = $this->createAppointment([
+            'appointment_id' => 1004,
+            'appointment_date' => Carbon::today()->addDays(2)->toDateString(),
+            'created_at' => $sameBookingTime,
+        ]);
+        $legacyNullBookingId = $this->createAppointment([
+            'appointment_id' => 1500,
+            'appointment_date' => Carbon::today()->addDays(60)->toDateString(),
+            'created_at' => null,
+        ]);
+
+        $appointments = $this->withSession($this->adminSession())
+            ->getJson('/admin/appointments/data?per_page=10')
+            ->assertOk();
+        $processing = $this->withSession($this->adminSession())
+            ->getJson('/admin/donation-records/data?per_page=10')
+            ->assertOk();
+
+        $this->assertSame(
+            [$higherNumericId, $lowerNumericId, $legacyNullBookingId],
+            collect($appointments->json('data'))->pluck('appointment_id')->all()
+        );
+        $this->assertSame(
+            [$higherNumericId, $lowerNumericId, $legacyNullBookingId],
+            collect($processing->json('data'))->pluck('appointment_id')->all()
+        );
     }
 
     public function test_appointment_calendar_date_range_respects_other_filters_and_validates_bounds(): void
@@ -425,7 +524,9 @@ class Phase7DonationProcessingTest extends TestCase
         $map = $this->withSession($this->adminSession())
             ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
             ->assertOk()
-            ->assertJsonPath('summary.available_donors', 1)
+            ->assertJsonPath('summary.completed_donors', 1)
+            ->assertJsonPath('summary.available_donors', 0)
+            ->assertJsonPath('summary.temporarily_deferred_donors', 1)
             ->assertJsonPath('summary.barangays', 1)
             ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
             ->assertJsonPath('barangays.0.blood_types.AB+', 1)
@@ -440,9 +541,10 @@ class Phase7DonationProcessingTest extends TestCase
         $this->withSession($this->adminSession())
             ->get('/admin/blood-availability-mapping')
             ->assertOk()
-            ->assertSee('Every distinct donor with a completed donation is counted')
+            ->assertSee('total counts distinct donors with completed donation history')
+            ->assertSee('Per-type status additionally requires an active account')
             ->assertSee('Unmapped completed donors')
-            ->assertSee('Completed Donor Coverage')
+            ->assertSee('Blood-Type Donor Availability')
             ->assertSee('visibilitychange', false)
             ->assertSee('30000', false);
     }
@@ -534,7 +636,9 @@ class Phase7DonationProcessingTest extends TestCase
         $this->withSession($this->adminSession())
             ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
             ->assertOk()
-            ->assertJsonPath('summary.available_donors', 1)
+            ->assertJsonPath('summary.completed_donors', 1)
+            ->assertJsonPath('summary.available_donors', 0)
+            ->assertJsonPath('summary.temporarily_deferred_donors', 1)
             ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
             ->assertJsonPath('barangays.0.blood_types.AB+', 1);
     }
@@ -852,7 +956,9 @@ class Phase7DonationProcessingTest extends TestCase
         $this->withSession($this->adminSession())
             ->getJson('/admin/blood-availability/map-data?blood_type=AB%2B')
             ->assertOk()
-            ->assertJsonPath('summary.verified_donors', 0);
+            ->assertJsonPath('summary.completed_donors', 1)
+            ->assertJsonPath('summary.available_donors', 0)
+            ->assertJsonPath('summary.temporarily_deferred_donors', 1);
 
         $this->withSession($this->adminSession())
             ->getJson('/admin/donation-records/data?status=completed&per_page=100')
