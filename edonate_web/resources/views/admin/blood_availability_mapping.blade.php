@@ -3,7 +3,7 @@
 @section('title', 'eDonate - Blood Availability Map')
 @section('admin_page_class', 'admin-blood-availability-page')
 @section('header_title', 'Blood Availability Map')
-@section('header_subtitle', 'Completed donor coverage and recorded facility inventory')
+@section('header_subtitle', 'Blood-type donor availability and recorded facility inventory')
 
 @push('admin_head')
 <link rel="stylesheet" href="{{ asset('vendor/leaflet/leaflet.min.css') }}">
@@ -13,6 +13,24 @@
 </style>
 <style>
     .availability-marker--approximate{border-style:dashed}
+    .availability-marker--donor-available{background:#16823b}
+    .availability-marker--donor-temporarily_deferred{background:#e0b000;color:#241b00}
+    .availability-marker--donor-not_available{background:#b52c2c}
+    .availability-status{border-radius:999px;display:inline-block;font-size:11px;font-weight:700;padding:4px 8px;white-space:nowrap}
+    .availability-status--available{background:#dff3e4;color:#17642c}
+    .availability-status--temporarily_deferred{background:#fff0bd;color:#725500}
+    .availability-status--not_available{background:#f3d8d8;color:#851616}
+    .availability-type-detail{min-width:210px;white-space:normal!important}
+    .availability-type-detail small{display:block;line-height:1.45;margin-top:4px;white-space:normal}
+    .availability-popup-types{display:grid;gap:5px;grid-template-columns:1fr 1fr;min-width:320px}
+    .availability-popup-type{border-bottom:1px solid #ddd;padding:3px 0}
+    .availability-popup-type small{display:block;line-height:1.35;margin-top:3px}
+    .availability-legend-items{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px}
+    .availability-legend-item{align-items:center;display:inline-flex;gap:6px}
+    .availability-legend-swatch{border:1px solid rgba(0,0,0,.2);border-radius:50%;display:inline-flex;font-size:11px;font-weight:800;height:22px;justify-content:center;line-height:20px;width:22px}
+    .availability-legend-swatch--available{background:#16823b;color:#fff}
+    .availability-legend-swatch--temporarily_deferred{background:#e0b000;color:#241b00}
+    .availability-legend-swatch--not_available{background:#b52c2c;color:#fff}
 </style>
 @endpush
 
@@ -21,9 +39,9 @@
     <div class="availability-tabs" role="group" aria-label="Availability map layer"><button class="availability-tab active" id="donorLayer" aria-pressed="true" type="button">Donor Availability</button><button class="availability-tab" id="facilityLayer" aria-pressed="false" type="button">Facility Inventory</button></div>
     <section class="availability-summary" aria-label="Availability summary">
         <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel1">Completed Donors</div><div class="availability-stat__value" id="summaryValue1">-</div></div>
-        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel2">Mapped Completed Donors</div><div class="availability-stat__value" id="summaryValue2">-</div></div>
-        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel3">Barangays With Donors</div><div class="availability-stat__value" id="summaryValue3">-</div></div>
-        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel4">Most Common Type</div><div class="availability-stat__value" id="summaryValue4">-</div></div>
+        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel2">Available Donors</div><div class="availability-stat__value" id="summaryValue2">-</div></div>
+        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel3">Temporarily Deferred</div><div class="availability-stat__value" id="summaryValue3">-</div></div>
+        <div class="availability-stat"><div class="availability-stat__label" id="summaryLabel4">Barangays With Completed Donors</div><div class="availability-stat__value" id="summaryValue4">-</div></div>
         <div class="availability-stat" id="summaryCard5"><div class="availability-stat__label" id="summaryLabel5">Unmapped Completed Donors</div><div class="availability-stat__value" id="summaryValue5">-</div></div>
     </section>
     <section class="availability-panel" aria-label="Availability filters"><div class="availability-filter-row">
@@ -32,9 +50,9 @@
         <div><label for="availabilityCity" id="availabilityScopeLabel">City filter</label><input class="form-control" id="availabilityCity" type="search" maxlength="150" placeholder="Any city"><select class="form-select d-none" id="availabilityFacilityType"><option value="">All facility types</option>@foreach($facilityTypes as $type)<option value="{{ $type }}">{{ \Illuminate\Support\Str::headline($type) }}</option>@endforeach</select></div>
         <div id="availabilitySortWrap" class="d-none"><label for="availabilitySort">Sort facilities</label><select class="form-select" id="availabilitySort"><option value="name">Facility name</option><option value="units_desc">Units: high to low</option><option value="units_asc">Units: low to high</option><option value="updated_desc">Recently updated</option></select></div>
         <button class="btn btn-outline-secondary" id="clearAvailabilityFilters" type="button">Clear</button>
-    </div><p class="availability-quality" id="availabilityQuality">Every distinct donor with a completed donation is counted, regardless of current eligibility or blood-type verification. Laboratory-confirmed types take precedence; otherwise profile types are labelled unconfirmed and missing types are shown as Unknown. Donor identities and exact home coordinates are not exposed.</p></section>
-    <section class="availability-panel"><h2 class="availability-panel__title" id="mapTitle">Completed Donor Coverage</h2><p class="availability-panel__hint" id="mapHint">One aggregate marker represents one barangay. This is not physical blood-bank inventory.</p><p class="availability-legend" id="mapLegend">Legend: marker values are distinct donors with completed donation history.</p><p id="mapPrivacyNotice">External map tiles are blocked until you allow maps in <button type="button" class="btn btn-outline-secondary" data-privacy-open>Privacy choices</button>. The table below remains available.</p><div id="availabilityMap" role="region" aria-label="Optional completed-donor coverage map; equivalent information is in the table below"></div><p class="text-muted small mt-2 mb-0" id="mapStatus" aria-live="polite"></p></section>
-    <section class="availability-panel"><h2 class="availability-panel__title" id="tableTitle">Barangay Completed Donors</h2><div class="availability-table-wrap" role="region" aria-label="Blood availability table, scroll horizontally if needed" tabindex="0"><table class="table table-hover availability-table"><thead id="availabilityTableHead"></thead><tbody id="availabilityTableBody"></tbody></table></div><div class="admin-pagination admin-pagination--js d-none" id="facilityPagination" aria-label="Table pagination"><span class="admin-pagination__info" id="facilityPageMeta">Showing 0 to 0 of 0 entries</span><nav class="admin-pagination__links" id="facilityPaginationLinks" aria-label="Pagination links"></nav></div></section>
+    </div><p class="availability-quality" id="availabilityQuality">The total counts distinct donors with completed donation history. Per-type status additionally requires an active account, verified donor identity, and current eligibility; profile-only blood types remain labelled unconfirmed. Exact identities and home coordinates are not exposed.</p></section>
+    <section class="availability-panel"><h2 class="availability-panel__title" id="mapTitle">Blood-Type Donor Availability</h2><p class="availability-panel__hint" id="mapHint">One aggregate marker represents one barangay with completed donation history. This is not physical blood-bank inventory.</p><div class="availability-legend" id="mapLegend" aria-label="Map status legend"></div><p id="mapPrivacyNotice">External map tiles are blocked until you allow maps in <button type="button" class="btn btn-outline-secondary" data-privacy-open>Privacy choices</button>. The table below remains available.</p><div id="availabilityMap" role="region" aria-label="Optional blood-type donor availability map; equivalent information is in the table below"></div><p class="text-muted small mt-2 mb-0" id="mapStatus" aria-live="polite"></p></section>
+    <section class="availability-panel"><h2 class="availability-panel__title" id="tableTitle">Barangay Blood-Type Availability</h2><div class="availability-table-wrap" role="region" aria-label="Blood availability table, scroll horizontally if needed" tabindex="0"><table class="table table-hover availability-table"><thead id="availabilityTableHead"></thead><tbody id="availabilityTableBody"></tbody></table></div><div class="admin-pagination admin-pagination--js d-none" id="facilityPagination" aria-label="Table pagination"><span class="admin-pagination__info" id="facilityPageMeta">Showing 0 to 0 of 0 entries</span><nav class="admin-pagination__links" id="facilityPaginationLinks" aria-label="Pagination links"></nav></div></section>
     <section class="availability-panel" id="unmappedCompletedPanel" hidden aria-labelledby="unmappedCompletedTitle"><h2 class="availability-panel__title" id="unmappedCompletedTitle">Unmapped completed donors</h2><p class="availability-panel__hint">These completed donors remain in the total, but their registered barangay or municipality could not be matched to a usable center. Only donor references and missing fields are shown.</p><p class="availability-panel__hint">The map first uses local barangay polygon centers from Faeldon’s 2019 Philippines boundary dataset. If a location is not in that dataset, an admin may optionally use the external resolver; unmatched records stay visible and no donor identity or exact home coordinates are sent.</p><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><button class="btn btn-outline-primary" id="resolveBarangayCenters" type="button" disabled><i class="bi bi-geo-alt me-1" aria-hidden="true"></i>Resolve locations outside the dataset</button><span class="small text-muted" id="geocodeQueueStatus" role="status" aria-live="polite"></span></div><div class="availability-table-wrap" role="region" aria-label="Unmapped completed donors" tabindex="0"><table class="table table-hover availability-table"><thead><tr><th>Donor reference</th><th>Barangay</th><th>City</th><th>Blood type</th><th>Type status</th><th>Missing field</th></tr></thead><tbody id="unmappedCompletedBody"></tbody></table></div></section>
 </main>
 @endsection
@@ -89,49 +107,56 @@
     document.addEventListener('edonate:privacy-changed',syncMapConsent);
     document.addEventListener('DOMContentLoaded',syncMapConsent);
     const valid=(lat,lng)=>Number.isFinite(Number(lat))&&Number.isFinite(Number(lng))&&Number(lat)!==0&&Number(lng)!==0;
-    const markerIcon=(level,label,approximate=false)=>L.divIcon({className:'',html:`<span class="availability-marker availability-marker--${esc(level)}${approximate?' availability-marker--approximate':''}">${esc(label)}</span>`,iconSize:[38,38],iconAnchor:[19,19]});
+    const markerIcon=(level,label,approximate=false,donorStatus=false)=>L.divIcon({className:'',html:`<span class="availability-marker availability-marker--${donorStatus?'donor-':''}${esc(level)}${approximate?' availability-marker--approximate':''}">${esc(label)}</span>`,iconSize:[38,38],iconAnchor:[19,19]});
     function query(){const q=new URLSearchParams();if(blood.value)q.set('blood_type',blood.value);if(layer==='donors'){if(search.value.trim())q.set('barangay',search.value.trim());if(city.value.trim())q.set('city',city.value.trim());}else{if(search.value.trim())q.set('search',search.value.trim());if(facilityType.value)q.set('facility_type',facilityType.value);}return q.toString();}
     function summary(labels,values){for(let i=0;i<5;i++){const card=i===4?document.getElementById('summaryCard5'):null;if(card)card.classList.toggle('d-none',!labels[i]);if(labels[i]){document.getElementById(`summaryLabel${i+1}`).textContent=labels[i];document.getElementById(`summaryValue${i+1}`).textContent=values[i]??0;}}}
     const bloodTypeColumns=[...bloodTypes,'Unknown'];
-    const typeCell=(row,type)=>{
-        const count=Number(row.blood_types?.[type]||0),quality=row.blood_type_confidence_by_type?.[type]||{};
-        const notes=[];
-        if(Number(quality.unconfirmed||0))notes.push(`${Number(quality.unconfirmed)} Unconfirmed`);
-        if(Number(quality.unknown||0))notes.push(`${Number(quality.unknown)} Unknown type`);
-        return '<td>'+esc(count)+(notes.length?'<small class="d-block text-muted">'+esc(notes.join(' · '))+'</small>':'')+'</td>';
-    };
     const confidenceLabel=value=>({confirmed:'Confirmed',unconfirmed:'Unconfirmed',unknown:'Unknown'})[value]||'Unknown';
+    const statusText=value=>({available:'Available',temporarily_deferred:'Temporarily deferred',not_available:'Not available'})[value]||'Not available';
+    const statusSymbol=value=>({available:'✓',temporarily_deferred:'◷',not_available:'×'})[value]||'×';
+    const statusBadge=(value,count)=>'<span class="availability-status availability-status--'+esc(value)+'">'+esc(statusSymbol(value)+' '+statusText(value))+'</span>'+(count===undefined?'':' <strong>'+esc(count)+'</strong>');
+    const typeCell=(row,type)=>{
+        const detail=row.blood_type_availability?.[type]||{};
+        const counts=detail.counts||{};
+        const completed=Number(detail.completed_donors||0);
+        const quality=row.blood_type_confidence_by_type?.[type]||{};
+        const unconfirmed=Number(quality.unconfirmed||0);
+        const notes=[`Completed ${completed}`,`Available ${Number(counts.available||0)}`,`Deferred ${Number(counts.temporarily_deferred||0)}`,`Not available ${Number(counts.not_available||0)}`];
+        if(unconfirmed)notes.push(`Profile-only ${unconfirmed}`);
+        if(detail.earliest_next_eligible_date)notes.push(`Next eligible ${detail.earliest_next_eligible_date}`);
+        return '<td class="availability-type-detail">'+statusBadge(detail.status||'not_available')+'<small>'+esc(notes.join(' · '))+'</small></td>';
+    };
     function renderDonors(data){
         const summaryData=data.summary||{},quality=data.data_quality||{};
-        const formatType=item=>item&&item.blood_type?item.blood_type+' ('+item.count+')':'-';
         summary(
-            ['Completed Donors','Mapped Completed Donors','Barangays With Donors','Most Common Type','Unmapped Completed Donors'],
+            ['Completed Donors','Available Donors','Temporarily Deferred','Barangays With Completed Donors','Unmapped Completed Donors'],
             [
-                summaryData.completed_donors??summaryData.available_donors??0,
-                summaryData.mapped_completed_donors??quality.mapped_completed_donors??0,
+                summaryData.completed_donors??0,
+                summaryData.available_donors??0,
+                summaryData.temporarily_deferred_donors??0,
                 summaryData.barangays??0,
-                formatType(summaryData.most_common_blood_type??summaryData.most_available_blood_type),
                 quality.unmapped_completed_donor_count??0
             ]
         );
+        const mapFilterNote=blood.value?` The map marker color is focused on ${blood.value}; the table and totals still show all blood types.`:' Select a blood type to color markers for that group; All blood types uses the best status across the eight groups.';
         document.getElementById('availabilityQuality').textContent=
-            'Completed donors: '+(summaryData.completed_donors??0)+
-            '. Mapped at barangay level: '+(quality.mapped_completed_donors??0)+
+            'Distinct completed-history donors: '+(summaryData.completed_donors??0)+
+            '; currently available: '+(summaryData.available_donors??0)+
+            '; temporarily deferred: '+(summaryData.temporarily_deferred_donors??0)+
+            '. Barangays with completed-history donors: '+(summaryData.barangays??0)+
             '. Unmapped and listed below: '+(quality.unmapped_completed_donor_count??0)+
-            '. Completed history is independent of current eligibility or waiting periods. Confirmed types take precedence; profile-only types are unconfirmed and missing types are Unknown. Exact home coordinates and personal identities are not exposed.';
-        head.innerHTML='<tr><th>Barangay</th><th>City</th><th>Completed donors</th><th>Scheduled</th>'+
+            '. Green/yellow availability requires an active account, verified identity, and current eligibility; a future next-eligible date or temporary deferral is yellow. Confirmed donation blood type takes precedence; profile-only types are labelled unconfirmed, and missing types are Unknown. Only completed-history barangays are shown; exact home coordinates and identities are not exposed.'+mapFilterNote;
+        head.innerHTML='<tr><th>Barangay</th><th>City</th><th>Completed donors</th>'+
             bloodTypeColumns.map(type=>'<th>'+esc(type)+'</th>').join('')+
-            '<th>Unconfirmed</th><th>Level</th></tr>';
+            '<th>Map status</th></tr>';
         const rows=data.barangays||[];
         body.innerHTML=rows.length?rows.map(row=>
             '<tr><td><strong>'+esc(row.barangay_name)+'</strong>'+(row.boundary_match_name&&normalizePlace(row.boundary_match_name)!==normalizePlace(row.barangay_name)?'<small class="d-block text-muted">Boundary match: '+esc(row.boundary_match_name)+'</small>':'')+'</td>'+
             '<td>'+esc(row.city)+'</td>'+
-            '<td>'+esc(row.completed_donors??row.available_donors??0)+'</td>'+
-            '<td>'+esc(row.scheduled_donors??0)+'</td>'+
+            '<td>'+esc(row.completed_history_donors??row.completed_donors??0)+'</td>'+
             bloodTypeColumns.map(type=>typeCell(row,type)).join('')+
-            '<td>'+esc(row.blood_type_confidence?.unconfirmed??0)+'</td>'+
-            '<td><span class="availability-badge availability-badge--'+esc(row.availability_level)+'">'+esc(row.availability_level)+'</span></td></tr>'
-        ).join(''):'<tr><td colspan="'+(6+bloodTypeColumns.length)+'" class="text-center text-muted py-4">No completed donor data found.</td></tr>';
+            '<td>'+statusBadge(row.availability_level||'not_available')+'</td></tr>'
+        ).join(''):'<tr><td colspan="'+(4+bloodTypeColumns.length)+'" class="text-center text-muted py-4">No completed donor data found.</td></tr>';
 
         const unmapped=data.data_quality?.unmapped_completed_donors||[];
         const unmappedPanel=document.getElementById('unmappedCompletedPanel');
@@ -142,7 +167,7 @@
             '<td>'+esc(donor.barangay_name)+'</td>'+
             '<td>'+esc(donor.city)+'</td>'+
             '<td>'+esc(donor.blood_type)+'</td>'+
-            '<td>'+esc(confidenceLabel(donor.blood_type_confidence))+'</td>'+ 
+            '<td>'+esc(confidenceLabel(donor.blood_type_confidence))+'</td>'+
             '<td>'+esc((donor.missing_fields||[]).join(' '))+'</td></tr>'
         ).join('');
         const locations=new Map();
@@ -228,24 +253,36 @@
             if(!valid(point.latitude,point.longitude))return;
             const pos=[Number(point.latitude),Number(point.longitude)];
             bounds.push(pos);
-            const count=point.completed_donors??point.available_donors??0;
-            const types=bloodTypeColumns.map(type=>{
-                const count=Number(point.blood_types?.[type]||0),quality=point.blood_type_confidence_by_type?.[type]||{};
-                const unconfirmed=Number(quality.unconfirmed||0),unknown=Number(quality.unknown||0);
-                const qualifier=unconfirmed?` <small>(${unconfirmed} Unconfirmed)</small>`:unknown?` <small>(${unknown} Unknown type)</small>`:'';
-                return '<div>'+esc(type)+': <strong>'+esc(count)+'</strong>'+qualifier+'</div>';
+            const count=point.completed_history_donors??point.completed_donors??0;
+            const statusForType=type=>point.blood_type_availability?.[type]?.status||'not_available';
+            let markerStatus='not_available';
+            if(blood.value){
+                markerStatus=statusForType(blood.value==='Unknown'?'Unknown':blood.value);
+            }else{
+                const statuses=bloodTypes.map(statusForType);
+                markerStatus=statuses.includes('available')?'available':statuses.includes('temporarily_deferred')?'temporarily_deferred':'not_available';
+            }
+            const typeDetails=bloodTypeColumns.map(type=>{
+                const detail=point.blood_type_availability?.[type]||{};
+                const counts=detail.counts||{};
+                const confidence=point.blood_type_confidence_by_type?.[type]||{};
+                const date=detail.earliest_next_eligible_date?'<small>Earliest next eligible: '+esc(detail.earliest_next_eligible_date)+'</small>':'';
+                return '<div class="availability-popup-type"><strong>'+esc(type)+'</strong> '+statusBadge(detail.status||'not_available')+
+                    '<small>Completed: '+esc(detail.completed_donors||0)+' · Available: '+esc(counts.available||0)+' · Temporarily deferred: '+esc(counts.temporarily_deferred||0)+' · Not available: '+esc(counts.not_available||0)+'</small>'+
+                    '<small>Type source: '+esc(confidence.confirmed||0)+' confirmed, '+esc(confidence.unconfirmed||0)+' profile-only, '+esc(confidence.unknown||0)+' unknown</small>'+date+'</div>';
             }).join('');
-            const confidence=point.blood_type_confidence||{};
             const boundaryNote=point.boundary_match_name&&normalizePlace(point.boundary_match_name)!==normalizePlace(point.barangay_name)?'<div><small>Boundary dataset match: '+esc(point.boundary_match_name)+'</small></div>':'';
+            const markerMeaning=blood.value?`Status for ${blood.value}`:'Best status across the eight blood types';
             const popup='<strong>'+esc(point.barangay_name)+'</strong><br>'+esc(point.city)+boundaryNote+
-                '<hr class="my-1"><div>Completed donors: <strong>'+esc(count)+'</strong></div>'+
-                '<div>Scheduled: <strong>'+esc(point.scheduled_donors??0)+'</strong></div>'+
-                '<div>Unconfirmed type: <strong>'+esc(confidence.unconfirmed??0)+'</strong></div>'+
-                '<div>Unknown type: <strong>'+esc(confidence.unknown??0)+'</strong></div>'+types;
-            L.marker(pos,{icon:markerIcon(point.availability_level,count)}).bindPopup(popup).addTo(markers);
+                '<hr class="my-1"><div>'+esc(markerMeaning)+': '+statusBadge(markerStatus)+'</div>'+
+                '<div>Distinct completed-history donors: <strong>'+esc(count)+'</strong></div>'+
+                '<hr class="my-1"><div class="availability-popup-types">'+typeDetails+'</div>';
+            const markerTitle=point.barangay_name+': '+markerMeaning+' — '+statusText(markerStatus);
+            L.marker(pos,{icon:markerIcon(markerStatus,statusSymbol(markerStatus),false,true),title:markerTitle,alt:markerTitle})
+                .bindPopup(popup).addTo(markers);
         });
         fit(bounds);
-        status.textContent=points.length?points.length+' aggregate barangay marker(s).':'No mapped barangay coordinates match the filters.';
+        status.textContent=points.length?`${points.length} aggregate barangay marker(s). Markers show status text/icons as well as color.`:'No mapped barangay coordinates match the filters.';
     }
     function renderFacilities(data){
         document.getElementById('unmappedCompletedPanel').hidden=true;
@@ -292,15 +329,17 @@
         document.getElementById('availabilitySortWrap').classList.toggle('d-none',next==='donors');
         document.getElementById('facilityPagination').classList.toggle('d-none',next!=='facilities');
         document.getElementById('unmappedCompletedPanel').hidden=true;
-        document.getElementById('mapTitle').textContent=next==='donors'?'Completed Donor Coverage':'Facility Blood Inventory';
-        document.getElementById('mapHint').textContent=next==='donors'?'One aggregate marker represents one barangay. This is not physical blood-bank inventory.':'One marker represents one active facility; if no facility pin is saved, its barangay center is used as an approximate location.';
-        document.getElementById('mapLegend').textContent=next==='donors'?'Legend: marker values are distinct donors with completed donation history.':'Legend: marker values are recorded inventory units; dashed markers use approximate Faeldon 2019 barangay centers; green is available, amber is low, and gray is out of stock.';
-        document.getElementById('tableTitle').textContent=next==='donors'?'Barangay Completed Donors':'Facility Inventory';
+        document.getElementById('mapTitle').textContent=next==='donors'?'Blood-Type Donor Availability':'Facility Blood Inventory';
+        document.getElementById('mapHint').textContent=next==='donors'?'One aggregate marker represents one barangay with completed donation history. This is not physical blood-bank inventory. With a selected type, its status controls the marker; All blood types uses the best status across the eight groups.':'One marker represents one active facility; if no facility pin is saved, its barangay center is used as an approximate location.';
+        document.getElementById('mapLegend').innerHTML=next==='donors'
+            ?'<div class="availability-legend-items"><span class="availability-legend-item"><span class="availability-legend-swatch availability-legend-swatch--available" aria-hidden="true">✓</span>Green: Available</span><span class="availability-legend-item"><span class="availability-legend-swatch availability-legend-swatch--temporarily_deferred" aria-hidden="true">◷</span>Yellow: Temporarily deferred</span><span class="availability-legend-item"><span class="availability-legend-swatch availability-legend-swatch--not_available" aria-hidden="true">×</span>Red: Not available</span></div>'
+            :'Legend: marker values are recorded inventory units; dashed markers use approximate Faeldon 2019 barangay centers; green is available, amber is low, and gray is out of stock.';
+        document.getElementById('tableTitle').textContent=next==='donors'?'Barangay Blood-Type Availability':'Facility Inventory';
         search.value='';
         city.value='';
         facilityType.value='';
         history.replaceState(null,'',next==='facilities'?'?layer=facilities':location.pathname);
-        document.getElementById('availabilityMap').setAttribute('aria-label',next==='donors'?'Optional completed-donor coverage map; equivalent information is in the table below':'Optional facility inventory map; equivalent information is in the table below');
+        document.getElementById('availabilityMap').setAttribute('aria-label',next==='donors'?'Optional blood-type donor availability map; marker icon and color show status, with all status counts in the popup and table below':'Optional facility inventory map; equivalent information is in the table below');
         setTimeout(()=>map?.invalidateSize(),0);
         syncMapConsent();
         refresh();

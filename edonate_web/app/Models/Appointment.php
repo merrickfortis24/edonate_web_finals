@@ -24,6 +24,9 @@ class Appointment extends Model
         'completed_at',
         'checked_in_at',
         'cancellation_reason',
+        'rejection_reason',
+        'rejected_by_admin_id',
+        'rejected_at',
         'created_at',
         'updated_at',
         'admin_id',
@@ -34,6 +37,7 @@ class Appointment extends Model
         'appointment_date' => 'date',
         'completed_at' => 'datetime',
         'checked_in_at' => 'datetime',
+        'rejected_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

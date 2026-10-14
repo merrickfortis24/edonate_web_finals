@@ -16,6 +16,7 @@ class Phase12IntegrationTest extends TestCase
     {
         parent::setUp();
         $this->buildSchema();
+        (require database_path('migrations/2026_10_14_000001_add_rejection_details_to_appointments_table.php'))->up();
     }
 
     public function test_reports_use_database_aggregates_and_privacy_safe_exports(): void

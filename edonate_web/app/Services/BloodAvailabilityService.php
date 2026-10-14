@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Support\EligibilityStatus as EligibilityStatusValue;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class BloodAvailabilityService
 {
@@ -23,10 +25,10 @@ class BloodAvailabilityService
 
     /**
      * Build one aggregate payload from distinct donors with completed donation
-     * history. The summary, table rows, markers and unmapped list all originate
-     * from this same filtered donor set.
+     * history. Barangay and city filters narrow the dataset; blood type selects
+     * marker color while the summary, table and popup retain all blood groups.
      *
-     * @param array{blood_type?: string|null, barangay?: string|null, city?: string|null} $filters
+     * @param  array{blood_type?: string|null, barangay?: string|null, city?: string|null}  $filters
      * @return array<string, mixed>
      */
     public function getMapData(array $filters = []): array
@@ -37,7 +39,10 @@ class BloodAvailabilityService
             'city' => $this->normalizeFilter($filters['city'] ?? null),
         ];
         $bloodCategories = [...$this->bloodTypeNames(), 'Unknown'];
-        $donors = $this->applyFilters($this->buildAvailabilityQuery(), $filters)
+        $selectedType = $filters['blood_type'] === null
+            ? null
+            : (strtoupper($filters['blood_type']) === 'UNKNOWN' ? 'Unknown' : strtoupper($filters['blood_type']));
+        $donors = $this->applyLocationFilters($this->buildAvailabilityQuery(), $filters)
             ->orderBy('d.donor_id')
             ->get();
 
@@ -46,8 +51,10 @@ class BloodAvailabilityService
         $confidenceTotals = ['confirmed' => 0, 'unconfirmed' => 0, 'unknown' => 0];
         $bloodTypeConfidenceTotals = $this->emptyBloodTypeConfidence($bloodCategories);
         $barangays = [];
-        $unmappedDonors = [];
+        $unmappedDonorsById = [];
+        $unmappedAvailabilityById = [];
         $scheduledDonors = 0;
+        $availabilityTotals = ['available' => 0, 'temporarily_deferred' => 0, 'not_available' => 0];
 
         foreach ($donors as $donor) {
             $donorId = (int) $donor->donor_id;
@@ -63,10 +70,12 @@ class BloodAvailabilityService
             $confidence = in_array($donor->blood_type_confidence, ['confirmed', 'unconfirmed'], true)
                 ? $donor->blood_type_confidence
                 : 'unknown';
-
+            $availability = $this->donorAvailability($donor);
             $bloodTypeTotals[$bloodType]++;
             $confidenceTotals[$confidence]++;
             $bloodTypeConfidenceTotals[$bloodType][$confidence]++;
+            $availabilityTotals[$availability['status']]++;
+
             $hasUpcomingAppointment = (bool) $donor->has_upcoming_appointment;
             if ($hasUpcomingAppointment) {
                 $scheduledDonors++;
@@ -94,7 +103,7 @@ class BloodAvailabilityService
             }
 
             if ($missingLocationFields !== []) {
-                $unmappedDonors[] = $this->unmappedDonorPayload(
+                $unmappedDonorsById[$donorId] = $this->unmappedDonorPayload(
                     $donorId,
                     $barangayName,
                     $city,
@@ -103,6 +112,7 @@ class BloodAvailabilityService
                     $missingLocationFields,
                     is_numeric($donor->matched_location_id) ? (int) $donor->matched_location_id : null
                 );
+                $unmappedAvailabilityById[$donorId] = $availability['status'];
             }
 
             if ($barangayName === null) {
@@ -124,28 +134,46 @@ class BloodAvailabilityService
                     'boundary_match_name' => null,
                     'coordinate_source' => null,
                     'completed_donors' => 0,
+                    'completed_history_donors' => 0,
                     'scheduled_donors' => 0,
                     'blood_types' => array_fill_keys($bloodCategories, 0),
                     'blood_type_confidence' => ['confirmed' => 0, 'unconfirmed' => 0, 'unknown' => 0],
                     'blood_type_confidence_by_type' => $this->emptyBloodTypeConfidence($bloodCategories),
+                    'blood_type_availability' => $this->emptyBloodTypeAvailability($bloodCategories),
                     '_donors_for_unmapped' => [],
                 ];
             }
 
+            $barangays[$key]['completed_history_donors']++;
             $barangays[$key]['completed_donors']++;
-            if ($hasUpcomingAppointment) {
-                $barangays[$key]['scheduled_donors']++;
-            }
             $barangays[$key]['blood_types'][$bloodType]++;
             $barangays[$key]['blood_type_confidence'][$confidence]++;
             $barangays[$key]['blood_type_confidence_by_type'][$bloodType][$confidence]++;
+            if ($hasUpcomingAppointment) {
+                $barangays[$key]['scheduled_donors']++;
+            }
+
+            $typeAvailability = &$barangays[$key]['blood_type_availability'][$bloodType];
+            $typeAvailability['completed_donors']++;
+            $stateCountKey = $availability['status'] === 'temporarily_deferred'
+                ? 'temporarily_deferred_donors'
+                : $availability['status'].'_donors';
+            $typeAvailability[$stateCountKey]++;
+            if ($availability['status'] === 'temporarily_deferred'
+                && $availability['next_eligible_date'] !== null
+                && ($typeAvailability['earliest_next_eligible_date'] === null
+                    || $availability['next_eligible_date'] < $typeAvailability['earliest_next_eligible_date'])) {
+                $typeAvailability['earliest_next_eligible_date'] = $availability['next_eligible_date'];
+            }
+            unset($typeAvailability);
+
             $barangays[$key]['_donors_for_unmapped'][] = [
                 'donor_id' => $donorId,
                 'location_id' => is_numeric($donor->matched_location_id) ? (int) $donor->matched_location_id : null,
                 'blood_type' => $bloodType,
                 'blood_type_confidence' => $confidence,
+                'availability_status' => $availability['status'],
             ];
-
         }
 
         $centerLookup = app(PhilippinesBarangayCenterIndex::class);
@@ -168,16 +196,28 @@ class BloodAvailabilityService
             $barangay['coordinate_source'] = $center !== null ? 'faeldon_barangay_boundary_2019' : ($reference !== null ? 'maintained_center' : null);
             $barangay['latitude'] = $this->validCoordinate($latitude, $longitude) ? round($latitude, 5) : null;
             $barangay['longitude'] = $this->validCoordinate($latitude, $longitude) ? round($longitude, 5) : null;
+            foreach ($barangay['blood_type_availability'] as &$typeAvailability) {
+                $typeAvailability['status'] = $this->aggregateAvailabilityStatus($typeAvailability);
+                $typeAvailability['counts'] = [
+                    'available' => $typeAvailability['available_donors'],
+                    'temporarily_deferred' => $typeAvailability['temporarily_deferred_donors'],
+                    'not_available' => $typeAvailability['not_available_donors'],
+                ];
+            }
+            unset($typeAvailability);
+
             $barangay['verified_donors'] = $barangay['completed_donors'];
-            $barangay['available_donors'] = $barangay['completed_donors'];
+            $barangay['available_donors'] = array_sum(array_column($barangay['blood_type_availability'], 'available_donors'));
             $barangay['unconfirmed_donors'] = $barangay['blood_type_confidence']['unconfirmed'];
             $barangay['unknown_type_donors'] = $barangay['blood_type_confidence']['unknown'];
-            $barangay['availability_level'] = $this->availabilityLevel($barangay['completed_donors']);
+            $barangay['availability_level'] = $selectedType !== null
+                ? ($barangay['blood_type_availability'][$selectedType]['status'] ?? 'not_available')
+                : $this->bestAvailabilityStatus($barangay['blood_type_availability']);
             $barangay['mapped'] = $this->validCoordinate($barangay['latitude'], $barangay['longitude']);
 
             if (! $barangay['mapped']) {
                 foreach ($barangay['_donors_for_unmapped'] as $unmapped) {
-                    $unmappedDonors[] = $this->unmappedDonorPayload(
+                    $payload = $this->unmappedDonorPayload(
                         $unmapped['donor_id'],
                         $barangay['barangay_name'],
                         $barangay['city'],
@@ -186,6 +226,15 @@ class BloodAvailabilityService
                         ['No matching barangay boundary or maintained center was found for this barangay, city, and province.'],
                         $unmapped['location_id']
                     );
+                    $existing = $unmappedDonorsById[$unmapped['donor_id']] ?? null;
+                    if ($existing !== null) {
+                        $payload['missing_fields'] = array_values(array_unique([
+                            ...$existing['missing_fields'],
+                            ...$payload['missing_fields'],
+                        ]));
+                    }
+                    $unmappedDonorsById[$unmapped['donor_id']] = $payload;
+                    $unmappedAvailabilityById[$unmapped['donor_id']] = $unmapped['availability_status'];
                 }
             }
 
@@ -193,17 +242,26 @@ class BloodAvailabilityService
         }
         unset($barangay);
 
-        uasort($barangays, static fn (array $left, array $right): int =>
-            [$left['city'], $left['barangay_name']] <=> [$right['city'], $right['barangay_name']]
-        );
+        uasort($barangays, static function (array $left, array $right): int {
+            return [$left['city'], $left['barangay_name']] <=> [$right['city'], $right['barangay_name']];
+        });
 
         $barangays = array_values($barangays);
         $mapPoints = array_values(array_filter(
             $barangays,
             static fn (array $barangay): bool => $barangay['mapped']
         ));
+        $unmappedDonors = array_values($unmappedDonorsById);
         $completedDonors = count($seenDonors);
         $mappedCompletedDonors = array_sum(array_column($mapPoints, 'completed_donors'));
+        $mappedAvailableDonors = 0;
+        $mappedDeferredDonors = 0;
+        foreach ($mapPoints as $point) {
+            foreach ($bloodCategories as $type) {
+                $mappedAvailableDonors += (int) ($point['blood_type_availability'][$type]['available_donors'] ?? 0);
+                $mappedDeferredDonors += (int) ($point['blood_type_availability'][$type]['temporarily_deferred_donors'] ?? 0);
+            }
+        }
         $missingCoordinates = count(array_filter(
             $unmappedDonors,
             static fn (array $donor): bool => in_array(
@@ -218,6 +276,7 @@ class BloodAvailabilityService
                 || in_array('Registered location is not set.', $donor['missing_fields'], true)
                 || in_array('Registered location record was not found.', $donor['missing_fields'], true)
         ));
+        $unmappedAvailabilityCounts = array_count_values(array_values($unmappedAvailabilityById));
         $mostCommonType = $this->extremeBloodType($bloodTypeTotals, true);
         $leastCommonType = $this->extremeBloodType($bloodTypeTotals, false);
         $barangaysWithDonors = count($barangays);
@@ -227,7 +286,11 @@ class BloodAvailabilityService
                 'completed_donors' => $completedDonors,
                 'mapped_completed_donors' => $mappedCompletedDonors,
                 'verified_donors' => $completedDonors,
-                'available_donors' => $completedDonors,
+                'available_donors' => $availabilityTotals['available'],
+                'temporarily_deferred_donors' => $availabilityTotals['temporarily_deferred'],
+                'not_available_donors' => $availabilityTotals['not_available'],
+                'mapped_available_donors' => $mappedAvailableDonors,
+                'mapped_temporarily_deferred_donors' => $mappedDeferredDonors,
                 'barangays' => $barangaysWithDonors,
                 'scheduled_donors' => $scheduledDonors,
                 'confirmed_donors' => $confidenceTotals['confirmed'],
@@ -236,7 +299,7 @@ class BloodAvailabilityService
                 'blood_type_confidence_by_type' => $bloodTypeConfidenceTotals,
                 'most_common_blood_type' => $mostCommonType,
                 'least_common_blood_type' => $leastCommonType,
-                // Backward-compatible keys; both use the completed-donor set.
+                // Legacy key retained; it now reflects actual eligibility, not history alone.
                 'most_available_blood_type' => $mostCommonType,
                 'lowest_available_blood_type' => $leastCommonType,
             ],
@@ -247,10 +310,14 @@ class BloodAvailabilityService
             'map_points' => $mapPoints,
             'data_quality' => [
                 'mapped_completed_donors' => $mappedCompletedDonors,
+                'mapped_available_donors' => $mappedAvailableDonors,
                 'completed_donors_missing_coordinates' => $missingCoordinates,
                 'completed_donors_missing_barangay' => $missingBarangay,
                 'unmapped_completed_donor_count' => count($unmappedDonors),
                 'unmapped_completed_donors' => array_values($unmappedDonors),
+                'available_donors_missing_coordinates' => (int) ($unmappedAvailabilityCounts['available'] ?? 0),
+                'temporarily_deferred_donors_missing_coordinates' => (int) ($unmappedAvailabilityCounts['temporarily_deferred'] ?? 0),
+                'not_available_donors_missing_coordinates' => (int) ($unmappedAvailabilityCounts['not_available'] ?? 0),
                 'barangays_without_coordinates' => count(array_filter(
                     $barangays,
                     static fn (array $row): bool => ! $row['mapped']
@@ -258,8 +325,6 @@ class BloodAvailabilityService
                 // Legacy aliases retained for existing admin clients.
                 'mapped_verified_donors' => $mappedCompletedDonors,
                 'verified_donors_missing_coordinates' => $missingCoordinates,
-                'mapped_available_donors' => $mappedCompletedDonors,
-                'available_donors_missing_coordinates' => $missingCoordinates,
             ],
             'filters' => $filters,
             'last_updated' => now()->toIso8601String(),
@@ -288,6 +353,28 @@ class BloodAvailabilityService
             ->whereIn(DB::raw("UPPER(TRIM(COALESCE(confirmed_candidate.blood_type, '')))"), self::SUPPORTED_BLOOD_TYPES)
             ->groupBy('typed_dr.donor_id');
 
+        $hasLatestEligibility = Schema::hasTable('eligibility_status')
+            && Schema::hasColumns('eligibility_status', ['eligibility_id', 'donor_id', 'status']);
+        $hasLatestAuthentication = Schema::hasTable('donor_authentication')
+            && Schema::hasColumns('donor_authentication', ['auth_id', 'donor_id', 'is_verified']);
+
+        $latestEligibility = $hasLatestEligibility
+            ? DB::table('eligibility_status AS eligibility_rows')
+                ->select('eligibility_rows.donor_id')
+                ->selectRaw('MAX(eligibility_rows.eligibility_id) AS latest_eligibility_id')
+                ->groupBy('eligibility_rows.donor_id')
+            : null;
+        $latestAuthentication = $hasLatestAuthentication
+            ? DB::table('donor_authentication AS authentication_rows')
+                ->select('authentication_rows.donor_id')
+                ->selectRaw('MAX(authentication_rows.auth_id) AS latest_auth_id')
+                ->groupBy('authentication_rows.donor_id')
+            : null;
+
+        $hasActiveFlag = Schema::hasColumn('donors', 'is_active');
+        $hasIdentityStatus = Schema::hasColumn('donors', 'verification_status');
+        $hasBloodTypeStatus = Schema::hasColumn('donors', 'blood_type_status');
+
         $query = DB::table('donors AS d')
             ->joinSub($completedDonors, 'completed_donors', function ($join): void {
                 $join->on('completed_donors.donor_id', '=', 'd.donor_id');
@@ -299,6 +386,16 @@ class BloodAvailabilityService
             ->leftJoin('blood_types AS confirmed_bt', 'confirmed_bt.blood_type_id', '=', 'confirmed_dr.verified_blood_type_id')
             ->leftJoin('blood_types AS profile_bt', 'profile_bt.blood_type_id', '=', 'd.blood_type_id')
             ->leftJoin('locations AS l', 'l.location_id', '=', 'd.location_id')
+            ->when($hasLatestEligibility, function (Builder $query) use ($latestEligibility): void {
+                $query->leftJoinSub($latestEligibility, 'latest_eligibility', function ($join): void {
+                    $join->on('latest_eligibility.donor_id', '=', 'd.donor_id');
+                })->leftJoin('eligibility_status AS current_eligibility', 'current_eligibility.eligibility_id', '=', 'latest_eligibility.latest_eligibility_id');
+            })
+            ->when($hasLatestAuthentication, function (Builder $query) use ($latestAuthentication): void {
+                $query->leftJoinSub($latestAuthentication, 'latest_authentication', function ($join): void {
+                    $join->on('latest_authentication.donor_id', '=', 'd.donor_id');
+                })->leftJoin('donor_authentication AS current_authentication', 'current_authentication.auth_id', '=', 'latest_authentication.latest_auth_id');
+            })
             ->select([
                 'd.donor_id',
                 'd.location_id AS registered_location_id',
@@ -308,6 +405,14 @@ class BloodAvailabilityService
                 'l.city',
                 'l.province',
             ])
+            ->selectRaw(($hasActiveFlag ? 'd.is_active' : '1').' AS account_is_active')
+            ->selectRaw(($hasIdentityStatus ? 'd.verification_status' : "'unverified'").' AS verification_status')
+            ->selectRaw(($hasBloodTypeStatus ? 'd.blood_type_status' : 'NULL').' AS profile_blood_type_status')
+            ->selectRaw(($hasLatestEligibility ? 'current_eligibility.status' : 'NULL').' AS latest_eligibility_status')
+            ->selectRaw(($hasLatestEligibility && Schema::hasColumn('eligibility_status', 'next_eligible_date')
+                ? 'current_eligibility.next_eligible_date'
+                : 'NULL').' AS next_eligible_date')
+            ->selectRaw(($hasLatestAuthentication ? 'current_authentication.is_verified' : 'NULL').' AS account_is_verified')
             ->selectRaw($this->resolvedBloodTypeSql().' AS resolved_blood_type')
             ->selectRaw($this->bloodTypeConfidenceSql().' AS blood_type_confidence')
             ->selectRaw(
@@ -324,15 +429,10 @@ class BloodAvailabilityService
     }
 
     /**
-     * @param array{blood_type: string|null, barangay: string|null, city: string|null} $filters
+     * @param  array{blood_type: string|null, barangay: string|null, city: string|null}  $filters
      */
-    private function applyFilters(Builder $query, array $filters): Builder
+    private function applyLocationFilters(Builder $query, array $filters): Builder
     {
-        if ($filters['blood_type'] !== null) {
-            $type = strtoupper($filters['blood_type']);
-            $query->whereRaw($this->resolvedBloodTypeSql().' = ?', [$type === 'UNKNOWN' ? 'Unknown' : $type]);
-        }
-
         if ($filters['barangay'] !== null) {
             $query->whereRaw(
                 "LOWER(TRIM(COALESCE(l.barangay_name, ''))) LIKE ?",
@@ -368,11 +468,14 @@ class BloodAvailabilityService
         $supported = $this->supportedBloodTypeSqlList();
         $confirmed = "UPPER(TRIM(COALESCE(confirmed_bt.blood_type, '')))";
         $profile = "UPPER(TRIM(COALESCE(profile_bt.blood_type, '')))";
+        $profileStatus = Schema::hasColumn('donors', 'blood_type_status')
+            ? "LOWER(TRIM(COALESCE(d.blood_type_status, '')))"
+            : "''";
 
         return "CASE
             WHEN {$confirmed} IN ({$supported}) THEN 'confirmed'
             WHEN {$profile} IN ({$supported})
-                AND LOWER(TRIM(COALESCE(d.blood_type_status, ''))) = 'verified' THEN 'confirmed'
+                AND {$profileStatus} = 'verified' THEN 'confirmed'
             WHEN {$profile} IN ({$supported}) THEN 'unconfirmed'
             ELSE 'unknown'
         END";
@@ -384,7 +487,7 @@ class BloodAvailabilityService
     }
 
     /**
-     * @param array<int, string> $bloodTypes
+     * @param  array<int, string>  $bloodTypes
      * @return array<string, array{confirmed: int, unconfirmed: int, unknown: int}>
      */
     private function emptyBloodTypeConfidence(array $bloodTypes): array
@@ -398,7 +501,104 @@ class BloodAvailabilityService
     }
 
     /**
-     * @param array<int, string> $missingFields
+     * @param  array<int, string>  $bloodTypes
+     * @return array<string, array<string, mixed>>
+     */
+    private function emptyBloodTypeAvailability(array $bloodTypes): array
+    {
+        $availability = [];
+        foreach ($bloodTypes as $bloodType) {
+            $availability[$bloodType] = [
+                'status' => 'not_available',
+                'completed_donors' => 0,
+                'available_donors' => 0,
+                'temporarily_deferred_donors' => 0,
+                'not_available_donors' => 0,
+                'earliest_next_eligible_date' => null,
+                'counts' => [
+                    'available' => 0,
+                    'temporarily_deferred' => 0,
+                    'not_available' => 0,
+                ],
+            ];
+        }
+
+        return $availability;
+    }
+
+    /** @return array{status: string, next_eligible_date: string|null} */
+    private function donorAvailability(object $donor): array
+    {
+        $accountActive = (bool) ($donor->account_is_active ?? true)
+            && ($donor->account_is_verified === null || (bool) $donor->account_is_verified);
+        $identityVerified = strtolower(trim((string) ($donor->verification_status ?? ''))) === 'verified';
+
+        if (! $accountActive || ! $identityVerified) {
+            return ['status' => 'not_available', 'next_eligible_date' => null];
+        }
+
+        $eligibility = EligibilityStatusValue::normalize($donor->latest_eligibility_status ?? null);
+        $nextEligibleDate = $this->normalizedDate($donor->next_eligible_date ?? null);
+        $insideWaitingPeriod = $nextEligibleDate !== null
+            && $nextEligibleDate > Carbon::today()->toDateString();
+
+        if ($eligibility === EligibilityStatusValue::TEMPORARY_DEFERRED || $insideWaitingPeriod) {
+            return ['status' => 'temporarily_deferred', 'next_eligible_date' => $nextEligibleDate];
+        }
+
+        if ($eligibility === EligibilityStatusValue::ELIGIBLE) {
+            return ['status' => 'available', 'next_eligible_date' => null];
+        }
+
+        return ['status' => 'not_available', 'next_eligible_date' => null];
+    }
+
+    private function normalizedDate(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse((string) $value)->toDateString();
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /** @param array<string, mixed> $availability */
+    private function aggregateAvailabilityStatus(array $availability): string
+    {
+        if ((int) ($availability['available_donors'] ?? 0) > 0) {
+            return 'available';
+        }
+        if ((int) ($availability['temporarily_deferred_donors'] ?? 0) > 0) {
+            return 'temporarily_deferred';
+        }
+
+        return 'not_available';
+    }
+
+    /** @param array<string, array<string, mixed>> $availability */
+    private function bestAvailabilityStatus(array $availability): string
+    {
+        $statuses = array_map(
+            static fn (string $bloodType): string => (string) ($availability[$bloodType]['status'] ?? 'not_available'),
+            self::SUPPORTED_BLOOD_TYPES
+        );
+
+        if (in_array('available', $statuses, true)) {
+            return 'available';
+        }
+        if (in_array('temporarily_deferred', $statuses, true)) {
+            return 'temporarily_deferred';
+        }
+
+        return 'not_available';
+    }
+
+    /**
+     * @param  array<int, string>  $missingFields
      * @return array<string, mixed>
      */
     private function unmappedDonorPayload(
@@ -470,16 +670,6 @@ class BloodAvailabilityService
         $type = array_key_first(array_filter($totals, static fn (int $count): bool => $count === $value));
 
         return $type === null ? null : ['blood_type' => $type, 'count' => $value];
-    }
-
-    private function availabilityLevel(int $count): string
-    {
-        return match (true) {
-            $count >= 10 => 'high',
-            $count >= 5 => 'moderate',
-            $count > 0 => 'low',
-            default => 'none',
-        };
     }
 
     private function barangayKey(mixed $code, mixed $name, mixed $city, mixed $province): string

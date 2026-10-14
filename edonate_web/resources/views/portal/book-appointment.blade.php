@@ -197,6 +197,7 @@
                 @foreach ($appointments as $appointment)
                     @php
                         $normalizedStatus = app(\App\Services\AppointmentBookingService::class)->normalizeAppointmentStatus((string) $appointment->status);
+                        $hasRejectionReason = filled($appointment->rejection_reason);
                         $canCancel = ! in_array($normalizedStatus, ['cancelled', 'completed', 'no_show'], true)
                             && $appointment->appointment_date
                             && \Carbon\Carbon::parse($appointment->appointment_date)->gte(\Carbon\Carbon::today());
@@ -206,7 +207,10 @@
                         <td class="px-3 py-3 text-slate-700">{{ $appointment->appointment_date ? \Carbon\Carbon::parse($appointment->appointment_date)->format('F j, Y') : '-' }}</td>
                         <td class="px-3 py-3 text-slate-700">{{ $appointment->appointment_time ? \Carbon\Carbon::parse($appointment->appointment_time)->format('g:i A') : '-' }}</td>
                         <td class="px-3 py-3">
-                            <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">{{ \Illuminate\Support\Str::headline($normalizedStatus) }}</span>
+                            <span class="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700">{{ $hasRejectionReason ? 'Rejected' : \Illuminate\Support\Str::headline($normalizedStatus) }}</span>
+                            @if ($hasRejectionReason)
+                                <p class="mt-1 max-w-xs whitespace-normal break-words text-left text-xs text-slate-600">Reason: {{ $appointment->rejection_reason }}</p>
+                            @endif
                         </td>
                         <td class="px-3 py-3 text-right">
                             @if ($canCancel)

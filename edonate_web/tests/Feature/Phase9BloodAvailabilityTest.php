@@ -89,7 +89,9 @@ class Phase9BloodAvailabilityTest extends TestCase
 
         $this->assertSame(6, $payload['summary']['completed_donors']);
         $this->assertSame(6, $payload['summary']['verified_donors']);
-        $this->assertSame(6, $payload['summary']['available_donors']);
+        $this->assertSame(4, $payload['summary']['available_donors']);
+        $this->assertSame(1, $payload['summary']['temporarily_deferred_donors']);
+        $this->assertSame(1, $payload['summary']['not_available_donors']);
         $this->assertSame(1, $payload['summary']['scheduled_donors']);
         $this->assertSame(4, $payload['blood_types']['A+']);
         $this->assertSame(1, $payload['blood_types']['O+']);
@@ -105,7 +107,7 @@ class Phase9BloodAvailabilityTest extends TestCase
         $this->assertStringNotContainsString('first_name', $response->getContent());
     }
 
-    public function test_blood_type_filter_returns_aggregate_data_only(): void
+    public function test_blood_type_filter_keeps_the_population_and_returns_aggregate_data_only(): void
     {
         $locationId = $this->createLocation([
             'barangay_code' => null,
@@ -127,9 +129,11 @@ class Phase9BloodAvailabilityTest extends TestCase
 
         $response->assertOk();
         $payload = $response->json();
-        $this->assertSame(1, $payload['summary']['available_donors']);
+        $this->assertSame(2, $payload['summary']['completed_donors']);
+        $this->assertSame(2, $payload['summary']['available_donors']);
+        $this->assertSame(0, $payload['summary']['temporarily_deferred_donors']);
         $this->assertSame(1, $payload['blood_types']['O+']);
-        $this->assertSame(0, $payload['blood_types']['A+']);
+        $this->assertSame(1, $payload['blood_types']['A+']);
     }
 
     public function test_completed_donor_is_included_during_waiting_period_without_duplicate_counts(): void
@@ -168,7 +172,8 @@ class Phase9BloodAvailabilityTest extends TestCase
         $response->assertOk();
         $this->assertStringContainsString('no-store', (string) $response->headers->get('Cache-Control'));
         $payload = $response->json();
-        $this->assertSame(1, $payload['summary']['available_donors']);
+        $this->assertSame(0, $payload['summary']['available_donors']);
+        $this->assertSame(1, $payload['summary']['temporarily_deferred_donors']);
         $this->assertSame(1, $payload['summary']['verified_donors']);
         $this->assertSame(1, $payload['summary']['scheduled_donors']);
         $this->assertSame(1, $payload['blood_types']['AB+']);
@@ -183,6 +188,108 @@ class Phase9BloodAvailabilityTest extends TestCase
         $this->assertStringNotContainsString('first_name', $response->getContent());
     }
 
+    public function test_barangay_blood_type_statuses_cover_available_deferred_missing_and_disqualified_donors(): void
+    {
+        $locationId = $this->createLocation([
+            'barangay_code' => '042101001',
+            'barangay_name' => 'Balintawak',
+            'city' => 'City of Lipa',
+            'province' => 'Batangas',
+            'latitude' => 13.9521,
+            'longitude' => 121.1234,
+        ]);
+
+        $eligibleAPlus = $this->createQualifiedDonor($locationId, 1, ['donor_id' => 20]);
+        $deferredOPlus1 = $this->createQualifiedDonor($locationId, 2, ['donor_id' => 21], [
+            'status' => 'temporary_deferred',
+            'next_eligible_date' => Carbon::today()->addDays(7)->toDateString(),
+        ]);
+        $deferredOPlus2 = $this->createQualifiedDonor($locationId, 2, ['donor_id' => 22], [
+            'status' => 'temporarily_deferred',
+            'next_eligible_date' => Carbon::today()->addDays(14)->toDateString(),
+        ]);
+        $futureOMinus = $this->createQualifiedDonor($locationId, 3, ['donor_id' => 23], [
+            'status' => 'eligible',
+            'next_eligible_date' => Carbon::today()->addDays(3)->toDateString(),
+        ]);
+        $eligibleAbPlus = $this->createQualifiedDonor($locationId, 4, ['donor_id' => 24]);
+        $deferredAbPlus = $this->createQualifiedDonor($locationId, 4, ['donor_id' => 25], [
+            'status' => 'temporary_deferred',
+            'next_eligible_date' => Carbon::today()->addDays(10)->toDateString(),
+        ]);
+        $inactiveBMinus = $this->createQualifiedDonor($locationId, 7, [
+            'donor_id' => 26,
+            'is_active' => false,
+        ]);
+        $unverifiedAbMinus = $this->createQualifiedDonor($locationId, 8, [
+            'donor_id' => 27,
+            'verification_status' => 'pending',
+        ]);
+        $unverifiedAccountBPlus = $this->createQualifiedDonor($locationId, 6, ['donor_id' => 28]);
+        DB::table('donor_authentication')->insert([
+            'donor_id' => $unverifiedAccountBPlus,
+            'is_verified' => false,
+        ]);
+        $confirmedBPlusWithAPlusProfile = $this->createQualifiedDonor($locationId, 1, [
+            'donor_id' => 29,
+            'blood_type_status' => 'self_reported',
+        ]);
+
+        DB::table('donation_records')->insert([
+            ['donor_id' => $eligibleAPlus, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $deferredOPlus1, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $deferredOPlus2, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $futureOMinus, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $eligibleAbPlus, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $deferredAbPlus, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $inactiveBMinus, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $unverifiedAbMinus, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $unverifiedAccountBPlus, 'donation_status' => 'completed', 'verified_blood_type_id' => null],
+            ['donor_id' => $confirmedBPlusWithAPlusProfile, 'donation_status' => 'completed', 'verified_blood_type_id' => 6],
+        ]);
+
+        $this->withoutMiddleware([EnsureAdminAuthenticated::class, EnsureAdminRole::class]);
+        $response = $this->getJson('/admin/blood-availability/map-data');
+        $response->assertOk();
+        $payload = $response->json();
+        $availability = $payload['map_points'][0]['blood_type_availability'];
+
+        $this->assertSame(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'], array_keys($availability));
+        $this->assertSame('available', $availability['A+']['status']);
+        $this->assertSame(1, $availability['A+']['counts']['available']);
+        $this->assertSame('not_available', $availability['A-']['status']);
+        $this->assertSame(0, $availability['A-']['completed_donors']);
+        $this->assertSame('available', $availability['B+']['status']);
+        $this->assertSame(2, $availability['B+']['completed_donors']);
+        $this->assertSame(1, $availability['B+']['counts']['available']);
+        $this->assertSame(1, $availability['B+']['counts']['not_available']);
+        $this->assertSame(2, $payload['map_points'][0]['blood_type_confidence_by_type']['B+']['confirmed']);
+        $this->assertSame(1, $payload['map_points'][0]['blood_type_confidence_by_type']['A+']['confirmed']);
+        $this->assertSame(1, $payload['blood_types']['A+']);
+        $this->assertSame(2, $payload['blood_types']['B+']);
+        $this->assertSame('not_available', $availability['B-']['status']);
+        $this->assertSame(1, $availability['B-']['counts']['not_available']);
+        $this->assertSame('available', $availability['AB+']['status']);
+        $this->assertSame(1, $availability['AB+']['counts']['available']);
+        $this->assertSame(1, $availability['AB+']['counts']['temporarily_deferred']);
+        $this->assertSame('not_available', $availability['AB-']['status']);
+        $this->assertSame(1, $availability['AB-']['counts']['not_available']);
+        $this->assertSame('temporarily_deferred', $availability['O+']['status']);
+        $this->assertSame(2, $availability['O+']['counts']['temporarily_deferred']);
+        $this->assertSame(Carbon::today()->addDays(7)->toDateString(), $availability['O+']['earliest_next_eligible_date']);
+        $this->assertSame('temporarily_deferred', $availability['O-']['status']);
+        $this->assertSame(Carbon::today()->addDays(3)->toDateString(), $availability['O-']['earliest_next_eligible_date']);
+        $this->assertSame(10, $payload['summary']['completed_donors']);
+        $this->assertStringNotContainsString('donor_id', $response->getContent());
+
+        $this->getJson('/admin/blood-availability/map-data?blood_type=B%2B')
+            ->assertOk()
+            ->assertJsonPath('summary.completed_donors', 10)
+            ->assertJsonPath('summary.available_donors', 3)
+            ->assertJsonPath('blood_types.B+', 2)
+            ->assertJsonPath('map_points.0.blood_type_availability.B+.status', 'available');
+    }
+
     public function test_completed_donor_without_supported_blood_type_is_counted_as_unknown(): void
     {
         $locationId = $this->createLocation([
@@ -191,8 +298,8 @@ class Phase9BloodAvailabilityTest extends TestCase
             'city' => 'Ivana',
             'province' => 'Batanes',
         ]);
-        DB::table('blood_types')->insert(['blood_type_id' => 5, 'blood_type' => 'Unknown']);
-        $donorId = $this->createQualifiedDonor($locationId, 5, ['donor_id' => 11]);
+        DB::table('blood_types')->insert(['blood_type_id' => 9, 'blood_type' => 'Unknown']);
+        $donorId = $this->createQualifiedDonor($locationId, 9, ['donor_id' => 11]);
         DB::table('donation_records')->insert([
             'donor_id' => $donorId,
             'donation_status' => 'completed',
@@ -503,7 +610,8 @@ class Phase9BloodAvailabilityTest extends TestCase
             ->assertJsonPath('summary.completed_donors', 2)
             ->assertJsonPath('summary.mapped_completed_donors', 2)
             ->assertJsonPath('summary.verified_donors', 2)
-            ->assertJsonPath('summary.available_donors', 2)
+            ->assertJsonPath('summary.available_donors', 0)
+            ->assertJsonPath('summary.temporarily_deferred_donors', 1)
             ->assertJsonPath('summary.unconfirmed_donors', 1)
             ->assertJsonPath('summary.barangays', 1)
             ->assertJsonPath('summary.scheduled_donors', 1)
@@ -513,13 +621,15 @@ class Phase9BloodAvailabilityTest extends TestCase
             ->assertJsonPath('barangays.0.barangay_name', 'Balintawak')
             ->assertJsonPath('barangays.0.completed_donors', 2)
             ->assertJsonPath('barangays.0.verified_donors', 2)
-            ->assertJsonPath('barangays.0.available_donors', 2)
+            ->assertJsonPath('barangays.0.available_donors', 0)
             ->assertJsonPath('barangays.0.blood_types.AB+', 2)
             ->assertJsonPath('barangays.0.blood_type_confidence_by_type.AB+.unconfirmed', 1)
             ->assertJsonPath('map_points.0.barangay_name', 'Balintawak')
             ->assertJsonPath('map_points.0.completed_donors', 2)
             ->assertJsonPath('map_points.0.verified_donors', 2)
             ->assertJsonPath('map_points.0.blood_type_confidence_by_type.AB+.unconfirmed', 1)
+            ->assertJsonPath('map_points.0.blood_type_availability.AB+.status', 'temporarily_deferred')
+            ->assertJsonPath('map_points.0.blood_type_availability.AB+.counts.temporarily_deferred', 1)
             ->assertJsonPath('map_points.0.latitude', 13.95759)
             ->assertJsonPath('map_points.0.longitude', 121.15555)
             ->assertJsonPath('data_quality.mapped_verified_donors', 2)
@@ -581,9 +691,11 @@ class Phase9BloodAvailabilityTest extends TestCase
 
         $response->assertOk();
         $payload = $response->json();
-        $this->assertSame(2, $payload['summary']['available_donors']);
-        $this->assertSame(1, $payload['data_quality']['mapped_available_donors']);
-        $this->assertSame(1, $payload['data_quality']['available_donors_missing_coordinates']);
+        $this->assertSame(0, $payload['summary']['available_donors']);
+        $this->assertSame(2, $payload['summary']['temporarily_deferred_donors']);
+        $this->assertSame(0, $payload['data_quality']['mapped_available_donors']);
+        $this->assertSame(0, $payload['data_quality']['available_donors_missing_coordinates']);
+        $this->assertSame(1, $payload['data_quality']['temporarily_deferred_donors_missing_coordinates']);
         $this->assertCount(1, $payload['map_points']);
         $this->assertSame('Pangao', $payload['map_points'][0]['barangay_name']);
         $this->assertSame('City of Lipa', $payload['map_points'][0]['city']);
@@ -601,7 +713,7 @@ class Phase9BloodAvailabilityTest extends TestCase
     private function buildSchema(): void
     {
         Schema::disableForeignKeyConstraints();
-        foreach (['donation_records', 'appointments', 'eligibility_status', 'donors', 'locations', 'blood_types'] as $table) {
+        foreach (['donation_records', 'appointments', 'donor_authentication', 'eligibility_status', 'donors', 'locations', 'blood_types'] as $table) {
             Schema::dropIfExists($table);
         }
         Schema::enableForeignKeyConstraints();
@@ -615,7 +727,17 @@ class Phase9BloodAvailabilityTest extends TestCase
             ['blood_type_id' => 2, 'blood_type' => 'O+'],
             ['blood_type_id' => 3, 'blood_type' => 'O-'],
             ['blood_type_id' => 4, 'blood_type' => 'AB+'],
+            ['blood_type_id' => 5, 'blood_type' => 'A-'],
+            ['blood_type_id' => 6, 'blood_type' => 'B+'],
+            ['blood_type_id' => 7, 'blood_type' => 'B-'],
+            ['blood_type_id' => 8, 'blood_type' => 'AB-'],
         ]);
+
+        Schema::create('donor_authentication', function (Blueprint $table): void {
+            $table->increments('auth_id');
+            $table->integer('donor_id');
+            $table->boolean('is_verified')->default(false);
+        });
 
         Schema::create('locations', function (Blueprint $table): void {
             $table->increments('location_id');

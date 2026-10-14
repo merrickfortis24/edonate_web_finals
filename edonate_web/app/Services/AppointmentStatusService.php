@@ -79,6 +79,18 @@ class AppointmentStatusService
                 && Schema::hasColumn('appointments', 'cancellation_reason')) {
                 $updates['cancellation_reason'] = $attributes['cancellation_reason'];
             }
+            if (array_key_exists('rejection_reason', $attributes)
+                && Schema::hasColumn('appointments', 'rejection_reason')) {
+                $updates['rejection_reason'] = $attributes['rejection_reason'];
+            }
+            if (array_key_exists('rejected_by_admin_id', $attributes)
+                && Schema::hasColumn('appointments', 'rejected_by_admin_id')) {
+                $updates['rejected_by_admin_id'] = $attributes['rejected_by_admin_id'];
+            }
+            if (array_key_exists('rejected_at', $attributes)
+                && Schema::hasColumn('appointments', 'rejected_at')) {
+                $updates['rejected_at'] = $attributes['rejected_at'];
+            }
             if (Schema::hasColumn('appointments', 'updated_at')) {
                 $updates['updated_at'] = now();
             }
